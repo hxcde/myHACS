@@ -101,6 +101,33 @@ data:
 
 ESPHome und Z2M: Zigbee2MQTT vor dem Wiederherstellen stoppen, sonst überschreibt es `database.db`.
 
+## Alarmanlage
+
+Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_control_panel.bastion_alarmanlage` (Name je nach Systemsprache). Die Entität funktioniert mit allen HA-Alarmkarten und Automationen.
+
+**Einrichten (Alarmanlage → Einstellungen):**
+1. **Räume & Sensoren:** Räume anlegen oder „Räume aus HA-Bereichen übernehmen“. Dabei werden Tür-, Fenster-, Bewegungs-, Rauch-, Wasser- und Manipulationssensoren den Bereichen zugeordnet und sinnvoll vorbelegt. Pro Sensor gibt es folgende Einstellungen:
+   - **Modi:** In welchen Modi (Zuhause, Nacht, Abwesend) der Sensor überwacht wird.
+   - **Typ:**
+     - *Sofort:* löst sofort aus.
+     - *Verzögert:* startet die Vorwarnung.
+     - *Immer:* löst auch unscharf aus, für Rauch, Wasser und Manipulation.
+   - **Aktiv nach:** Aktivierungsverzögerung in Sekunden. Der Sensor wird erst so lange nach dem Scharfschalten überwacht, typisch für die Haustür als Ausgangsweg. So ein Sensor darf beim Scharfschalten offen sein. Ist er nach Ablauf noch offen, startet die Vorwarnung.
+   - **Alarm nach:** Auslöseverzögerung in Sekunden vom Auslösen bis zum Alarm. Bei „Immer“ dient sie als Bestätigungszeit gegen Fehlalarme.
+   - Leere Felder übernehmen den Wert des Modus.
+   - **Darf offen sein:** Der Sensor blockiert das Scharfschalten nicht, er wird überbrückt, bis er schließt (z. B. ein gekipptes Fenster).
+2. **Modi & Zeiten:** Ausgangs- und Eingangsverzögerung pro Modus, Sirenendauer, ob die Anlage nach einem Alarm wieder scharf wird, Code-Pflicht beim Scharfschalten, und ob Sabotage, Manipulation und Köder bei scharfer Anlage auslösen.
+3. **Aktionen:**
+   - Sirenen und Lichter werden bei Alarm eingeschaltet.
+   - Das Warnsignal läuft während der Verzögerungen.
+   - Benachrichtigungen gehen an die Bastion-Benachrichtigungsziele. Ein Alarm kommt als kritische Push-Nachricht und durchbricht damit den Stumm-Modus.
+4. **Codes:** Codes werden nur als scrypt-Hash gespeichert. Sobald ein Code existiert, verlangt das Unscharfschalten einen Code. Nach 5 falschen Eingaben sperrt die Anlage die Eingabe für 5 Minuten. Während eines Alarms oder einer Vorwarnung verlangt auch jedes Umschalten einen Code, damit niemand die Sirene durch Scharfschalten stummschalten kann.
+5. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist. Alarme leitet er unabhängig von HA weiter.
+
+**Offene Sensoren:** Ist beim Scharfschalten ein Sensor offen, verweigert Bastion das Scharfschalten und nennt die offenen Sensoren. „Trotzdem scharf schalten“ überbrückt sie, bis sie schließen.
+
+**Neustart:** Der Zustand bleibt erhalten. Eine laufende Ausgangsverzögerung wird fortgesetzt. Ein Neustart während der Vorwarnung, etwa bei einem Stromausfall nach dem Öffnen der Tür, löst den Alarm aus.
+
 ## Reaktion, Köder, Wochenbericht
 
 **Aktionen in Benachrichtigungen:** Benachrichtigungsziele vom Typ `notify.mobile_app_*` bekommen bei Anmeldungen, neuen IPs, neuen Tokens und Benutzern die Buttons „War ich“ und „Sperren“. „Sperren“ hat folgende Wirkung:
@@ -124,13 +151,30 @@ Token und URL stehen im Panel unter „Anomalien & Köder“. Leg sie dort ab, w
 
 **Firmware:** Die Firmware-Versionen von ESPHome-, Tasmota- und WLED-Geräten sowie der Zigbee2MQTT-Bridge aus der Geräteübersicht werden gegen die GitHub-Advisories dieser Projekte geprüft.
 
-## Externe Prüfung (Cloudflare Worker)
+## Cloudflare Worker (Port-Prüfung, Totmannschalter, Alarm-Weiterleitung)
 
 ```bash
 cd extras/cloudflare-worker
+npx wrangler kv namespace create BASTION_KV      # ausgegebene id in wrangler.toml eintragen
 npx wrangler deploy
-npx wrangler secret put PROBE_TOKEN   # zufälligen Wert setzen
+npx wrangler secret put PROBE_TOKEN              # zufälliger Wert, auch in Bastion → Externe Prüfung
+npx wrangler secret put ALARM_SECRET             # Wert aus Alarmanlage → Einstellungen → Cloud-Worker
+npx wrangler secret put TELEGRAM_BOT_TOKEN       # optional, dazu TELEGRAM_CHAT_ID
+npx wrangler secret put NTFY_URL                 # optional, z. B. https://ntfy.sh/<geheimes-topic>
 ```
+
+Weitere Variablen: `WEBHOOK_URL` (bekommt JSON), `OFFLINE_MINUTES` (Standard 10), `ALERT_WHEN_DISARMED=1` (meldet Ausfälle auch bei unscharfer Anlage).
+
+**Totmannschalter:**
+- HA schickt alle 2 Minuten ein signiertes Lebenszeichen mit dem Alarmzustand.
+- Der Worker prüft per Cron alle 5 Minuten. Bleibt das Lebenszeichen bei scharfer Anlage länger als `OFFLINE_MINUTES` aus, meldet er „Home Assistant nicht erreichbar“. Ursache kann ein Strom- oder Internetausfall sein, aber auch Sabotage.
+- Kommt HA zurück, meldet er „wieder erreichbar“.
+
+**Alarm-Weiterleitung:** Alarm, Vorwarnung, Scharf, Unscharf und nicht erreichbare Sensoren gehen zusätzlich über die Worker-Kanäle raus.
+
+**Sicherheit:** Jede Meldung von HA trägt eine HMAC-SHA256-Signatur über Zeitstempel und Inhalt, Wiederholungen werden nach 5 Minuten abgewiesen. Der Worker nimmt keine Befehle an. Fernsteuern lässt sich die Anlage über ihn nicht.
+
+**Port-Prüfung:**
 
 Danach die Worker-URL (`https://bastion-probe.<account>.workers.dev`) und den Token in Bastion → Externe Prüfung eintragen.
 

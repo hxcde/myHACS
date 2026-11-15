@@ -38,6 +38,10 @@ custom_components/bastion/
     supply_chain.py      Integrität custom_components/www, Repo-Check, ungenutzte Integrationen, externe Ressourcen
     config.py            Klartext-Secrets, Shell-Templates, Debug-Konsole, Backups
     supervisor.py        Add-on-Rechte (nur mit Supervisor)
+  alarm/
+    engine.py            Zustandsmaschine (disarmed/arming/armed_*/pending/triggered), Räume, Sensoren, Codes (scrypt), Aktionen
+    relay.py             Signiertes Lebenszeichen + Alarm-Weiterleitung an den Cloudflare Worker (HMAC-SHA256)
+  alarm_control_panel.py Alarm-Entität (Aus/Zuhause/Nacht/Abwesend/Panik)
   gitsync/
     remote.py            URL-Parsing, SSH-Vendor mit Hostkey-Pinning, Schlüsselerzeugung
     collector.py         Dateiauswahl pro Bereich, Pfad-Schutz
@@ -84,6 +88,19 @@ Restore: repo.decode_entry ─► Pfadprüfung ─► YAML schreiben (Backup + c
 - `gitsync/manager.py`: `async_commit`, `async_restore`, `apply_pending_restore`, `async_test_connection`
 - `extras/cloudflare-worker/src/worker.js`: Endpoint `POST /probe`
 
+## Alarmanlage
+
+```
+arm(mode) ─► offene Sensoren prüfen (Ausnahme: Sensoren mit eigener Aktivierungsverzögerung, „darf offen sein“)
+          ─► arming (Ausgangsverzögerung des Modus) ─► armed_<mode>
+Sensor aktiv ─► „immer“: sofort bzw. nach eigener Bestätigungszeit Alarm (auch unscharf)
+             ─► nicht im Modus / noch nicht aktiv (eigene Aktivierungsverzögerung) / überbrückt: ignoriert
+             ─► sofort: triggered │ verzögert: pending (Auslöseverzögerung Sensor oder Modus) ─► triggered
+triggered ─► Sirenen/Lichter an, Benachrichtigung, Worker-Alarm ─► nach Sirenendauer wieder scharf oder aus
+```
+
+Sensoren mit eigener Aktivierungsverzögerung werden per Timer freigegeben. Ist ein solcher Sensor danach noch offen, startet die Vorwarnung. Zustand, Scharfschaltzeitpunkt und laufende Verzögerungen werden gespeichert und nach einem Neustart fortgesetzt. Ein Neustart während der Vorwarnung führt zum Alarm.
+
 ## Persistenz (`/config/.storage`)
 
 | Key | Inhalt |
@@ -92,3 +109,4 @@ Restore: repo.decode_entry ─► Pfadprüfung ─► YAML schreiben (Backup + c
 | `bastion.logins` | Login-Protokoll (max. 1000), Token-/Benutzer-Snapshot, bekannte IPs |
 | `bastion.git` | Git-Status, Hostkey (TOFU), Privatheits-Status |
 | `bastion.anomaly` | Sensor-Modelle, Histogramme, Outbound-Baseline, Ereignisse |
+| `bastion.alarm` | Alarm-Konfiguration (Räume, Sensoren, Zeiten, Aktionen, Code-Hashes, Worker), Zustand, Protokoll |
