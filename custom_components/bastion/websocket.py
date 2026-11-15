@@ -327,6 +327,10 @@ _SENSOR = probatio.Schema(
         probatio.Optional("entry_delay", default=None): probatio.Any(
             None, probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=900))
         ),
+        # Own name; empty or missing = the Home Assistant name.
+        probatio.Optional("name", default=None): probatio.Any(
+            None, probatio.All(str, probatio.Strip, probatio.Length(max=60), lambda v: v or None)
+        ),
     }
 )
 _DELAY = probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=900))

@@ -228,3 +228,27 @@ async def test_phone_notifications_are_cleared_on_disarm(hass: HomeAssistant, al
     await hass.async_block_till_done()
     clear = [c for c in phone if c.data["message"] == "clear_notification"]
     assert clear and clear[-1].data["data"] == {"tag": "bastion_alarm"}
+
+
+async def test_own_sensor_names(hass: HomeAssistant, alarm, hass_ws_client) -> None:  # noqa: F811
+    client = await hass_ws_client(hass)
+    sensors = {k: dict(v) for k, v in alarm.config["sensors"].items()}
+    sensors["binary_sensor.door"]["name"] = "  Haustür  "
+    sensors["binary_sensor.motion"]["name"] = "   "
+    await client.send_json({"id": 1, "type": "bastion/alarm/save", "config": {"sensors": sensors}})
+    msg = await client.receive_json()
+    assert msg["success"], msg
+    assert alarm.config["sensors"]["binary_sensor.door"]["name"] == "Haustür"
+    assert alarm.config["sensors"]["binary_sensor.motion"]["name"] is None, "blank = Home Assistant name"
+    await client.send_json(
+        {"id": 2, "type": "bastion/alarm/save", "config": {"sensors": {"binary_sensor.door": {"name": "x" * 61}}}}
+    )
+    assert not (await client.receive_json())["success"]
+
+    await alarm.async_arm("home")
+    hass.states.async_set("binary_sensor.door", "on")
+    await hass.async_block_till_done()
+    pending = [e for e in alarm.log if e["type"] == "pending"][-1]
+    assert pending["name"] == "Haustür"
+    assert alarm.triggered_by["name"] == "Haustür"
+    assert alarm._name("binary_sensor.motion") == "Motion"

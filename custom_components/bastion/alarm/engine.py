@@ -304,6 +304,7 @@ class AlarmEngine:
             "bypass": False,
             "exit_delay": None,
             "entry_delay": None,
+            "name": None,
             **self.config["sensors"].get(entity_id, {}),
         }
 
@@ -351,6 +352,9 @@ class AlarmEngine:
         return out
 
     def _name(self, entity_id: str) -> str:
+        """Own name from the alarm settings, else the Home Assistant name."""
+        if own := (self.config["sensors"].get(entity_id) or {}).get("name"):
+            return str(own)
         state = self.hass.states.get(entity_id)
         return (state.attributes.get("friendly_name") if state else None) or entity_id
 

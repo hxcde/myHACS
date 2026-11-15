@@ -55,6 +55,9 @@ const I18N = {
       may_be_open_hint: "Darf beim Scharfschalten offen sein, wird dann überbrückt bis er schließt.",
       sensor_exit: "Aktiv nach",
       watched_in: "Überwacht in",
+      sensor_name: "Name des Sensors",
+      sensor_name_hint: "Eigener Name für Alarmanlage, Benachrichtigungen und Protokoll. Leer = Name aus Home Assistant.",
+      ha_name: "HA",
       type_label: "Typ",
       when_arming: "Beim Scharfschalten",
       remove: "Entfernen",
@@ -275,6 +278,9 @@ const I18N = {
       may_be_open_hint: "May be open when arming; it is bypassed until it closes.",
       sensor_exit: "Active after",
       watched_in: "Watched in",
+      sensor_name: "Sensor name",
+      sensor_name_hint: "Own name for the alarm, notifications and log. Empty = name from Home Assistant.",
+      ha_name: "HA",
       type_label: "Type",
       when_arming: "When arming",
       remove: "Remove",
@@ -1196,7 +1202,7 @@ class BastionPanel extends HTMLElement {
                 const cfg = { modes: ["home", "night", "away"], type: "delayed", bypass: false, ...(config.sensors[e] || {}) };
                 const sst = this._sensorState(e);
                 const dot = sst === "open" ? SEV.medium.color : sst === "unavailable" ? "#8a8f98" : GOOD;
-                const name = this._hass.states[e]?.attributes?.friendly_name || e;
+                const name = cfg.name || this._hass.states[e]?.attributes?.friendly_name || e;
                 const bypassed = status.bypassed.includes(e);
                 return `
                   <div class="sensor">
@@ -1335,7 +1341,7 @@ class BastionPanel extends HTMLElement {
           </div>
           ${room.sensors.map((e) => {
             const cfg = { modes: ["home", "night", "away"], type: "delayed", bypass: false, ...(d.sensors[e] || {}) };
-            const name = this._hass.states[e]?.attributes?.friendly_name || e;
+            const haName = this._hass.states[e]?.attributes?.friendly_name || e;
             const sst = this._sensorState(e);
             const dot = { open: SEV.medium.color, unavailable: "#8a8f98" }[sst] || GOOD;
             const delayField = (kind, label, hint, ic) => `
@@ -1348,7 +1354,10 @@ class BastionPanel extends HTMLElement {
               <div class="sensor-card">
                 <div class="sensor-card-head">
                   <span class="dot" style="background:${dot}" data-tip="${esc(a[sst] || sst)}"></span>
-                  <div class="sensor-ident"><div class="sensor-title">${esc(name)}</div><div class="mono muted small sensor-id">${esc(e)}</div></div>
+                  <div class="sensor-ident">
+                    <input class="name-input" data-sensor-name="${esc(e)}" value="${esc(cfg.name || "")}" placeholder="${esc(haName)}" maxlength="60" aria-label="${esc(a.sensor_name)}" title="${esc(a.sensor_name_hint)}">
+                    <div class="mono muted small sensor-id">${esc(e)}${cfg.name ? ` · ${esc(a.ha_name)}: ${esc(haName)}` : ""}</div>
+                  </div>
                   <button class="icon-btn" data-sensor-remove="${esc(e)}" data-room="${ri}" title="${esc(a.remove)}" aria-label="${esc(a.remove)}">${icon("mdi:close")}</button>
                 </div>
                 <div class="sensor-fields">
@@ -1635,6 +1644,8 @@ class BastionPanel extends HTMLElement {
     });
     on("[data-sensor-type]", (el) => { sensorCfg(el.dataset.sensorType).type = el.value; this._render(); }, "change");
     on("[data-sensor-bypass]", (el) => { sensorCfg(el.dataset.sensorBypass).bypass = el.checked; }, "change");
+    on("[data-sensor-name]", (el) => { sensorCfg(el.dataset.sensorName).name = el.value.trim() || null; }, "input");
+    on("[data-sensor-name]", () => this._render(), "change");
     on("[data-sensor-delay]", (el) => {
       const value = el.value.trim();
       sensorCfg(el.dataset.sensorDelay)[el.dataset.delayKind] = value === "" ? null : Math.max(0, Math.min(900, Number(value) || 0));
@@ -2181,6 +2192,12 @@ const STYLE = `
   .sensor-card-head .dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--surface) 70%, transparent); }
   .sensor-ident { flex:1; min-width:0; }
   .sensor-title { font-size:15px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .name-input { display:block; width:100%; max-width:420px; margin:-4px 0 0 -9px; padding:4px 8px; border-radius:8px; border:1px solid transparent;
+    background:transparent; color: var(--text); font: inherit; font-size:15px; font-weight:600; outline:none; transition: border-color .15s, background .15s; }
+  .name-input::placeholder { color: var(--text); opacity:1; }
+  .name-input:hover { border-color: var(--line); background: var(--surface); }
+  .name-input:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  .name-input:focus::placeholder { color: var(--muted); }
   .sensor-id { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
   .icon-btn { width:32px; height:32px; flex:none; border-radius:9px; border:none; background:none; color: var(--muted); cursor:pointer;
     display:inline-flex; align-items:center; justify-content:center; transition: background .15s, color .15s; }
