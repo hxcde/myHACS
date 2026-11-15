@@ -25,7 +25,7 @@ from typing import Any
 import aiohttp
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from ..const import EVENT_SECURITY, SEVERITY_WEIGHT
@@ -50,7 +50,8 @@ TICK = 15
 SNAPSHOT_INTERVAL = 5
 MAX_SNAPSHOT = 1_400_000  # base64 characters
 SECURITY_RESEND = 1800  # seconds: overview is sent on change, at least this often
-SECURITY_BACKFILL_DAYS = 7
+BACKFILL_DELAY = 30  # seconds after setup: the login monitor has loaded its history by then
+BACKFILL_CHUNK = 200
 MAX_QUEUE = 300
 EVENTS_PER_BEAT = 50
 DETAIL_KEYS = ("count", "minutes", "name", "public", "reason", "action", "kind")
@@ -93,6 +94,9 @@ class AlarmRelay:
         self._sec_hash: str | None = None
         self._sec_sent = 0.0
         self._unsub_security: CALLBACK_TYPE | None = None
+        self._unsub_backfill: CALLBACK_TYPE | None = None
+        self.backfill_result: dict[str, Any] | None = None
+        self.on_exposure = None
 
     @property
     def cfg(self) -> dict[str, Any]:
@@ -117,7 +121,7 @@ class AlarmRelay:
         self._last_beat = 0.0
         self._unsub = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK))
         self._unsub_security = self.hass.bus.async_listen(EVENT_SECURITY, self._on_security_event)
-        self._backfill_security()
+        self._unsub_backfill = async_call_later(self.hass, BACKFILL_DELAY, self._start_backfill)
         self._spawn(self._async_heartbeat())
 
     def unload(self) -> None:
@@ -128,6 +132,9 @@ class AlarmRelay:
         if self._unsub_security is not None:
             self._unsub_security()
             self._unsub_security = None
+        if self._unsub_backfill is not None:
+            self._unsub_backfill()
+            self._unsub_backfill = None
         for task in list(self._tasks):
             task.cancel()
 
@@ -206,18 +213,35 @@ class AlarmRelay:
             self._sec_queue.append(item)
             del self._sec_queue[:-MAX_QUEUE]
 
-    def _backfill_security(self) -> None:
-        """Recent login log, so the dashboard is complete after setup (the worker deduplicates)."""
+    @callback
+    def _start_backfill(self, _now: datetime | None = None) -> None:
+        self._unsub_backfill = None
+        self._spawn(self.async_backfill())
+
+    async def async_backfill(self) -> dict[str, Any]:
+        """Send the whole alarm and login log once; the worker skips what it has."""
+        if not self.enabled:
+            return {}
+        alarm = [self._alarm_event(e["type"], e) for e in list(self.engine.log) if e.get("type") in RELAY_EVENTS]
         logins = getattr(self._bastion, "logins", None)
-        if logins is None:
-            return
-        cutoff = dt_util.utcnow() - timedelta(days=SECURITY_BACKFILL_DAYS)
-        items = []
-        for entry in list(logins.log):
-            when = dt_util.parse_datetime(str(entry.get("time") or ""))
-            if when is not None and when >= cutoff and (item := self._security_event(entry)) is not None:
-                items.append(item)
-        self._sec_queue = (items + self._sec_queue)[-MAX_QUEUE:]
+        security = [item for e in list(logins.log if logins else []) if (item := self._security_event(e)) is not None]
+        result = {"alarm": 0, "security": 0, "sent": len(alarm) + len(security)}
+        try:
+            for i in range(0, max(len(alarm), len(security)), BACKFILL_CHUNK):
+                chunk = {
+                    "ts": int(time.time()),
+                    "alarm_events": alarm[i : i + BACKFILL_CHUNK],
+                    "security_events": security[i : i + BACKFILL_CHUNK],
+                }
+                answer = await self._async_post("/backfill", chunk, timeout=30)
+                result["alarm"] += int(answer.get("alarm") or 0)
+                result["security"] += int(answer.get("security") or 0)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.warning("Bastion backfill to the worker failed: %s", err)
+            result["error"] = str(err)[:200]
+        self.backfill_result = {**result, "time": dt_util.utcnow().isoformat()}
+        _LOGGER.debug("Bastion backfill: %s", result)
+        return result
 
     def _security_overview(self) -> dict[str, Any] | None:
         bastion = self._bastion
@@ -246,6 +270,9 @@ class AlarmRelay:
                 for f in active[:40]
             ],
             "git": {"status": git.get("status"), "last": git.get("last_commit_time")} if git else None,
+            "history": [
+                {"date": h.get("date"), "score": h.get("score")} for h in (bastion.data.get("history") or [])[-400:]
+            ],
         }
 
     def _security_payload(self) -> tuple[dict[str, Any], str | None, int]:
@@ -287,7 +314,13 @@ class AlarmRelay:
             "version": self.version,
             "stopping": stopping,
             "acks_seen": sorted(self._acks_seen),
+            "check_urls": self.check_urls(),
         }
+
+    def check_urls(self) -> list[str]:
+        """Public address the worker checks from outside (setting, else HA's external URL)."""
+        url = (self.cfg.get("public_url") or self.hass.config.external_url or "").strip()
+        return [url] if url.startswith(("https://", "http://")) else []
 
     async def _async_tick(self, _now: datetime | None = None) -> None:
         due = time.monotonic() - self._last_beat >= self.interval - TICK / 2
@@ -314,6 +347,8 @@ class AlarmRelay:
         del self._sec_queue[:sent_events]
         self._handle_acks(result.get("acks") or [])
         self._handle_attack(result.get("attack"))
+        if isinstance(result.get("exposure"), dict) and self.on_exposure is not None:
+            self.on_exposure(result["exposure"])
 
     def _handle_acks(self, acks: list[dict[str, Any]]) -> None:
         for ack in acks[:10]:
@@ -338,25 +373,40 @@ class AlarmRelay:
         except (aiohttp.ClientError, TimeoutError) as err:
             _LOGGER.debug("Bastion stop heartbeat failed: %s", err)
 
-    async def async_send_event(self, kind: str, entry: dict[str, Any], *, push: bool) -> None:
-        """Store an alarm event at the worker (and push it if requested)."""
-        if not self.enabled or kind not in RELAY_EVENTS:
-            return
+    @staticmethod
+    def _alarm_event(kind: str, entry: dict[str, Any]) -> dict[str, Any]:
+        """Alarm log entry as the worker stores it; the uid makes resending safe."""
         detail = {k: entry[k] for k in ("target", "delay", "previous", "reason") if entry.get(k) not in (None, "")}
         for key in ("bypassed", "sensors"):
             if entry.get(key):
                 detail[key] = [str(x)[:60] for x in entry[key]][:20]
-        payload = {
-            "ts": int(time.time()),
+        when = dt_util.parse_datetime(str(entry.get("time") or "")) or dt_util.utcnow()
+        sensor = entry.get("name") or entry.get("sensor")
+        uid = hashlib.sha256(f"{when.isoformat()}|{kind}|{sensor}|{entry.get('user')}".encode()).hexdigest()[:24]
+        return {
+            "uid": uid,
+            "ts": int(when.timestamp()),
             "event": kind,
-            **self._snapshot(),
-            "incident": entry.get("incident") or self.engine.incident,
-            "sensor": entry.get("name") or entry.get("sensor"),
+            "state": entry.get("state"),
+            "mode": entry.get("mode"),
+            "incident": entry.get("incident"),
+            "sensor": sensor,
             "room": entry.get("room"),
             "user": entry.get("user"),
             "reason": entry.get("reason"),
             "sensors": detail.get("sensors"),
             "detail": detail,
+        }
+
+    async def async_send_event(self, kind: str, entry: dict[str, Any], *, push: bool) -> None:
+        """Store an alarm event at the worker (and push it if requested)."""
+        if not self.enabled or kind not in RELAY_EVENTS:
+            return
+        event = self._alarm_event(kind, entry)
+        payload = {
+            **self._snapshot(),
+            **event,
+            "incident": event["incident"] or self.engine.incident,
             "push": push,
         }
         try:

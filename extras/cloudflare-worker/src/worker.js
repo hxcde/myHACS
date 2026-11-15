@@ -5,9 +5,11 @@
 //   POST /alert             Signed alarm event: logged in D1, pushed if requested.
 //   POST /snapshot          Signed camera image of an incident (stored in D1).
 //   POST /pushover/<token>  Pushover callback when an emergency alarm is acknowledged.
+//   POST /backfill          Signed resend of Home Assistant's alarm and login log (deduplicated).
 //   GET  /i/<incident>?t=   Incident page (events + camera images), token from the alarm push.
 //   GET  /                  Read-only dashboard, only behind Cloudflare Access.
-//   cron (every minute)     Offline detection with last known state, receipt polling, retention.
+//   cron (every minute)     Offline detection with last known state, receipt polling, retention,
+//                           outside check of Home Assistant's public address (every 6 hours).
 //
 // Secrets / variables:
 //   PROBE_TOKEN          optional bearer token for /probe
@@ -41,6 +43,8 @@ const TIMEOUT_MS = 3000;
 const REPLAY_WINDOW = 300;
 const MAX_BODY = 64 * 1024;
 const MAX_HEARTBEAT = 160 * 1024; // carries the security overview and login events
+const MAX_BACKFILL = 512 * 1024;
+const EXPOSURE_INTERVAL = 6 * 3600 * 1000;
 const MAX_SNAPSHOT = 1_500_000; // base64 characters, D1 allows 2 MB per value
 const MODES = { home: "Zuhause", night: "Nacht", away: "Abwesend" };
 const LABELS = {
@@ -59,6 +63,7 @@ const LABELS = {
   online: "Wieder erreichbar",
   restart: "Neustart",
   attack: "Angriffsversuch",
+  exposure: "Außenprüfung",
 };
 const ATTACK_LABELS = {
   signature: "falsche Signatur",
@@ -337,8 +342,26 @@ function securityOverview(sec) {
       since: typeof f.since === "string" ? f.since.slice(0, 40) : null,
     })),
     git: sec.git && typeof sec.git === "object" ? { status: String(sec.git.status || "").slice(0, 20), last: String(sec.git.last || "").slice(0, 40) } : null,
+    history: (Array.isArray(sec.history) ? sec.history : []).slice(-400).map((h) => ({
+      date: String(h.date || "").slice(0, 10),
+      score: Math.max(0, Math.min(100, Number(h.score) || 0)),
+    })),
     received: nowS(),
   };
+}
+
+// Public addresses of Home Assistant to check from outside (scheme + host only).
+function checkUrls(list) {
+  const out = [];
+  for (const raw of Array.isArray(list) ? list.slice(0, 3) : []) {
+    try {
+      const u = new URL(String(raw));
+      if ((u.protocol === "https:" || u.protocol === "http:") && !u.username && !u.password) out.push(`${u.protocol}//${u.host}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...new Set(out)];
 }
 
 async function handleHeartbeat(request, env, url, ctx) {
@@ -364,6 +387,7 @@ async function handleHeartbeat(request, env, url, ctx) {
     received: Date.now(),
     origin: url.origin,
     ip: clientIp(request),
+    check_urls: checkUrls(data.check_urls),
     offline: false,
     offline_notified: false,
   };
@@ -392,7 +416,7 @@ async function handleHeartbeat(request, env, url, ctx) {
   }
   const attack = await store.getState(env, "attack_pending");
   if (attack) await store.setState(env, "attack_pending", null);
-  return json({ ok: true, acks: await store.unseenAcks(env), attack: attack || null });
+  return json({ ok: true, acks: await store.unseenAcks(env), attack: attack || null, exposure: await store.getState(env, "exposure") });
 }
 
 function restarted(prev, cur) {
@@ -424,6 +448,7 @@ async function handleAlert(request, env, url, ctx) {
       room: data.room,
       user: data.user,
       detail: data.detail && typeof data.detail === "object" ? data.detail : null,
+      uid: data.uid,
     });
     // An alert is also a sign of life and the freshest state for the offline report.
     const hb = await store.getState(env, "hb");
@@ -459,6 +484,116 @@ async function handleSnapshot(request, env, url, ctx) {
   }
   const id = await store.addSnapshot(env, { ts: data.ts, incident: data.incident, camera: data.camera, type, data: data.data });
   return json({ ok: true, id });
+}
+
+async function handleBackfill(request, env, url, ctx) {
+  const { data, response } = await signedBody(request, env, ctx, url, MAX_BACKFILL);
+  if (response) return response;
+  const alarm = (Array.isArray(data.alarm_events) ? data.alarm_events : [])
+    .slice(0, 300)
+    .filter((e) => e && typeof e === "object" && e.event && e.uid)
+    .map((e) => ({ ...e, incident: validIncident(e.incident) ? e.incident : null }));
+  const security = (Array.isArray(data.security_events) ? data.security_events : [])
+    .slice(0, 300)
+    .filter((e) => e && typeof e === "object" && e.uid && e.type);
+  return json({ ok: true, alarm: await store.addEventsBackfill(env, alarm), security: await store.addSecEvents(env, security) });
+}
+
+// ---------------------------------------------------- outside check (exposure)
+const FAILING = new Set(["warning", "critical"]);
+
+async function outsideFetch(url) {
+  const started = Date.now();
+  try {
+    const res = await fetch(url, { redirect: "manual", headers: { "user-agent": "Bastion-Aussenpruefung/1" }, signal: AbortSignal.timeout(8000) });
+    return { res, ms: Date.now() - started };
+  } catch (err) {
+    return { error: String((err && err.message) || err).slice(0, 120), ms: Date.now() - started };
+  }
+}
+
+async function bodyJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// One address: reachable? protected by Access? login or API open? plain http?
+export async function probeAddress(base) {
+  const host = new URL(base).host;
+  const checks = [];
+  const main = await outsideFetch(`${base}/`);
+  if (main.error) {
+    const tls = /ssl|tls|certificate|handshake/i.test(main.error);
+    checks.push({ id: tls ? "tls_invalid" : "unreachable", level: tls ? "critical" : "warning", text: `${tls ? "TLS-Fehler" : "Nicht erreichbar"}: ${main.error}` });
+    return { url: base, colo: "", ms: main.ms, checks };
+  }
+  const res = main.res;
+  const colo = (res.headers.get("cf-ray") || "").split("-")[1] || "";
+  if (res.status === 525 || res.status === 526) {
+    checks.push({ id: "tls_invalid", level: "critical", text: `Zertifikat am Ursprung ungültig (Cloudflare ${res.status})` });
+  }
+  const location = res.headers.get("location") || "";
+  const access = /^https:\/\/[^/]+\.cloudflareaccess\.com\//.test(location);
+  if (access) {
+    checks.push({ id: "access", level: "ok", text: "Cloudflare Access verlangt eine Anmeldung" });
+  } else {
+    const providers = await outsideFetch(`${base}/auth/providers`);
+    const list = providers.res && providers.res.status === 200 ? await bodyJson(providers.res) : null;
+    const loginOpen = Array.isArray(list) || Array.isArray(list && list.providers);
+    checks.push(
+      loginOpen
+        ? { id: "login_open", level: "warning", text: "Die Home-Assistant-Anmeldung ist ohne vorgeschalteten Schutz öffentlich erreichbar" }
+        : { id: "reachable", level: "ok", text: `Erreichbar (HTTP ${res.status})` },
+    );
+    const api = await outsideFetch(`${base}/api/`);
+    if (api.res && api.res.status === 200) checks.push({ id: "api_open", level: "critical", text: "Die HA-API antwortet ohne Anmeldung" });
+  }
+  if (base.startsWith("https://")) {
+    const plain = await outsideFetch(`http://${host}/`);
+    if (plain.res && plain.res.status >= 200 && plain.res.status < 300) {
+      checks.push({ id: "http_plain", level: "warning", text: "Auch unverschlüsselt über http:// erreichbar" });
+    }
+  } else {
+    checks.push({ id: "http_plain", level: "warning", text: "Adresse ohne HTTPS: Anmeldedaten gehen unverschlüsselt übers Netz" });
+  }
+  return { url: base, status: res.status, colo, ms: main.ms, checks };
+}
+
+function problemKeys(state) {
+  return new Set(((state && state.results) || []).flatMap((r) => r.checks.filter((c) => FAILING.has(c.level)).map((c) => `${r.url}|${c.id}`)));
+}
+
+async function checkExposure(env, force = false) {
+  const hb = await store.getState(env, "hb");
+  const urls = (hb && hb.check_urls) || [];
+  const prev = await store.getState(env, "exposure");
+  const sameUrls = prev && JSON.stringify(prev.urls) === JSON.stringify(urls);
+  if (!urls.length) {
+    if (prev && prev.urls && prev.urls.length) await store.setState(env, "exposure", { urls: [], checked: Date.now(), results: [] });
+    return;
+  }
+  if (!force && sameUrls && Date.now() - prev.checked < EXPOSURE_INTERVAL) return;
+  const results = [];
+  for (const base of urls) results.push(await probeAddress(base));
+  const state = { urls, checked: Date.now(), results };
+  await store.setState(env, "exposure", state);
+  const before = sameUrls ? problemKeys(prev) : new Set();
+  const now = problemKeys(state);
+  const fresh = results.flatMap((r) => r.checks.filter((c) => FAILING.has(c.level) && !before.has(`${r.url}|${c.id}`)).map((c) => ({ url: r.url, colo: r.colo, ...c })));
+  if (fresh.length) {
+    await notify(env, {
+      title: "🌐 Außenprüfung: neues Problem",
+      message: fresh.map((p) => `• ${new URL(p.url).host}: ${p.text}${p.colo ? ` (geprüft über ${p.colo})` : ""}`).join("\n"),
+      priority: fresh.some((p) => p.level === "critical") ? "high" : "default",
+    });
+    await store.addEvent(env, { event: "exposure", detail: { problems: fresh.map((p) => ({ url: p.url, id: p.id, level: p.level, text: p.text })) } });
+  } else if (sameUrls && before.size && !now.size) {
+    await notify(env, { title: "✅ Außenprüfung in Ordnung", message: "Die zuvor gemeldeten Probleme sind behoben." });
+    await store.addEvent(env, { event: "exposure", detail: { problems: [] } });
+  }
 }
 
 // ------------------------------------------------------ acknowledgements
@@ -645,6 +780,7 @@ async function apiSummary(env, url, user) {
     secevents: await store.secEventsSince(env, since),
     attempts: await store.attemptsSince(env, since),
     blocked: await store.blockedList(env, since),
+    exposure: await store.getState(env, "exposure"),
   });
 }
 
@@ -680,6 +816,7 @@ export default {
       if (path === "/heartbeat") return await handleHeartbeat(request, env, url, ctx);
       if (path === "/alert") return await handleAlert(request, env, url, ctx);
       if (path === "/snapshot") return await handleSnapshot(request, env, url, ctx);
+      if (path === "/backfill") return await handleBackfill(request, env, url, ctx);
       if (path.startsWith("/pushover/")) return await handlePushoverCallback(request, env, path.slice(10), ctx, url);
       return json({ error: "not found" }, 404);
     } catch (err) {
@@ -690,7 +827,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       (async () => {
-        for (const job of [checkHeartbeat, pollReceipts, retention]) {
+        for (const job of [checkHeartbeat, pollReceipts, retention, checkExposure]) {
           try {
             await job(env);
           } catch (err) {

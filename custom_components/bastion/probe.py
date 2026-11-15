@@ -159,3 +159,45 @@ def probe_findings(result: dict[str, Any] | None, language: str) -> list[Finding
             )
         )
     return out
+
+
+# Outside check by the Cloudflare worker: check id -> (finding key, severity)
+EXPOSURE_FINDINGS = {
+    "login_open": ("exposure_login_open", Severity.MEDIUM),
+    "api_open": ("exposure_api_open", Severity.CRITICAL),
+    "http_plain": ("exposure_http_plain", Severity.HIGH),
+    "tls_invalid": ("exposure_tls_invalid", Severity.HIGH),
+    "unreachable": ("exposure_unreachable", Severity.LOW),
+}
+
+
+def exposure_problems(exposure: dict[str, Any] | None) -> set[str]:
+    return {
+        f"{r.get('url')}|{c.get('id')}"
+        for r in (exposure or {}).get("results") or []
+        for c in r.get("checks") or []
+        if c.get("id") in EXPOSURE_FINDINGS
+    }
+
+
+def exposure_findings(exposure: dict[str, Any] | None) -> list[Finding]:
+    """Findings from the worker's check of the public address."""
+    out: list[Finding] = []
+    for result in (exposure or {}).get("results") or []:
+        url = str(result.get("url") or "")
+        for check in result.get("checks") or []:
+            if (spec := EXPOSURE_FINDINGS.get(str(check.get("id")))) is None:
+                continue
+            key, severity = spec
+            out.append(
+                make_finding(
+                    key,
+                    severity,
+                    Category.EXPOSURE,
+                    url,
+                    url=url,
+                    detail=str(check.get("text") or "")[:200],
+                    location=str(result.get("colo") or "?"),
+                )
+            )
+    return out

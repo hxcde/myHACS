@@ -258,30 +258,69 @@ async def test_security_overview_login_events_and_worker_attack(hass: HomeAssist
     bastion = alarm.bastion
     bastion.logins.log.append({"time": "2000-01-01T00:00:00+00:00", "type": "failed_login", "ip": "203.0.113.1"})
     bastion.logins.record("failed_login", {"ip": "203.0.113.5"})
+    bastion.data["history"] = [
+        {"date": "2026-11-01", "score": 70, "counts": {}},
+        {"date": "2026-11-02", "score": 75, "counts": {}},
+    ]
     attack = {
         "ts": 1,
         "total": 7,
         "sources": [{"ip": "198.51.100.66", "country": "NL", "n": 7, "kinds": ["signature"], "blocked": True}],
     }
-    aioclient_mock.post(f"{WORKER}/heartbeat", json={"ok": True, "acks": [], "attack": attack})
+    exposure = {
+        "urls": ["https://ha.example.com"],
+        "checked": 1000,
+        "results": [
+            {
+                "url": "https://ha.example.com",
+                "colo": "FRA",
+                "checks": [{"id": "login_open", "level": "warning", "text": "offen"}],
+            }
+        ],
+    }
+    aioclient_mock.post(f"{WORKER}/heartbeat", json={"ok": True, "acks": [], "attack": attack, "exposure": exposure})
     aioclient_mock.post(f"{WORKER}/alert", json={"ok": True, "channels": []})
+    aioclient_mock.post(f"{WORKER}/backfill", json={"ok": True, "alarm": 1, "security": 2})
     seen = []
     hass.bus.async_listen("bastion_security_event", lambda e: seen.append(e.data))
+    hass.config.external_url = "https://ha.example.com"
+    await alarm.async_arm("home")
+    await alarm.async_disarm()
     await alarm.async_update_config({"worker": {"url": WORKER, "enabled": True, "interval": 60}})
     relay = bastion.relay
     relay.setup()
     await hass.async_block_till_done()
 
     beat = _payload(_calls(aioclient_mock, "/heartbeat")[-1])
-    assert set(beat["security"]) >= {"score", "counts", "open", "findings", "failed_24h"}
-    events = beat["security_events"]
-    assert [e["ip"] for e in events] == ["203.0.113.5"], "only the last 7 days are backfilled"
-    assert "user_id" not in events[0] and len(events[0]["uid"]) == 24
+    assert set(beat["security"]) >= {"score", "counts", "open", "findings", "failed_24h", "history"}
+    assert [h["score"] for h in beat["security"]["history"]] == [70, 75]
+    assert beat["check_urls"] == ["https://ha.example.com"], "external URL by default"
+    assert "security_events" not in beat, "history goes through the backfill, not the heartbeat"
+
+    # backfill 30 s after setup: whole login log and alarm log, with stable uids
+    _fire(hass, 31)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    fill = _payload(_calls(aioclient_mock, "/backfill")[-1])
+    assert {e["ip"] for e in fill["security_events"]} >= {"203.0.113.1", "203.0.113.5"}
+    assert [e["event"] for e in fill["alarm_events"]][-2:] == ["armed", "disarmed"]
+    live = [_payload(c) for c in _calls(aioclient_mock, "/alert")]
+    assert relay.backfill_result["security"] == 2
+    assert fill["alarm_events"][-1]["uid"] == relay._alarm_event("disarmed", alarm.log[-1])["uid"]
+    assert not live, "worker was not enabled while arming"
 
     # worker attack is logged in HA and fired for automations, but not sent back
     assert any(e["type"] == "worker_attack" and e["count"] == 7 for e in bastion.logins.log)
     assert any(e.get("type") == "worker_attack" for e in seen)
 
+    # outside check result is kept and turns into a finding
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert bastion.data["exposure"]["checked"] == 1000
+    await bastion.async_run_audit(notify=False)
+    found = [f for f in bastion.findings if f.check == "exposure_login_open"]
+    assert found and found[0].data["location"] == "FRA"
+
+    await relay._async_heartbeat()  # new finding -> overview resent once
+    assert "security" in _payload(_calls(aioclient_mock, "/heartbeat")[-1])
     hass.bus.async_fire("bastion_security_event", {"type": "new_ip", "ip": "192.0.2.4", "user": "Yann", "user_id": "x"})
     await hass.async_block_till_done()
     await relay._async_heartbeat()
@@ -289,3 +328,13 @@ async def test_security_overview_login_events_and_worker_attack(hass: HomeAssist
     assert "security" not in beat, "unchanged overview is not resent"
     types = [e["type"] for e in beat["security_events"]]
     assert "new_ip" in types and "worker_attack" not in types
+    assert "user_id" not in beat["security_events"][0]
+
+
+async def test_live_alarm_events_carry_the_same_uid_as_the_backfill(hass: HomeAssistant, alarm, aioclient_mock) -> None:  # noqa: F811
+    relay = await _enable_worker(hass, alarm, aioclient_mock)
+    await alarm.async_arm("home")
+    await hass.async_block_till_done()
+    sent = _payload(_calls(aioclient_mock, "/alert")[-1])
+    assert sent["uid"] == relay._alarm_event("armed", alarm.log[-1])["uid"]
+    assert sent["ts"] == relay._alarm_event("armed", alarm.log[-1])["ts"]

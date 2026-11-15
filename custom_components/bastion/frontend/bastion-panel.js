@@ -98,6 +98,11 @@ const I18N = {
       add_camera: "Kamera hinzufügen …",
       snapshots: "Bilder pro Kamera und Phase (alle 5 s)",
       offsite: "Protokoll außer Haus",
+      public_url: "Öffentliche Adresse von außen prüfen",
+      public_url_hint: "Der Worker prüft alle 6 Stunden, ob diese Adresse geschützt ist (Cloudflare Access), ob die HA-Anmeldung oder die API offen sind und ob sie unverschlüsselt erreichbar ist. Leer = externe URL aus den HA-Einstellungen.",
+      exposure_none: "Noch nicht geprüft.",
+      exposure_checked: "Geprüft {when} über {colo}",
+      backfill: "Nachgeliefert: {alarm} Alarm- und {security} Anmeldeereignisse",
       offsite_hint: "Jedes Alarmereignis wird im Worker gespeichert. Alarm-Pushs enthalten einen Link zum Vorfall mit Kamerabildern. Pushover-Quittierungen erscheinen hier im Protokoll, Unscharfschalten beendet die Notfall-Wiederholung auf allen Handys.",
       critical_push: "Alarm als kritische Push-Nachricht (durchbricht Stumm)",
       codes_help: "Codes werden nur als Hash gespeichert. Ohne Code lässt sich die Anlage ohne Eingabe bedienen.",
@@ -321,6 +326,11 @@ const I18N = {
       add_camera: "Add camera …",
       snapshots: "Images per camera and phase (every 5 s)",
       offsite: "Off-site log",
+      public_url: "Check public address from outside",
+      public_url_hint: "Every 6 hours the worker checks whether this address is protected (Cloudflare Access), whether the HA login or API are open and whether it is reachable without encryption. Empty = external URL from the HA settings.",
+      exposure_none: "Not checked yet.",
+      exposure_checked: "Checked {when} via {colo}",
+      backfill: "Resent: {alarm} alarm and {security} login events",
       offsite_hint: "Every alarm event is stored by the worker. Alarm pushes link to the incident with camera images. Pushover acknowledgements show up in the log here, disarming stops the emergency repeat on all phones.",
       critical_push: "Alarm as critical push notification (breaks through silent mode)",
       codes_help: "Codes are stored as hashes only. Without codes the system works without input.",
@@ -1479,7 +1489,27 @@ class BastionPanel extends HTMLElement {
         <div class="muted small" style="margin-top:6px">${esc(a.cameras_hint)}</div>
         <label class="field"><span>${esc(a.snapshots)}</span>
           <select class="input type-select" data-worker="snapshots">${[0, 1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${Number(d.worker.snapshots) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+        ${relay.backfill && !relay.backfill.error ? `<div class="muted small">${esc(a.backfill.replace("{alarm}", relay.backfill.alarm).replace("{security}", relay.backfill.security))}</div>` : ""}
+      </section>
+      <section class="card">
+        <h3 class="card-title">${icon("mdi:web-check")}${esc(a.public_url)}</h3>
+        <div class="muted small">${esc(a.public_url_hint)}</div>
+        <label class="field"><span>URL</span><input class="input" data-worker="public_url" placeholder="${esc(this._alarm.external_url || "https://ha.example.com")}" value="${esc(d.worker.public_url || "")}"></label>
+        ${this._exposureList()}
       </section>`;
+  }
+
+  _exposureList() {
+    const a = this.t.alarm;
+    const ex = this._alarm.exposure;
+    if (!ex || !ex.results || !ex.results.length) return `<div class="muted small">${esc(a.exposure_none)}</div>`;
+    const color = { ok: GOOD, info: "#8a8f98", warning: SEV.medium.color, critical: SEV.critical.color };
+    return ex.results.map((r) => `
+      <div class="exposure">
+        <div class="exposure-head"><span class="mono">${esc(r.url)}</span><span class="grow"></span>
+          <span class="muted small">${esc(a.exposure_checked.replace("{when}", this.rel(new Date(ex.checked).toISOString())).replace("{colo}", r.colo || "?"))}</span></div>
+        ${r.checks.map((c) => `<div class="exposure-row">${icon(c.level === "ok" ? "mdi:check-circle-outline" : c.level === "critical" ? "mdi:alert-octagon-outline" : "mdi:alert-outline", color[c.level] || color.info)}<span>${esc(c.text)}</span></div>`).join("")}
+      </div>`).join("");
   }
 
   _pickList(label, chosen, options, kind, addLabel) {
@@ -1539,7 +1569,7 @@ class BastionPanel extends HTMLElement {
     this._draft = JSON.parse(JSON.stringify({
       rooms: cfg.rooms, sensors: cfg.sensors, modes: cfg.modes, trigger_time: cfg.trigger_time, rearm: cfg.rearm,
       require_code_arm: cfg.require_code_arm, sabotage_triggers: cfg.sabotage_triggers, actions: cfg.actions,
-      worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled, cameras: cfg.worker.cameras || [], snapshots: cfg.worker.snapshots ?? 3 },
+      worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled, cameras: cfg.worker.cameras || [], snapshots: cfg.worker.snapshots ?? 3, public_url: cfg.worker.public_url || "" },
       sounds: { players: [], volume: 0.9, notice_volume: 0.5, triggered: "", pending: "", arming: "", armed: "", disarmed: "", ...(cfg.sounds || {}) },
     }));
     this._alarmView = "settings";
@@ -1695,6 +1725,7 @@ class BastionPanel extends HTMLElement {
     on("[data-camera-add]", (el) => { if (el.value) { d.worker.cameras = [...new Set([...d.worker.cameras, el.value])]; this._render(); } }, "change");
     on("[data-camera-remove]", (el) => { d.worker.cameras = d.worker.cameras.filter((x) => x !== el.dataset.cameraRemove); this._render(); });
     on('[data-worker="snapshots"]', (el) => { d.worker.snapshots = Number(el.value); }, "change");
+    on('[data-worker="public_url"]', (el) => { d.worker.public_url = el.value.trim(); }, "input");
     on('[data-worker="enabled"]', (el) => { d.worker.enabled = el.checked; }, "change");
     on('[data-worker="url"]', (el) => { d.worker.url = el.value.trim(); }, "input");
     on('[data-worker="interval"]', (el) => { d.worker.interval = Number(el.value) || 120; }, "input");
@@ -2172,6 +2203,10 @@ const STYLE = `
   .room-edit-head .input { height:40px; font-size:15px; }
   .room-edit-head .input:first-of-type { font-weight:600; }
   .icon-input { width:180px; }
+  .exposure { margin-top:14px; padding:12px 14px; border-radius: var(--radius); background: var(--surface-2); }
+  .exposure-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .exposure-row { display:flex; align-items:flex-start; gap:8px; padding:4px 0; font-size:14px; }
+  .exposure-row ha-icon { --mdc-icon-size: 18px; flex:none; }
   .sound-list { padding:6px 20px 16px; }
   .sound-row { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--line); }
   .sound-ident { flex:1; min-width:0; }

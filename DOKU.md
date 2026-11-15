@@ -216,7 +216,20 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Ein gültig signiertes, aber zu altes Lebenszeichen gilt als Uhrenproblem, nicht als Angriff.
 - Schreibzugriffe auf D1 sind pro Worker-Instanz begrenzt, damit eine Flut das Tageskontingent nicht aufbraucht.
 
-**Dashboard, Tab „Sicherheit“:** Sicherheitswert mit offenen Befunden, Fehlversuche pro Tag (HA und Worker), häufigste Quellen, gesperrte IPs und das Anmelde-Protokoll (Anmeldungen, neue IPs, Fehlversuche, Sperren, Konten und Tokens). HA schickt dafür mit dem Lebenszeichen den Überblick (bei Änderung, sonst alle 30 Minuten) und neue Anmeldeereignisse. Nach dem Einrichten werden die letzten 7 Tage nachgeliefert. Interne IDs von Benutzern und Tokens verlassen HA nicht.
+**Außenprüfung der öffentlichen Adresse:**
+- Bastion übergibt die Adresse aus Alarmanlage → Einstellungen → Cloud-Worker → „Öffentliche Adresse von außen prüfen“, sonst die externe URL aus den HA-Netzwerkeinstellungen. Übergeben werden nur Schema und Host.
+- Der Worker prüft alle 6 Stunden und bei jeder Adressänderung:
+  - ob Cloudflare Access eine Anmeldung verlangt,
+  - ob die HA-Anmeldung (`/auth/providers`) ohne Schutz erreichbar ist,
+  - ob die API (`/api/`) ohne Anmeldung antwortet,
+  - ob die Adresse auch über `http://` ausliefert, und Zertifikatsfehler.
+- Neue Probleme meldet er über die Kanäle, Behebung ebenso. HA übernimmt das Ergebnis als Befunde (Kategorie Erreichbarkeit) in den Sicherheitswert.
+- Angezeigt wird, über welches Cloudflare-Rechenzentrum geprüft wurde (z. B. FRA). Access-Regeln mit Länder-Ausnahmen wirken je nach Standort unterschiedlich.
+- Grenze: Ein bald ablaufendes Zertifikat erkennt der Worker nicht vorab, erst ein ungültiges.
+
+**Nachliefern:** 30 Sekunden nach dem Start schickt HA das komplette Alarm-Protokoll (bis 300 Einträge) und Anmelde-Protokoll (bis 1000 Einträge) an `/backfill`. Jeder Eintrag trägt eine feste ID, der Worker übernimmt nur, was ihm fehlt, auch Einträge aus der Zeit vor den IDs. Den Score-Verlauf (120 Tage) schickt HA mit dem Sicherheitsüberblick. Das Ergebnis steht unter Cloud-Worker → Protokoll außer Haus.
+
+**Dashboard, Tab „Sicherheit“:** Sicherheitswert mit offenen Befunden, Fehlversuche pro Tag (HA und Worker), häufigste Quellen, gesperrte IPs und das Anmelde-Protokoll (Anmeldungen, neue IPs, Fehlversuche, Sperren, Konten und Tokens). Dazu Verlauf des Sicherheitswerts und das Ergebnis der Außenprüfung. HA schickt mit dem Lebenszeichen den Überblick (bei Änderung, sonst alle 30 Minuten) und neue Anmeldeereignisse, ältere über das Nachliefern. Interne IDs von Benutzern und Tokens verlassen HA nicht.
 
 **Sicherheit:**
 - Jede Meldung von HA trägt eine HMAC-SHA256-Signatur über Zeitstempel und Inhalt, Wiederholungen werden nach 5 Minuten abgewiesen.

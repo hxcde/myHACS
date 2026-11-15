@@ -98,6 +98,7 @@ def default_config() -> dict[str, Any]:
             "enabled": False,
             "cameras": [],
             "snapshots": 3,
+            "public_url": "",
         },
     }
 

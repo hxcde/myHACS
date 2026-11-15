@@ -95,7 +95,7 @@ Restore: repo.decode_entry ─► Pfadprüfung ─► YAML schreiben (Backup + c
 - `custom_components/bastion/__init__.py`: `async_setup` (Services, Websocket, Close-Hook), `async_setup_entry`
 - `coordinator.py`: `Bastion.async_run_audit`, `register_close_listener`
 - `gitsync/manager.py`: `async_commit`, `async_restore`, `apply_pending_restore`, `async_test_connection`
-- `extras/cloudflare-worker/src/worker.js`: `POST /probe`, `/heartbeat`, `/alert`, `/snapshot`, `/pushover/<token>`, `GET /i/<vorfall>`, `/`, `/api/*`, `scheduled()`
+- `extras/cloudflare-worker/src/worker.js`: `POST /probe`, `/heartbeat`, `/alert`, `/snapshot`, `/backfill`, `/pushover/<token>`, `GET /i/<vorfall>`, `/`, `/api/*`, `scheduled()` (Funkstille, Receipts, Aufbewahrung, Außenprüfung)
 
 ## Alarmanlage
 
@@ -119,7 +119,9 @@ relay (alle 15 s Tick, Intervall bzw. während Alarm) ─► POST /heartbeat {Zu
                                                     ◄─ {acks, attack} ─► engine.record_ack / logins.record("worker_attack")
 HA-Stopp ─► relay.async_stop ─► Lebenszeichen mit stopping=true (Worker wartet länger, meldet „geplant“)
 
-Worker-Cron (jede Minute): Funkstille-Analyse (letzter Stand + Ereignisse aus D1), offene Pushover-Receipts prüfen, Aufbewahrung
+Start + 30 s ─► relay.async_backfill ─► POST /backfill {alarm_events, security_events} (uid-dedupliziert)
+Worker-Cron (jede Minute): Funkstille-Analyse (letzter Stand + Ereignisse aus D1), offene Pushover-Receipts prüfen, Aufbewahrung,
+                           Außenprüfung der check_urls (alle 6 h) ─► Lebenszeichen-Antwort {exposure} ─► probe.exposure_findings
 ```
 
 Sensoren mit eigener Aktivierungsverzögerung werden per Timer freigegeben. Ist ein solcher Sensor danach noch offen, startet die Vorwarnung. Zustand, Scharfschaltzeitpunkt und laufende Verzögerungen werden gespeichert und nach einem Neustart fortgesetzt. Ein Neustart während der Vorwarnung führt zum Alarm.

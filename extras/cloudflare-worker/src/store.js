@@ -33,12 +33,23 @@ const SCHEMA = [
 
 const ready = new WeakMap();
 
+async function migrate(db) {
+  await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  // v2: events.uid lets Home Assistant resend its log without duplicates.
+  try {
+    await db.prepare("ALTER TABLE events ADD COLUMN uid TEXT").run();
+  } catch {
+    /* column exists */
+  }
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS events_uid ON events(uid)").run();
+}
+
 export async function database(env) {
   if (!env.DB) throw new Error("D1 binding DB missing");
   if (!ready.has(env.DB)) {
     ready.set(
       env.DB,
-      env.DB.batch(SCHEMA.map((sql) => env.DB.prepare(sql))).catch((err) => {
+      migrate(env.DB).catch((err) => {
         ready.delete(env.DB);
         throw err;
       }),
@@ -67,25 +78,46 @@ export async function setState(env, key, value) {
 }
 
 // ----------------------------------------------------------------- events
+const UID = /^[a-f0-9]{16,64}$/;
+
+function eventValues(e) {
+  const detail = e.detail && typeof e.detail === "object" && Object.keys(e.detail).length ? JSON.stringify(e.detail).slice(0, 2000) : null;
+  return [
+    Math.floor(Number(e.ts) || nowS()),
+    str(e.event, 40),
+    str(e.state, 30),
+    str(e.mode, 20),
+    str(e.incident, 32),
+    str(e.sensor),
+    str(e.room),
+    str(e.user),
+    detail,
+    typeof e.uid === "string" && UID.test(e.uid) ? e.uid : null,
+  ];
+}
+
 export async function addEvent(env, e) {
   const db = await database(env);
-  const detail = e.detail && Object.keys(e.detail).length ? JSON.stringify(e.detail).slice(0, 2000) : null;
   await db
     .prepare(
-      "INSERT INTO events (ts, event, state, mode, incident, sensor, room, user, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR IGNORE INTO events (ts, event, state, mode, incident, sensor, room, user, detail, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(
-      Math.floor(Number(e.ts) || nowS()),
-      str(e.event, 40),
-      str(e.state, 30),
-      str(e.mode, 20),
-      str(e.incident, 32),
-      str(e.sensor),
-      str(e.room),
-      str(e.user),
-      detail,
-    )
+    .bind(...eventValues(e))
     .run();
+}
+
+// Log resent by Home Assistant: skip what is stored already, also rows from before uids existed.
+export async function addEventsBackfill(env, events) {
+  if (!events.length) return 0;
+  const db = await database(env);
+  const stmt = db.prepare(
+    "INSERT INTO events (ts, event, state, mode, incident, sensor, room, user, detail, uid) " +
+      "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM events WHERE uid = ?) " +
+      "AND NOT EXISTS (SELECT 1 FROM events WHERE uid IS NULL AND event = ? AND ts BETWEEN ? AND ?)",
+  );
+  const rows = events.map(eventValues).filter((v) => v[1] && v[9]);
+  const results = await db.batch(rows.map((v) => stmt.bind(...v, v[9], v[1], v[0] - 5, v[0] + 5)));
+  return results.reduce((n, r) => n + ((r.meta && r.meta.changes) || 0), 0);
 }
 
 function parseEvent(row) {
@@ -223,10 +255,10 @@ export async function receiptsSince(env, since) {
 
 // ------------------------------------------------------- security events
 export async function addSecEvents(env, events) {
-  if (!events.length) return;
+  if (!events.length) return 0;
   const db = await database(env);
   const stmt = db.prepare("INSERT OR IGNORE INTO secevents (uid, ts, type, ip, user, geo, detail) VALUES (?, ?, ?, ?, ?, ?, ?)");
-  await db.batch(
+  const results = await db.batch(
     events.map((e) =>
       stmt.bind(
         str(e.uid, 64),
@@ -235,10 +267,11 @@ export async function addSecEvents(env, events) {
         str(e.ip, 64),
         str(e.user, 80),
         str(e.geo, 80),
-        e.detail && Object.keys(e.detail).length ? JSON.stringify(e.detail).slice(0, 500) : null,
+        e.detail && typeof e.detail === "object" && Object.keys(e.detail).length ? JSON.stringify(e.detail).slice(0, 500) : null,
       ),
     ),
   );
+  return results.reduce((n, r) => n + ((r.meta && r.meta.changes) || 0), 0);
 }
 
 export async function secEventsSince(env, since, limit = 5000) {

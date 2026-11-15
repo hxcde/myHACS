@@ -47,6 +47,7 @@ let receiptN = 0;
 let ackDevice = "iphone";
 let acked = 1;
 let accessJwks = null;
+const routes = {};
 
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
@@ -61,6 +62,7 @@ globalThis.fetch = async (input, init = {}) => {
     return Response.json({ status: 1, acknowledged: acked, acknowledged_at: Math.floor(Date.now() / 1000), acknowledged_by_device: ackDevice, expired: 0 });
   }
   if (url === "https://team.cloudflareaccess.com/cdn-cgi/access/certs") return Response.json(accessJwks);
+  if (routes[url]) return routes[url]();
   return new Response("ok", { status: 200 });
 };
 
@@ -366,4 +368,75 @@ test("security overview and login events reach the dashboard", async () => {
   assert.equal(sum.secevents.length, 2, "deduplicated");
   assert.equal(sum.secevents.find((e) => e.type === "failed_login").ip, "203.0.113.5");
   assert.ok(Array.isArray(sum.attempts) && Array.isArray(sum.blocked));
+});
+
+test("Home Assistant resends its log without duplicates", async () => {
+  const env = makeEnv();
+  const now = Math.floor(Date.now() / 1000);
+  // stored live before uids existed
+  await worker.fetch(signed("/alert", { ts: now - 100, event: "armed", push: false, state: "armed_away", mode: "away" }), env);
+  // stored live with uid
+  await worker.fetch(signed("/alert", { ts: now - 50, event: "disarmed", push: false, state: "disarmed", uid: "b".repeat(24) }), env);
+  const alarm = [
+    { uid: "a".repeat(24), ts: now - 100, event: "armed", state: "armed_away", mode: "away" }, // same as the legacy row
+    { uid: "b".repeat(24), ts: now - 50, event: "disarmed", state: "disarmed" }, // same uid
+    { uid: "c".repeat(24), ts: now - 86400 * 20, event: "triggered", state: "triggered", mode: "night", incident: "abcdef123456", sensor: "Haustür" },
+  ];
+  const security = [{ uid: "s1", ts: now - 86400 * 40, type: "failed_login", ip: "203.0.113.5" }];
+  let res = await (await worker.fetch(signed("/backfill", { alarm_events: alarm, security_events: security }), env)).json();
+  assert.deepEqual([res.alarm, res.security], [1, 1]);
+  res = await (await worker.fetch(signed("/backfill", { alarm_events: alarm, security_events: security }), env)).json();
+  assert.deepEqual([res.alarm, res.security], [0, 0], "second run changes nothing");
+  const ev = await events(env);
+  assert.equal(ev.length, 3);
+  assert.equal(ev.find((e) => e.event === "triggered").sensor, "Haustür");
+  assert.equal((await worker.fetch(signed("/backfill", alarm, { secret: "x" }), env)).status, 401);
+});
+
+test("outside check finds an open login and reports changes once", async () => {
+  const env = makeEnv();
+  const open = () => {
+    routes["https://ha.example.com/"] = () => new Response("<html>Home Assistant</html>", { status: 200, headers: { "cf-ray": "8a1b2c3d4e5f-FRA" } });
+    routes["https://ha.example.com/auth/providers"] = () => Response.json([{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
+    routes["https://ha.example.com/api/"] = () => new Response("401: Unauthorized", { status: 401 });
+    routes["http://ha.example.com/"] = () => new Response(null, { status: 301, headers: { location: "https://ha.example.com/" } });
+  };
+  open();
+  await worker.fetch(signed("/heartbeat", { ...HB, check_urls: ["https://ha.example.com/lovelace/0", "ftp://nope", "https://user:pw@evil.example"] }), env);
+  sent.length = 0;
+  await cron(env);
+  const state = JSON.parse((await env.DB.prepare("SELECT v FROM state WHERE k = 'exposure'").first()).v);
+  assert.deepEqual(state.urls, ["https://ha.example.com"], "only scheme and host, no credentials, only http(s)");
+  assert.deepEqual(state.results[0].checks.map((c) => c.id), ["login_open"]);
+  assert.equal(state.results[0].colo, "FRA");
+  let pushes = sent.filter((x) => x.url.endsWith("/1/messages.json")).map(decoded);
+  assert.equal(pushes.length, 1);
+  assert.ok(pushes[0].includes("ha.example.com") && pushes[0].includes("Anmeldung") && pushes[0].includes("FRA"));
+
+  // within 6 hours nothing is checked again
+  sent.length = 0;
+  await cron(env);
+  assert.equal(sent.filter((x) => x.url.includes("ha.example.com")).length, 0);
+
+  // now protected by Access: one all-clear message
+  routes["https://ha.example.com/"] = () => new Response(null, { status: 302, headers: { location: "https://team.cloudflareaccess.com/cdn-cgi/access/login/ha.example.com" } });
+  await env.DB.prepare("UPDATE state SET v = json_set(v, '$.checked', 0) WHERE k = 'exposure'").run();
+  sent.length = 0;
+  await cron(env);
+  pushes = sent.filter((x) => x.url.endsWith("/1/messages.json")).map(decoded);
+  assert.equal(pushes.length, 1);
+  assert.ok(pushes[0].includes("in Ordnung"));
+  const hb = await (await worker.fetch(signed("/heartbeat", { ...HB, check_urls: ["https://ha.example.com"] }), env)).json();
+  assert.equal(hb.exposure.results[0].checks[0].id, "access", "Home Assistant gets the result");
+
+  // plain http and an open API are reported
+  routes["https://ha.example.com/"] = () => new Response("ok", { status: 200 });
+  routes["https://ha.example.com/auth/providers"] = () => new Response("nope", { status: 404 });
+  routes["https://ha.example.com/api/"] = () => Response.json({ message: "API running." });
+  routes["http://ha.example.com/"] = () => new Response("ok", { status: 200 });
+  await env.DB.prepare("UPDATE state SET v = json_set(v, '$.checked', 0) WHERE k = 'exposure'").run();
+  await cron(env);
+  const ids = JSON.parse((await env.DB.prepare("SELECT v FROM state WHERE k = 'exposure'").first()).v).results[0].checks.map((c) => c.id);
+  assert.deepEqual(ids, ["reachable", "api_open", "http_plain"]);
+  for (const k of Object.keys(routes)) delete routes[k];
 });

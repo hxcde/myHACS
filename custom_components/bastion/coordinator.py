@@ -49,7 +49,7 @@ from .guard import TokenGuard
 from .login_monitor import LoginMonitor
 from .models import Finding
 from .notifier import Notifier
-from .probe import async_run_probe, probe_findings
+from .probe import async_run_probe, exposure_findings, exposure_problems, probe_findings
 from .report import build_report
 from .responder import Responder
 from .texts import alarm_text, event_text, finding_text
@@ -88,6 +88,7 @@ class Bastion:
         self.alarm = AlarmEngine(hass, self)
         self.relay = AlarmRelay(hass, self.alarm)
         self.alarm.on_event = self._on_alarm_event
+        self.relay.on_exposure = self._on_exposure
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_DATA)
         self.data: dict[str, Any] = {}
         self.findings: list[Finding] = []
@@ -225,6 +226,7 @@ class Bastion:
             findings = await async_run_audit(ctx, list(opts.get(CONF_DISABLED_CHECKS) or []))
             findings.extend(self.git.findings(await self.hass.async_add_executor_job(self.git.pending_restore)))
             findings.extend(probe_findings(self.data.get("probe"), self.hass.config.language))
+            findings.extend(exposure_findings(self.data.get("exposure")))
             self.audit_errors = ctx.errors
             await self._async_apply_findings(findings, notify)
             self.data["last_audit"] = dt_util.utcnow().isoformat()
@@ -332,6 +334,17 @@ class Bastion:
             current = self._cache.get("integrity_current")
         accept_integrity(self.data["baseline"], current, domain)
         await self.async_run_audit(notify=False)
+
+    @callback
+    def _on_exposure(self, exposure: dict[str, Any]) -> None:
+        """Result of the worker's outside check; a change re-runs the audit for the findings."""
+        old = self.data.get("exposure") or {}
+        if old.get("checked") == exposure.get("checked"):
+            return
+        self.data["exposure"] = exposure
+        self.schedule_save()
+        if exposure_problems(old) != exposure_problems(exposure) and not self.audit_running:
+            self.hass.async_create_task(self.async_run_audit(notify=True), eager_start=False)
 
     @callback
     def _on_alarm_event(self, kind: str, entry: dict[str, Any]) -> None:

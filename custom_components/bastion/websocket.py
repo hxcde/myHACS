@@ -370,6 +370,9 @@ _ALARM_CONFIG = probatio.Schema(
                 probatio.Optional("enabled"): bool,
                 probatio.Optional("cameras"): [_CAMERA],
                 probatio.Optional("snapshots"): probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=5)),
+                probatio.Optional("public_url"): probatio.All(
+                    str, probatio.Strip, probatio.Length(max=200), probatio.Match(r"^(https?://[^\s/@]+(/\S*)?)?$")
+                ),
             }
         ),
         probatio.Optional("sounds"): probatio.Schema(
@@ -437,7 +440,15 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         "cameras": cameras,
         "players": players,
         "sounds_builtin": list(BUILTIN),
-        "relay": {"enabled": relay.enabled, "last_ok": relay.last_ok, "last_error": relay.last_error},
+        "relay": {
+            "enabled": relay.enabled,
+            "last_ok": relay.last_ok,
+            "last_error": relay.last_error,
+            "check_urls": relay.check_urls(),
+            "backfill": relay.backfill_result,
+        },
+        "external_url": hass.config.external_url,
+        "exposure": bastion.data.get("exposure"),
     }
 
 

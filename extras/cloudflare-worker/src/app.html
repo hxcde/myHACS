@@ -74,7 +74,7 @@ h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacin
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px;
   background: color-mix(in srgb, var(--c, var(--idle)) 12%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--c, var(--idle)) 30%, transparent); }
-.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); }
+.chip::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); }
 .pulse { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--critical) 25%, transparent); } }
 
@@ -139,6 +139,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chip.tiny { padding: 0 7px; font-size: 11px; }
 .chip.tiny::before { width: 6px; height: 6px; }
 @media (max-width: 600px) { .finding { grid-template-columns: 1fr; gap: 4px; } .f-cat { display: none; } }
+
+.exp { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface-2); }
+.exp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.exp-row { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: center; padding: 4px 0; }
+.exp-row .chip { justify-content: center; }
 
 /* incidents */
 .incidents { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
@@ -645,9 +650,82 @@ footer { padding: 40px 0 28px; text-align: center; }
         </tbody></table></div>` : `<div class="muted" style="margin-top:14px">Keine Sperren.</div>`}</section>`;
   }
 
+  // Score over time: one series, line with a crosshair tooltip.
+  function scoreSvg(points, width) {
+    const W = Math.max(280, Math.round(width)), H = 170, L = 34, B = 24, T = 10, R = 8;
+    const t0 = points[0].t, t1 = Math.max(points[points.length - 1].t, t0 + 86400);
+    const x = (t) => L + ((W - L - R) * (t - t0)) / (t1 - t0);
+    const y = (v) => T + (H - T - B) * (1 - v / 100);
+    const path = points.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+    let svg = `<g class="grid">${[0, 50, 100].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`).join("")}</g>`;
+    svg += `<g class="axis">${[0, 50, 100].map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}`;
+    svg += `<text x="${L}" y="${H - 6}">${esc(dayShort(t0))}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${esc(dayShort(points[points.length - 1].t))}</text></g>`;
+    svg += `<path d="${path}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const last = points[points.length - 1];
+    svg += `<circle cx="${x(last.t)}" cy="${y(last.v)}" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>`;
+    svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--line-strong)" stroke-width="1" visibility="hidden"/>`;
+    svg += `<circle class="cross-dot" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>`;
+    svg += `<rect class="hit-all" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    return { svg: `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf des Sicherheitswerts">${svg}</svg>`, x, y };
+  }
+
+  function scoreCard(sec, d) {
+    const since = d.now - d.days * 86400;
+    const points = ((sec && sec.history) || []).map((h) => ({ t: Date.parse(`${h.date}T12:00:00Z`) / 1000, v: h.score })).filter((p) => p.t >= since - 86400);
+    if (sec) points.push({ t: d.now, v: sec.score });
+    const body = points.length >= 2
+      ? `<div class="chart" id="score-chart"></div>`
+      : `<div class="muted" style="margin-top:14px">Der Verlauf erscheint nach einigen Audits.</div>`;
+    return { html: `<section class="card"><div class="chart-title">Verlauf des Sicherheitswerts</div><div class="muted small">Ein Wert pro Tag (letztes Audit des Tages)</div>${body}</section>`, points };
+  }
+
+  function bindScore(points) {
+    const box = document.getElementById("score-chart");
+    if (!box || points.length < 2) return;
+    const { svg, x, y } = scoreSvg(points, box.clientWidth);
+    box.innerHTML = svg;
+    const el = box.querySelector("svg");
+    const cross = el.querySelector(".cross");
+    const dot = el.querySelector(".cross-dot");
+    let tip = null;
+    el.addEventListener("mousemove", (ev) => {
+      const rb = el.getBoundingClientRect();
+      const mx = ((ev.clientX - rb.left) / rb.width) * el.viewBox.baseVal.width;
+      const p = points.reduce((best, q) => (Math.abs(x(q.t) - mx) < Math.abs(x(best.t) - mx) ? q : best), points[0]);
+      cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
+      if (!tip) { tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip); }
+      tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(weekday(p.t))}</div><div class="tip-row"><i style="background:var(--s1)"></i>Sicherheitswert<b>${Math.round(p.v)}</b></div>`;
+      tip.style.left = `${Math.min(rb.width - 80, Math.max(80, (x(p.t) / el.viewBox.baseVal.width) * rb.width))}px`;
+      tip.style.top = `${(y(p.v) / el.viewBox.baseVal.height) * rb.height}px`;
+    });
+    el.addEventListener("mouseleave", () => {
+      cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden");
+      if (tip) { tip.remove(); tip = null; }
+    });
+  }
+
+  const EXPOSURE_COLOR = { ok: "var(--good)", info: "var(--idle)", warning: "var(--warning)", critical: "var(--critical)" };
+  const EXPOSURE_LABEL = { ok: "OK", info: "Hinweis", warning: "Warnung", critical: "Kritisch" };
+
+  function exposureCard(ex) {
+    const results = (ex && ex.results) || [];
+    return `<section class="card"><div class="chart-title">Außenprüfung</div>
+      <div class="muted small">Prüft alle 6 Stunden die öffentliche Adresse von Home Assistant von außen.</div>
+      ${results.length ? results.map((r) => `
+        <div class="exp">
+          <div class="exp-head"><span class="mono">${esc(r.url.replace(/^https?:\/\//, ""))}</span><span class="grow"></span>
+            <span class="muted small">${esc(rel(Math.floor(ex.checked / 1000)))}${r.colo ? ` · über ${esc(r.colo)}` : ""}</span></div>
+          ${r.checks.map((c) => `<div class="exp-row"><span class="chip" style="--c:${EXPOSURE_COLOR[c.level] || "var(--idle)"}">${EXPOSURE_LABEL[c.level] || c.level}</span><span>${esc(c.text)}</span></div>`).join("")}
+        </div>`).join("")
+        : `<div class="muted" style="margin-top:14px">Noch keine Adresse geprüft. Bastion übergibt die externe URL aus HA oder die Adresse aus den Worker-Einstellungen.</div>`}
+    </section>`;
+  }
+
   function renderSecurity(d) {
     const s = analyseSecurity(d);
     const sec = d.security;
+    const score = scoreCard(sec, d);
     const maxDay = niceMax(Math.max(1, ...s.days.map((r) => r.ha + r.worker)));
     const opts = { max: maxDay, ticks: [0, maxDay / 4, maxDay / 2, (3 * maxDay) / 4, maxDay].map((v) => Math.round(v * 100) / 100), tick: (t) => String(t), label: "Fehlversuche pro Tag" };
     return {
@@ -665,10 +743,14 @@ footer { padding: 40px 0 28px; text-align: center; }
           ${stackCard({ id: "failed-chart", title: "Fehlversuche pro Tag", sub: "", rows: s.days, series: SEC_SERIES, fmt: (n) => String(n), showTable: view.secTable, toggle: "sec" })}
           ${sourcesCard(s)}
         </div>
+        <div class="grid2" style="margin-top:14px">${score.html}${exposureCard(d.exposure)}</div>
         <div class="grid2" style="margin-top:14px">${findingsCard(sec)}${blockedCard(d, s)}</div>
         <h2>Anmeldungen und Konten</h2>
         ${secLogView(d, view.secLog)}`,
-      bind: () => bindStack("failed-chart", s.days, SEC_SERIES, opts, (n) => String(n)),
+      bind: () => {
+        bindStack("failed-chart", s.days, SEC_SERIES, opts, (n) => String(n));
+        bindScore(score.points);
+      },
     };
   }
 

@@ -546,6 +546,66 @@ FINDING_TEXTS: dict[str, dict[str, tuple[str, str, str]]] = {
             "{advice}",
         ),
     },
+    "exposure_login_open": {
+        "de": (
+            "Home-Assistant-Anmeldung öffentlich erreichbar",
+            "{url} zeigt die HA-Anmeldung ohne vorgeschalteten Schutz (Prüfung von außen über {location}). Angreifer können Passwörter durchprobieren.",
+            "Zugriff über Cloudflare Access, VPN oder die Nabu-Casa-Cloud absichern. MFA für alle Benutzer aktivieren.",
+        ),
+        "en": (
+            "Home Assistant login reachable from the internet",
+            "{url} shows the HA login without protection in front of it (checked from {location}). Attackers can try passwords.",
+            "Protect access with Cloudflare Access, a VPN or Nabu Casa Cloud. Enable MFA for all users.",
+        ),
+    },
+    "exposure_api_open": {
+        "de": (
+            "HA-API ohne Anmeldung erreichbar",
+            "{url}/api/ antwortet ohne Anmeldung: {detail}.",
+            "Sofort prüfen: Reverse-Proxy, trusted_networks und Freigaben. Die API darf nur mit Token antworten.",
+        ),
+        "en": (
+            "HA API reachable without authentication",
+            "{url}/api/ answers without authentication: {detail}.",
+            "Check immediately: reverse proxy, trusted_networks and exposures. The API must require a token.",
+        ),
+    },
+    "exposure_http_plain": {
+        "de": (
+            "Home Assistant unverschlüsselt erreichbar",
+            "{url}: {detail}. Passwörter und Tokens können mitgelesen werden.",
+            "Nur HTTPS anbieten und HTTP auf HTTPS umleiten (bei Cloudflare: „Always Use HTTPS“).",
+        ),
+        "en": (
+            "Home Assistant reachable without encryption",
+            "{url}: {detail}. Passwords and tokens can be intercepted.",
+            "Serve HTTPS only and redirect HTTP to HTTPS (Cloudflare: “Always Use HTTPS”).",
+        ),
+    },
+    "exposure_tls_invalid": {
+        "de": (
+            "Zertifikat der öffentlichen Adresse ungültig",
+            "{url}: {detail}.",
+            "Zertifikat erneuern (z. B. Let's Encrypt) und Ablauf überwachen.",
+        ),
+        "en": (
+            "Certificate of the public address invalid",
+            "{url}: {detail}.",
+            "Renew the certificate (e.g. Let's Encrypt) and watch its expiry.",
+        ),
+    },
+    "exposure_unreachable": {
+        "de": (
+            "Öffentliche Adresse nicht erreichbar",
+            "{url} ist von außen nicht erreichbar ({location}): {detail}.",
+            "Prüfen, ob die Adresse noch stimmt. Wird sie nicht mehr genutzt, in Bastion → Alarmanlage → Cloud-Worker leeren.",
+        ),
+        "en": (
+            "Public address unreachable",
+            "{url} cannot be reached from outside ({location}): {detail}.",
+            "Check whether the address is still right. If it is no longer used, clear it in Bastion → Alarm → Cloud worker.",
+        ),
+    },
     "probe_failed": {
         "de": (
             "Externe Prüfung fehlgeschlagen",
