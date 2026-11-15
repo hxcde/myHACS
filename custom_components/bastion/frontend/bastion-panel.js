@@ -54,6 +54,10 @@ const I18N = {
       may_be_open: "Darf offen sein",
       may_be_open_hint: "Darf beim Scharfschalten offen sein, wird dann überbrückt bis er schließt.",
       sensor_exit: "Aktiv nach",
+      watched_in: "Überwacht in",
+      type_label: "Typ",
+      when_arming: "Beim Scharfschalten",
+      remove: "Entfernen",
       sensor_entry: "Alarm nach",
       sensor_exit_hint: "Aktivierungsverzögerung: Sekunden nach dem Scharfschalten, bis der Sensor überwacht wird (leer = Modus). Darf beim Scharfschalten offen sein, z. B. die Haustür.",
       sensor_entry_hint: "Auslöseverzögerung: Sekunden vom Auslösen bis zum Alarm (leer = Modus). Bei „Immer“ eine Bestätigungszeit.",
@@ -248,6 +252,10 @@ const I18N = {
       may_be_open: "May be open",
       may_be_open_hint: "May be open when arming; it is bypassed until it closes.",
       sensor_exit: "Active after",
+      watched_in: "Watched in",
+      type_label: "Type",
+      when_arming: "When arming",
+      remove: "Remove",
       sensor_entry: "Alarm after",
       sensor_exit_hint: "Activation delay: seconds after arming until the sensor is watched (empty = mode). May be open while arming, e.g. the front door.",
       sensor_entry_hint: "Trigger delay: seconds from opening to the alarm (empty = mode). For 'always' sensors a confirmation time.",
@@ -1283,18 +1291,39 @@ class BastionPanel extends HTMLElement {
           ${room.sensors.map((e) => {
             const cfg = { modes: ["home", "night", "away"], type: "delayed", bypass: false, ...(d.sensors[e] || {}) };
             const name = this._hass.states[e]?.attributes?.friendly_name || e;
+            const sst = this._sensorState(e);
+            const dot = { open: SEV.medium.color, unavailable: "#8a8f98" }[sst] || GOOD;
+            const delayField = (kind, label, hint, ic) => `
+              <div class="fld" title="${esc(hint)}">
+                <span class="fld-label">${icon(ic)}${esc(label)}</span>
+                <div class="suffix"><input type="number" inputmode="numeric" min="0" max="900" placeholder="${esc(a.mode_default)}"
+                  data-sensor-delay="${esc(e)}" data-delay-kind="${kind}" value="${cfg[kind] ?? ""}"><span>s</span></div>
+              </div>`;
             return `
-              <div class="sensor-edit">
-                <div class="sensor-edit-name"><span class="dot" style="background:${{ open: SEV.medium.color, unavailable: "#8a8f98" }[this._sensorState(e)] || GOOD}"></span><span>${esc(name)}</span><span class="muted small mono">${esc(e)}</span></div>
-                <div class="sensor-edit-controls">
-                  <div class="seg">${["home", "night", "away"].map((m) => `<button class="seg-btn ${cfg.modes.includes(m) ? "on" : ""}" data-sensor-mode="${esc(e)}" data-mode-key="${m}" ${cfg.type === "always" ? "disabled" : ""}>${esc(a.modes[m])}</button>`).join("")}</div>
-                  <select class="input small-select" data-sensor-type="${esc(e)}" title="${esc(a.type_hint[cfg.type])}">
-                    ${["delayed", "instant", "always"].map((tp) => `<option value="${tp}" ${cfg.type === tp ? "selected" : ""}>${esc(a.type[tp])}</option>`).join("")}
-                  </select>
-                  ${cfg.type === "always" ? `<span></span>` : `<label class="delay" title="${esc(a.sensor_exit_hint)}">${icon("mdi:timer-play-outline")}<span>${esc(a.sensor_exit)}</span><input class="input tiny-input" type="number" min="0" max="900" placeholder="${esc(a.mode_default)}" data-sensor-delay="${esc(e)}" data-delay-kind="exit_delay" value="${cfg.exit_delay ?? ""}"><span class="muted">s</span></label>`}
-                  ${cfg.type === "instant" ? `<span></span>` : `<label class="delay" title="${esc(a.sensor_entry_hint)}">${icon("mdi:timer-alert-outline")}<span>${esc(a.sensor_entry)}</span><input class="input tiny-input" type="number" min="0" max="900" placeholder="${esc(a.mode_default)}" data-sensor-delay="${esc(e)}" data-delay-kind="entry_delay" value="${cfg.entry_delay ?? ""}"><span class="muted">s</span></label>`}
-                  ${cfg.type === "always" ? `<span></span>` : `<label class="switch" title="${esc(a.may_be_open_hint)}"><input type="checkbox" data-sensor-bypass="${esc(e)}" ${cfg.bypass ? "checked" : ""}><span>${esc(a.may_be_open)}</span></label>`}
-                  <button class="btn small ghost" data-sensor-remove="${esc(e)}" data-room="${ri}">${icon("mdi:close")}</button>
+              <div class="sensor-card">
+                <div class="sensor-card-head">
+                  <span class="dot" style="background:${dot}" data-tip="${esc(a[sst] || sst)}"></span>
+                  <div class="sensor-ident"><div class="sensor-title">${esc(name)}</div><div class="mono muted small sensor-id">${esc(e)}</div></div>
+                  <button class="icon-btn" data-sensor-remove="${esc(e)}" data-room="${ri}" title="${esc(a.remove)}" aria-label="${esc(a.remove)}">${icon("mdi:close")}</button>
+                </div>
+                <div class="sensor-fields">
+                  <div class="fld">
+                    <span class="fld-label">${icon("mdi:shield-half-full")}${esc(a.watched_in)}</span>
+                    <div class="seg">${["home", "night", "away"].map((m) => `<button class="seg-btn ${cfg.modes.includes(m) || cfg.type === "always" ? "on" : ""}" data-sensor-mode="${esc(e)}" data-mode-key="${m}" ${cfg.type === "always" ? "disabled" : ""}>${esc(a.modes[m])}</button>`).join("")}</div>
+                  </div>
+                  <div class="fld" title="${esc(a.type_hint[cfg.type])}">
+                    <span class="fld-label">${icon("mdi:tune-variant")}${esc(a.type_label)}</span>
+                    <select class="input type-select" data-sensor-type="${esc(e)}">
+                      ${["delayed", "instant", "always"].map((tp) => `<option value="${tp}" ${cfg.type === tp ? "selected" : ""}>${esc(a.type[tp])}</option>`).join("")}
+                    </select>
+                  </div>
+                  ${cfg.type === "always" ? "" : delayField("exit_delay", a.sensor_exit, a.sensor_exit_hint, "mdi:timer-play-outline")}
+                  ${cfg.type === "instant" ? "" : delayField("entry_delay", a.sensor_entry, a.sensor_entry_hint, "mdi:timer-alert-outline")}
+                  ${cfg.type === "always" ? "" : `
+                    <div class="fld" title="${esc(a.may_be_open_hint)}">
+                      <span class="fld-label">${icon("mdi:door-open")}${esc(a.when_arming)}</span>
+                      <label class="switch"><input type="checkbox" data-sensor-bypass="${esc(e)}" ${cfg.bypass ? "checked" : ""}><span>${esc(a.may_be_open)}</span></label>
+                    </div>`}
                 </div>
               </div>`;
           }).join("")}
@@ -1819,7 +1848,14 @@ const STYLE = `
   .chip.big { height:34px; font-size:14px; padding:0 14px; }
   .chip.alarm { background: color-mix(in srgb, ${SEV.critical.color} 16%, transparent); border-color: ${SEV.critical.color}; }
   .chip.check { cursor:pointer; }
-  .chip.check input, .switch input { accent-color: var(--accent); margin:0; width:16px; height:16px; }
+  .chip.check input { accent-color: var(--accent); margin:0; width:16px; height:16px; }
+  .switch input[type=checkbox] { appearance:none; -webkit-appearance:none; flex:none; margin:0; width:36px; height:20px; border-radius:999px;
+    background: var(--line-strong); position:relative; cursor:pointer; transition: background .15s; }
+  .switch input[type=checkbox]::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
+  .switch input[type=checkbox]:checked { background: var(--accent); }
+  .switch input[type=checkbox]:checked::after { transform: translateX(16px); }
+  .switch input[type=checkbox]:focus-visible { outline:none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
   .switch { display:inline-flex; align-items:center; gap:8px; font-size:13px; color: var(--muted); cursor:pointer; }
   .switch.block { display:flex; margin:12px 0; color: var(--text); font-size:14px; }
   .segmented { display:inline-flex; flex-wrap:wrap; gap:4px; padding:4px; border-radius:12px; background: var(--surface-2); border:1px solid var(--line); margin-bottom:16px; }
@@ -1976,26 +2012,55 @@ const STYLE = `
   .open-list { margin:10px 0 0 18px; padding:0; line-height:1.8; }
 
   .edit-room { padding:18px; }
-  .room-edit-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .room-edit-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+  .room-edit-head .input { height:40px; font-size:15px; }
+  .room-edit-head .input:first-of-type { font-weight:600; }
   .icon-input { width:180px; }
-  .sensor-edit { display:grid; grid-template-columns: minmax(180px, 1fr) auto; align-items:center; gap:16px; padding:12px 0; border-top:1px solid var(--line); }
-  .sensor-edit-name { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; font-weight:500; min-width:0; }
-  .sensor-edit-name .mono { width:100%; padding-left:19px; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sensor-edit-controls { display:grid; grid-template-columns: auto 132px 166px 166px 124px 30px; align-items:center; gap:12px; }
-  @media (max-width: 1100px) {
-    .sensor-edit { grid-template-columns: 1fr; gap:10px; }
-    .sensor-edit-controls { grid-template-columns: auto 132px; }
+  .sensor-card { background: var(--surface-2); border-radius: var(--radius); padding:14px 16px 16px; margin-top:10px; }
+  .sensor-card-head { display:flex; align-items:center; gap:12px; }
+  .sensor-card-head .dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--surface) 70%, transparent); }
+  .sensor-ident { flex:1; min-width:0; }
+  .sensor-title { font-size:15px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sensor-id { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+  .icon-btn { width:32px; height:32px; flex:none; border-radius:9px; border:none; background:none; color: var(--muted); cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; transition: background .15s, color .15s; }
+  .icon-btn:hover { background: color-mix(in srgb, ${SEV.critical.color} 12%, transparent); color: ${SEV.critical.color}; }
+  .sensor-fields { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px 24px; margin-top:14px; padding-left:21px; }
+  .fld { display:flex; flex-direction:column; gap:7px; min-width:0; }
+  .fld-label { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color: var(--muted); white-space:nowrap; }
+  .fld-label ha-icon { --mdc-icon-size: 14px; }
+  .type-select { height:36px; min-width:150px; background: var(--surface); }
+  .suffix { display:inline-flex; align-items:center; height:36px; border-radius: var(--radius-sm); border:1px solid var(--line); background: var(--surface);
+    transition: border-color .15s, box-shadow .15s; }
+  .suffix:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  .suffix input { width:70px; height:100%; border:none; background:none; color: inherit; font: inherit; font-size:14px; text-align:right; padding:0 6px 0 12px; outline:none;
+    font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
+  .suffix input::placeholder { color: var(--muted); font-size:13px; }
+  .suffix span { padding-right:12px; color: var(--muted); font-size:13px; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin:0; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  .sensor-fields .seg { background: var(--surface); border:1px solid var(--line); }
+  .sensor-fields .switch { height:36px; color: var(--text); }
+  @media (max-width: 600px) {
+    .sensor-card { padding:12px 12px 14px; }
+    .sensor-fields { padding-left:0; gap:14px 12px; }
+    .sensor-fields .fld { flex:1 1 120px; }
+    .sensor-fields .fld:first-child, .sensor-fields .fld:has(.switch), .sensor-fields .fld:has(.type-select) { flex-basis:100%; }
+    .sensor-fields .seg { display:flex; }
+    .sensor-fields .seg-btn { flex:1; }
+    .type-select { min-width:0; width:100%; }
+    .suffix input { flex:1; width:0; min-width:0; }
   }
   .seg { display:inline-flex; padding:3px; gap:2px; border-radius:10px; background: var(--surface-2); }
   .seg-btn { height:28px; padding:0 10px; border:none; border-radius:8px; background:none; color: var(--muted); font: inherit; font-size:12px; font-weight:500; cursor:pointer; }
   .seg-btn.on { background: var(--accent); color: var(--on-accent); }
   .seg-btn:disabled { opacity:.35; cursor:default; }
-  .small-select { height:34px; font-size:13px; }
   .delay { display:inline-flex; align-items:center; gap:6px; font-size:12px; color: var(--muted); white-space:nowrap; }
   .delay ha-icon { --mdc-icon-size: 16px; }
   .tiny-input { width:64px; height:34px; padding:0 8px; font-size:13px; text-align:right; }
   .tiny-input::placeholder { font-size:12px; }
-  .add-sensor { width:100%; margin-top:12px; }
+  .add-sensor { width:100%; margin-top:12px; height:42px; border-style:dashed; border-color: var(--line-strong); background: transparent; color: var(--muted); cursor:pointer; }
+  .add-sensor:hover { border-color: var(--accent); color: var(--text); }
   .mode-table { display:grid; grid-template-columns: 1fr 170px 170px; gap:14px 18px; align-items:center; }
   @media (max-width: 600px) { .mode-table { grid-template-columns: 1fr 92px 92px; } }
   .field { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:12px 0; font-size:14px; }
