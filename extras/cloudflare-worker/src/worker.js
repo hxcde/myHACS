@@ -8,6 +8,7 @@
 // Secrets / variables (wrangler secret put …):
 //   PROBE_TOKEN          optional bearer token for /probe
 //   ALARM_SECRET         shared secret for /heartbeat and /alert (shown in Bastion)
+//   PUSHOVER_TOKEN       + PUSHOVER_USER         optional channel (alarm = emergency priority)
 //   TELEGRAM_BOT_TOKEN   + TELEGRAM_CHAT_ID      optional channel
 //   NTFY_URL             (+ NTFY_TOKEN)           optional channel, e.g. https://ntfy.sh/my-topic
 //   WEBHOOK_URL                                   optional channel, receives JSON
@@ -71,9 +72,33 @@ async function verified(request, env) {
   }
 }
 
+// Pushover priorities: 2 = emergency (repeats until acknowledged), 1 = high, 0 = normal.
+const PUSHOVER_PRIORITY = { urgent: 2, high: 1, default: 0 };
+
 async function notify(env, title, message, priority = "default") {
   const sent = [];
   const tasks = [];
+  if (env.PUSHOVER_TOKEN && env.PUSHOVER_USER) {
+    const level = PUSHOVER_PRIORITY[priority] ?? 0;
+    const form = new URLSearchParams({
+      token: env.PUSHOVER_TOKEN,
+      user: env.PUSHOVER_USER,
+      title: title.slice(0, 250),
+      message: message.slice(0, 1024) || title,
+      priority: String(level),
+    });
+    if (level === 2) {
+      form.set("retry", "60");
+      form.set("expire", "1800");
+      form.set("sound", env.PUSHOVER_SOUND || "siren");
+    }
+    if (env.PUSHOVER_DEVICE) form.set("device", env.PUSHOVER_DEVICE);
+    tasks.push(
+      fetch("https://api.pushover.net/1/messages.json", { method: "POST", body: form }).then(
+        (r) => r.ok && sent.push("pushover"),
+      ),
+    );
+  }
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
     tasks.push(
       fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {

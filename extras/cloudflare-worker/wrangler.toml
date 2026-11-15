@@ -16,6 +16,8 @@ id = "REPLACE_WITH_KV_NAMESPACE_ID"
 # Secrets (nie in diese Datei schreiben):
 #   npx wrangler secret put PROBE_TOKEN
 #   npx wrangler secret put ALARM_SECRET          (Wert aus Bastion → Alarmanlage → Einstellungen → Cloud-Worker)
+#   npx wrangler secret put PUSHOVER_TOKEN        (optional, App-Token von pushover.net)
+#   npx wrangler secret put PUSHOVER_USER         (optional, User-Key von pushover.net)
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN    (optional)
 #   npx wrangler secret put TELEGRAM_CHAT_ID      (optional)
 #   npx wrangler secret put NTFY_URL              (optional, z. B. https://ntfy.sh/<geheimes-topic>)

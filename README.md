@@ -9,7 +9,7 @@
 
 Home-Assistant-Integration für Sicherheit, Alarmanlage und Konfigurationsschutz:
 
-- **Alarmanlage:** Alarm-Entität mit den Modi Aus, Zuhause, Nacht und Abwesend, Räumen und Sensor-Zuordnung pro Modus. Dazu Aktivierungs- und Auslöseverzögerung pro Sensor, gehashte Codes, Sirenen, Lichter und Benachrichtigungen sowie ein Cloudflare Worker als Totmannschalter.
+- **Alarmanlage:** Alarm-Entität mit den Modi Aus, Zuhause, Nacht und Abwesend, Räumen und Sensor-Zuordnung pro Modus. Dazu Aktivierungs- und Auslöseverzögerung pro Sensor, gehashte Codes, Sirenen, Lichter und Benachrichtigungen sowie ein Cloudflare Worker als Totmannschalter mit Pushover, Telegram oder ntfy.
 - **Sicherheitsaudit:** prüft Konten, MFA, Tokens, HTTP-Konfiguration, Webhooks, Sprachassistenten-Freigaben, Updates und GitHub-Advisories, Custom-Integrationen, Klartext-Secrets und Backups.
 - **Login-Monitor:** protokolliert Anmeldungen, Fehlversuche, neue IPs, neue Tokens und Benutzer dauerhaft.
 - **Git-Versionierung:** sichert die komplette Smart-Home-Konfiguration in ein **privates** Repository. Secrets landen dort verschlüsselt. Jeder Stand lässt sich vergleichen und wiederherstellen.

@@ -122,7 +122,7 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
    - Das Warnsignal läuft während der Verzögerungen.
    - Benachrichtigungen gehen an die Bastion-Benachrichtigungsziele. Ein Alarm kommt als kritische Push-Nachricht und durchbricht damit den Stumm-Modus.
 4. **Codes:** Codes werden nur als scrypt-Hash gespeichert. Sobald ein Code existiert, verlangt das Unscharfschalten einen Code. Nach 5 falschen Eingaben sperrt die Anlage die Eingabe für 5 Minuten. Während eines Alarms oder einer Vorwarnung verlangt auch jedes Umschalten einen Code, damit niemand die Sirene durch Scharfschalten stummschalten kann.
-5. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist. Alarme leitet er unabhängig von HA weiter.
+5. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Pushover, Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist. Alarme leitet er unabhängig von HA weiter.
 
 **Offene Sensoren:** Ist beim Scharfschalten ein Sensor offen, verweigert Bastion das Scharfschalten und nennt die offenen Sensoren. „Trotzdem scharf schalten“ überbrückt sie, bis sie schließen.
 
@@ -159,9 +159,15 @@ npx wrangler kv namespace create BASTION_KV      # ausgegebene id in wrangler.to
 npx wrangler deploy
 npx wrangler secret put PROBE_TOKEN              # zufälliger Wert, auch in Bastion → Externe Prüfung
 npx wrangler secret put ALARM_SECRET             # Wert aus Alarmanlage → Einstellungen → Cloud-Worker
+npx wrangler secret put PUSHOVER_TOKEN           # optional, App-Token (pushover.net → Create an Application)
+npx wrangler secret put PUSHOVER_USER            # optional, User-Key (pushover.net → Startseite)
 npx wrangler secret put TELEGRAM_BOT_TOKEN       # optional, dazu TELEGRAM_CHAT_ID
 npx wrangler secret put NTFY_URL                 # optional, z. B. https://ntfy.sh/<geheimes-topic>
 ```
+
+Secrets lassen sich statt mit wrangler auch im Cloudflare-Dashboard setzen: Workers & Pages → bastion-probe → Settings → Variables and Secrets → Add → Typ *Secret*.
+
+**Pushover:** Ein Alarm kommt mit Notfall-Priorität (2). Er wiederholt sich jede Minute, bis du ihn in der App bestätigst, höchstens 30 Minuten lang, mit dem Ton `siren` (änderbar über `PUSHOVER_SOUND`). „HA nicht erreichbar“ kommt ebenfalls als Notfall, Vorwarnungen und nicht erreichbare Sensoren mit hoher Priorität, alles andere normal. Mit `PUSHOVER_DEVICE` lässt sich auf ein Gerät beschränken.
 
 Weitere Variablen: `WEBHOOK_URL` (bekommt JSON), `OFFLINE_MINUTES` (Standard 10), `ALERT_WHEN_DISARMED=1` (meldet Ausfälle auch bei unscharfer Anlage).
 
