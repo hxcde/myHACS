@@ -124,6 +124,22 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; margin-top: 12px; }
 
+/* dashboard tabs */
+.dtabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); }
+.dtabs a { position: relative; padding: 10px 14px; color: var(--muted); font-weight: 600; font-size: 14px; text-decoration: none; }
+.dtabs a:hover { color: var(--text); text-decoration: none; }
+.dtabs a.on { color: var(--text); }
+.dtabs a.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.hero-badge.ring { background: none; width: 64px; }
+.findings { display: flex; flex-direction: column; margin-top: 10px; }
+.finding { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.finding:last-child { border-bottom: none; }
+.finding .chip { justify-content: center; }
+.f-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.tiny { padding: 0 7px; font-size: 11px; }
+.chip.tiny::before { width: 6px; height: 6px; }
+@media (max-width: 600px) { .finding { grid-template-columns: 1fr; gap: 4px; } .f-cat { display: none; } }
+
 /* incidents */
 .incidents { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .incident { display: block; color: inherit; border-left: 4px solid var(--c); transition: border-color .15s, transform .15s; }
@@ -175,17 +191,17 @@ footer { padding: 40px 0 28px; text-align: center; }
   const LABELS = {
     triggered: "Alarm", pending: "Vorwarnung", arming: "Wird scharf", armed: "Scharf", rearmed: "Wieder scharf",
     disarmed: "Unscharf", reset: "Zurückgesetzt", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code",
-    sensor_unavailable: "Sensor nicht erreichbar", acknowledged: "Quittiert", offline: "Funkstille", online: "Wieder erreichbar", restart: "Neustart",
+    sensor_unavailable: "Sensor nicht erreichbar", acknowledged: "Quittiert", offline: "Funkstille", online: "Wieder erreichbar", restart: "Neustart", attack: "Angriffsversuch am Worker",
   };
   const EV_COLOR = {
     triggered: "var(--critical)", pending: "var(--warning)", wrong_code: "var(--serious)", arm_failed: "var(--serious)",
     offline: "var(--serious)", sensor_unavailable: "var(--warning)", disarmed: "var(--good)", online: "var(--good)", acknowledged: "var(--good)",
-    armed: "var(--accent)", arming: "var(--accent)", rearmed: "var(--accent)",
+    armed: "var(--accent)", arming: "var(--accent)", rearmed: "var(--accent)", attack: "var(--critical)",
   };
   const GROUPS = {
     alarm: ["triggered", "pending", "acknowledged", "sensor_unavailable"],
     ops: ["armed", "arming", "rearmed", "disarmed", "reset", "arm_failed", "wrong_code"],
-    system: ["offline", "online", "restart"],
+    system: ["offline", "online", "restart", "attack"],
   };
   let TZ = "Europe/Berlin";
 
@@ -354,70 +370,77 @@ footer { padding: 40px 0 28px; text-align: center; }
     return `<div class="card tile ${alert ? "alert" : ""}"><div class="tile-label">${esc(label)}</div><div class="tile-value">${esc(value)}</div>${sub ? `<div class="tile-sub">${esc(sub)}</div>` : ""}</div>`;
   }
 
-  function armedSvg(a, width) {
-    const days = a.days;
+  // Stacked daily bars: rows [{ts, <key>: value}], series [{key, label, color}].
+  function stackSvg(rows, series, width, opts) {
     const W = Math.max(280, Math.round(width)), H = W < 500 ? 190 : 230, L = 34, B = 24, T = 8, R = 4;
-    const max = 24 * 3600;
-    const cw = (W - L - R) / days.length;
+    const max = opts.max;
+    const cw = (W - L - R) / rows.length;
     const bw = Math.max(3, Math.min(26, cw - Math.max(2, cw * 0.28)));
     const y = (v) => T + (H - T - B) * (1 - v / max);
-    let svg = `<g class="grid">${[0, 6, 12, 18, 24].map((h) => `<line x1="${L}" x2="${W - R}" y1="${y(h * 3600)}" y2="${y(h * 3600)}"/>`).join("")}</g>`;
-    svg += `<g class="axis">${[0, 6, 12, 18, 24].map((h) => `<text x="${L - 8}" y="${y(h * 3600) + 4}" text-anchor="end">${h}h</text>`).join("")}`;
-    const every = Math.ceil(days.length / Math.max(3, Math.floor(W / 90)));
-    days.forEach((dd, i) => {
-      if ((days.length - 1 - i) % every === 0) svg += `<text x="${L + cw * i + cw / 2}" y="${H - 6}" text-anchor="middle">${esc(dayShort(dd.ts))}</text>`;
+    let svg = `<g class="grid">${opts.ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>`;
+    svg += `<g class="axis">${opts.ticks.map((t) => `<text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${esc(opts.tick(t))}</text>`).join("")}`;
+    const every = Math.ceil(rows.length / Math.max(3, Math.floor(W / 90)));
+    rows.forEach((row, i) => {
+      if ((rows.length - 1 - i) % every === 0) svg += `<text x="${L + cw * i + cw / 2}" y="${H - 6}" text-anchor="middle">${esc(dayShort(row.ts))}</text>`;
     });
     svg += "</g><g>";
-    days.forEach((dd, i) => {
+    rows.forEach((row, i) => {
       const x = L + cw * i + (cw - bw) / 2;
       let acc = 0;
-      const segs = MODE_KEYS.filter((m) => dd[m] > 0);
-      segs.forEach((m, j) => {
-        const y0 = y(acc), y1 = y(acc + dd[m]);
-        acc += dd[m];
+      const segs = series.filter((s) => row[s.key] > 0);
+      segs.forEach((s, j) => {
+        const y0 = y(acc), y1 = y(acc + row[s.key]);
+        acc += row[s.key];
         const gap = j > 0 ? 2 : 0;
         const h = Math.max(0, y0 - y1 - gap);
         if (h <= 0) return;
-        const top = j === segs.length - 1;
-        const r = top ? Math.min(4, h, bw / 2) : 0;
+        const r = j === segs.length - 1 ? Math.min(4, h, bw / 2) : 0;
         const yt = y0 - gap - h;
         svg += r
-          ? `<path fill="${MODE_VAR[m]}" d="M${x},${y0 - gap} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + bw - r} Q${x + bw},${yt} ${x + bw},${yt + r} V${y0 - gap} Z"/>`
-          : `<rect fill="${MODE_VAR[m]}" x="${x}" y="${yt}" width="${bw}" height="${h}"/>`;
+          ? `<path fill="${s.color}" d="M${x},${y0 - gap} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + bw - r} Q${x + bw},${yt} ${x + bw},${yt + r} V${y0 - gap} Z"/>`
+          : `<rect fill="${s.color}" x="${x}" y="${yt}" width="${bw}" height="${h}"/>`;
       });
       svg += `<rect class="hit" data-i="${i}" x="${L + cw * i}" y="${T}" width="${cw}" height="${H - T - B}"/>`;
     });
     svg += "</g>";
-    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Scharf-Zeit pro Tag nach Modus">${svg}</svg>`;
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}">${svg}</svg>`;
   }
 
-  function armedChart(a, showTable) {
-    const days = a.days;
-    const legend = MODE_KEYS.map((m) => `<span><i style="background:${MODE_VAR[m]}"></i>${MODES[m]}<b>${hours(a.totals[m])}</b></span>`).join("");
-    const table = `<div class="table-wrap"><table><thead><tr><th>Tag</th>${MODE_KEYS.map((m) => `<th class="num">${MODES[m]}</th>`).join("")}<th class="num">Gesamt</th></tr></thead><tbody>
-      ${[...days].reverse().map((dd) => `<tr><td>${esc(weekday(dd.ts))}</td>${MODE_KEYS.map((m) => `<td class="num">${dd[m] ? hours(dd[m]) : "–"}</td>`).join("")}<td class="num">${hours(dd.home + dd.night + dd.away)}</td></tr>`).join("")}
+  function niceMax(v) {
+    if (v <= 4) return 4;
+    const step = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 2, 2.5, 5, 10]) if (v <= m * step) return m * step;
+    return 10 * step;
+  }
+
+  function stackCard({ id, title, sub, rows, series, totals, fmt, showTable, toggle }) {
+    const legend = series.length > 1 || totals
+      ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.label)}<b>${esc(fmt(totals ? totals[s.key] : rows.reduce((n, r) => n + r[s.key], 0)))}</b></span>`).join("")}</div>`
+      : "";
+    const table = `<div class="table-wrap"><table><thead><tr><th>Tag</th>${series.map((s) => `<th class="num">${esc(s.label)}</th>`).join("")}${series.length > 1 ? `<th class="num">Gesamt</th>` : ""}</tr></thead><tbody>
+      ${[...rows].reverse().map((r) => `<tr><td>${esc(weekday(r.ts))}</td>${series.map((s) => `<td class="num">${r[s.key] ? esc(fmt(r[s.key])) : "–"}</td>`).join("")}${series.length > 1 ? `<td class="num">${esc(fmt(series.reduce((n, s) => n + r[s.key], 0)))}</td>` : ""}</tr>`).join("")}
       </tbody></table></div>`;
     return `<section class="card">
-      <div class="chart-head"><div class="grow"><div class="chart-title">Scharf-Zeit pro Tag</div><div class="legend">${legend}</div></div>
-        <button class="link-btn" data-toggle-table>${showTable ? "Diagramm" : "Tabelle"}</button></div>
-      ${showTable ? table : `<div class="chart" id="armed-chart"></div>`}
+      <div class="chart-head"><div class="grow"><div class="chart-title">${esc(title)}</div>${sub ? `<div class="muted small">${esc(sub)}</div>` : ""}${legend}</div>
+        <button class="link-btn" data-toggle-table="${toggle}">${showTable ? "Diagramm" : "Tabelle"}</button></div>
+      ${showTable ? table : `<div class="chart" id="${id}"></div>`}
     </section>`;
   }
 
-  function bindArmedChart(a) {
-    const box = document.getElementById("armed-chart");
+  function bindStack(id, rows, series, opts, fmt) {
+    const box = document.getElementById(id);
     if (!box) return;
-    box.innerHTML = armedSvg(a, box.clientWidth);
+    box.innerHTML = stackSvg(rows, series, box.clientWidth, opts);
     let tip = null;
     box.addEventListener("mousemove", (ev) => {
       const hit = ev.target.closest(".hit");
       if (!hit) { if (tip) { tip.remove(); tip = null; } return; }
-      const dd = a.days[Number(hit.dataset.i)];
+      const row = rows[Number(hit.dataset.i)];
       if (!tip) { tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip); }
-      const total = dd.home + dd.night + dd.away;
-      tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(weekday(dd.ts))}</div>` +
-        MODE_KEYS.map((m) => `<div class="tip-row"><i style="background:${MODE_VAR[m]}"></i>${MODES[m]}<b>${dd[m] ? hours(dd[m]) : "–"}</b></div>`).join("") +
-        `<div class="tip-row muted" style="margin-top:4px">Gesamt<b>${hours(total)}</b></div>`;
+      const total = series.reduce((n, s) => n + row[s.key], 0);
+      tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(weekday(row.ts))}</div>` +
+        series.map((s) => `<div class="tip-row"><i style="background:${s.color}"></i>${esc(s.label)}<b>${row[s.key] ? esc(fmt(row[s.key])) : "–"}</b></div>`).join("") +
+        (series.length > 1 ? `<div class="tip-row muted" style="margin-top:4px">Gesamt<b>${esc(fmt(total))}</b></div>` : "");
       const rb = box.getBoundingClientRect();
       const hb = hit.getBoundingClientRect();
       tip.style.left = `${Math.min(rb.width - 80, Math.max(80, hb.left - rb.left + hb.width / 2))}px`;
@@ -425,6 +448,9 @@ footer { padding: 40px 0 28px; text-align: center; }
     });
     box.addEventListener("mouseleave", () => { if (tip) { tip.remove(); tip = null; } });
   }
+
+  const MODE_SERIES = MODE_KEYS.map((m) => ({ key: m, label: MODES[m], color: MODE_VAR[m] }));
+  const ARMED_OPTS = { max: 86400, ticks: [0, 6, 12, 18, 24].map((h) => h * 3600), tick: (t) => `${t / 3600}h`, label: "Scharf-Zeit pro Tag nach Modus" };
 
   function triggersCard(a) {
     const max = Math.max(1, ...a.triggers.map((x) => x.n));
@@ -460,7 +486,8 @@ footer { padding: 40px 0 28px; text-align: center; }
         ${evs.length ? evs.map((e) => {
           const det = [e.mode && MODES[e.mode] && !["acknowledged", "online", "offline", "restart"].includes(e.event) ? MODES[e.mode] : "", where(e), e.user,
             e.detail && e.detail.minutes ? `${e.detail.minutes} Min.` : "", e.detail && (e.detail.cause || e.detail.verdict) || "",
-            e.detail && e.detail.sensors ? `offen: ${e.detail.sensors.join(", ")}` : ""].filter(Boolean).join(" · ");
+            e.detail && e.detail.sensors ? `offen: ${e.detail.sensors.join(", ")}` : "",
+            e.event === "attack" && e.detail ? `${e.detail.total} abgewiesen, ${(e.detail.sources || []).map((x) => x.ip).join(", ")}` : ""].filter(Boolean).join(" · ");
           return `<tr><td class="muted" style="white-space:nowrap">${esc(dateTime(e.ts))}</td>
             <td><span class="log-ev" style="--c:${EV_COLOR[e.event] || "var(--idle)"}"><i></i>${esc(LABELS[e.event] || e.event)}</span></td>
             <td>${esc(det)}${e.incident ? ` <a href="/i/${esc(e.incident)}">Vorfall</a>` : ""}</td></tr>`;
@@ -469,8 +496,190 @@ footer { padding: 40px 0 28px; text-align: center; }
         ${all.length > evs.length ? `<div style="padding:10px;text-align:center"><button class="link-btn" data-more>Weitere ${Math.min(50, all.length - evs.length)} von ${all.length - evs.length} anzeigen</button></div>` : ""}</div>`;
   }
 
+  // ----------------------------------------------------------- security
+  const SEV_VIEW = {
+    critical: ["Kritisch", "var(--critical)"], high: ["Hoch", "var(--serious)"], medium: ["Mittel", "var(--warning)"],
+    low: ["Niedrig", "var(--s1)"], info: ["Info", "var(--idle)"],
+  };
+  const CATEGORY = { access: "Zugang", exposure: "Erreichbarkeit", updates: "Updates", supply_chain: "Integrationen", config: "Konfiguration", git: "Git", anomaly: "Anomalie" };
+  const SEC_LABELS = {
+    login: "Anmeldung", new_ip: "Neue IP", token_new_ip: "Token von neuer IP", failed_login: "Fehlversuch", brute_force: "Brute-Force-Verdacht",
+    ip_banned: "IP gesperrt (HA)", token_created: "Token erstellt", token_removed: "Token entfernt", user_added: "Benutzer angelegt",
+    user_removed: "Benutzer gelöscht", admin_granted: "Admin-Rechte vergeben", user_activated: "Benutzer aktiviert", canary: "Köder ausgelöst",
+    blocked: "Gesperrt (Bastion)", confirmed: "Bestätigt", unusual_login_time: "Ungewöhnliche Anmeldezeit", unusual_action: "Ungewöhnliche Aktion",
+    sabotage: "Sabotageverdacht", tamper: "Manipulation", new_destination: "Neues Verbindungsziel", external_config_change: "Konfiguration extern geändert",
+  };
+  const SEC_COLOR = {
+    login: "var(--good)", confirmed: "var(--good)", failed_login: "var(--serious)", brute_force: "var(--critical)", ip_banned: "var(--critical)",
+    canary: "var(--critical)", blocked: "var(--critical)", sabotage: "var(--critical)", tamper: "var(--critical)", admin_granted: "var(--serious)",
+    new_ip: "var(--warning)", token_new_ip: "var(--warning)", token_created: "var(--warning)", user_added: "var(--warning)",
+  };
+  const SEC_GROUPS = {
+    failed: ["failed_login", "brute_force", "ip_banned", "blocked"],
+    logins: ["login", "new_ip", "token_new_ip", "confirmed"],
+    accounts: ["token_created", "token_removed", "user_added", "user_removed", "admin_granted", "user_activated"],
+  };
+  const ATTACK_KIND = { signature: "Signatur", probe_token: "Probe-Token", callback: "Pushover-Rückruf", link_token: "Vorfall-Link", access: "Access" };
+  const SEC_SERIES = [{ key: "ha", label: "Home Assistant", color: "var(--s1)" }, { key: "worker", label: "Worker", color: "var(--s2)" }];
+  const level = (score) => (score >= 90 ? ["Gut", "var(--good)"] : score >= 70 ? ["Ausbaufähig", "var(--warning)"] : score >= 50 ? ["Riskant", "var(--serious)"] : ["Kritisch", "var(--critical)"]);
+
+  function dayRows(d, init) {
+    const since = d.now - d.days * 86400;
+    const map = new Map();
+    for (let t = since; t <= d.now; t += 86400) map.set(dayKey(t), { ts: t, ...init() });
+    if (!map.has(dayKey(d.now))) map.set(dayKey(d.now), { ts: d.now, ...init() });
+    return map;
+  }
+
+  function analyseSecurity(d) {
+    const ev = d.secevents || [];
+    const attempts = d.attempts || [];
+    const days = dayRows(d, () => ({ ha: 0, worker: 0 }));
+    const sources = new Map();
+    const src = (ip, geo) => {
+      const cur = sources.get(ip) || { ip, geo: geo || "", ha: 0, worker: 0, blocked: false };
+      if (geo && !cur.geo) cur.geo = geo;
+      sources.set(ip, cur);
+      return cur;
+    };
+    for (const e of ev) {
+      if (e.type !== "failed_login") continue;
+      const row = days.get(dayKey(e.ts));
+      if (row) row.ha += 1;
+      if (e.ip) src(e.ip, e.geo).ha += 1;
+    }
+    for (const a of attempts) {
+      const row = days.get(dayKey(a.ts));
+      if (row) row.worker += a.n;
+      src(a.ip, a.country).worker += a.n;
+    }
+    const active = (d.blocked || []).filter((b) => b.until > d.now);
+    for (const b of active) if (sources.has(b.ip)) sources.get(b.ip).blocked = true;
+    const count = (types) => ev.filter((e) => types.includes(e.type)).length;
+    return {
+      days: [...days.values()].slice(-d.days),
+      failed: count(["failed_login"]),
+      logins: count(["login"]),
+      newIps: count(["new_ip", "token_new_ip"]),
+      banned: count(["ip_banned", "blocked"]),
+      brute: count(["brute_force"]),
+      accounts: count(SEC_GROUPS.accounts),
+      workerAttempts: attempts.reduce((n, a) => n + a.n, 0),
+      blockedActive: active,
+      sources: [...sources.values()].map((x) => ({ ...x, n: x.ha + x.worker })).sort((a, b) => b.n - a.n).slice(0, 8),
+    };
+  }
+
+  function scoreRing(score, color) {
+    const r = 26, c = 2 * Math.PI * r, dash = (Math.max(0, Math.min(100, score)) / 100) * c;
+    return `<svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="7"/>
+      <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${c}" transform="rotate(-90 32 32)"/>
+      <text x="32" y="37" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)" font-family="inherit">${Math.round(score)}</text></svg>`;
+  }
+
+  function securityHero(sec) {
+    if (!sec) return `<section class="card hero" style="--state:var(--idle)"><div class="hero-main"><div class="hero-state">Noch kein Sicherheitsüberblick</div><div class="hero-meta">Bastion schickt ihn mit dem nächsten Lebenszeichen (ab Version 0.4.1).</div></div></section>`;
+    const [label, color] = level(sec.score);
+    const chips = ["critical", "high", "medium", "low"].filter((k) => sec.counts[k]).map((k) => `<span class="chip" style="--c:${SEV_VIEW[k][1]}">${sec.counts[k]} ${SEV_VIEW[k][0]}</span>`);
+    const audit = sec.last_audit ? Date.parse(sec.last_audit) / 1000 : null;
+    return `<section class="card hero" style="--state:${color}">
+      <div class="hero-badge ring">${scoreRing(sec.score, color)}</div>
+      <div class="hero-main">
+        <div class="hero-state" style="color:${color}">Sicherheitswert ${Math.round(sec.score)} · ${label}</div>
+        <div class="hero-meta">
+          <span>${sec.open} offene Befunde</span>
+          ${audit ? `<span>Audit ${esc(rel(audit))}</span>` : ""}
+          ${sec.git && sec.git.status && sec.git.status !== "disabled" ? `<span>Git: ${esc(sec.git.status)}</span>` : ""}
+          <span>Stand ${esc(rel(sec.received))}</span>
+        </div>
+        ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+      </div>
+    </section>`;
+  }
+
+  function findingsCard(sec) {
+    const list = (sec && sec.findings) || [];
+    return `<section class="card"><div class="chart-title">Offene Befunde</div>
+      ${list.length ? `<div class="findings">${list.slice(0, 12).map((f) => {
+        const [lab, col] = SEV_VIEW[f.severity] || SEV_VIEW.info;
+        return `<div class="finding"><span class="chip" style="--c:${col}">${lab}</span><span class="f-title">${esc(f.title)}</span><span class="muted small f-cat">${esc(CATEGORY[f.category] || f.category)}</span></div>`;
+      }).join("")}${list.length > 12 ? `<div class="muted small" style="padding-top:8px">und ${list.length - 12} weitere</div>` : ""}</div>`
+        : `<div class="muted" style="margin-top:14px">Keine offenen Befunde.</div>`}</section>`;
+  }
+
+  function sourcesCard(s) {
+    const max = Math.max(1, ...s.sources.map((x) => x.n));
+    return `<section class="card"><div class="chart-title">Häufigste Quellen</div>
+      <div class="muted small">Fehlversuche bei HA und abgewiesene Zugriffe am Worker pro IP</div>
+      ${s.sources.length ? `<div class="bars">${s.sources.map((x) => `<div class="hbar" title="HA ${x.ha} · Worker ${x.worker}">
+        <span class="hbar-name mono">${esc(x.ip)}${x.geo ? ` <span class="muted">· ${esc(x.geo)}</span>` : ""}${x.blocked ? ` <span class="chip tiny" style="--c:var(--critical)">gesperrt</span>` : ""}</span><span class="hbar-val">${x.n}</span>
+        <div class="hbar-track"><div class="hbar-fill" style="width:${(x.n / max) * 100}%"></div></div></div>`).join("")}</div>`
+        : `<div class="muted" style="margin-top:18px">Keine Fehlversuche im Zeitraum.</div>`}</section>`;
+  }
+
+  function secLogView(d, filter) {
+    const all = (d.secevents || []).filter((e) => filter === "all" || (SEC_GROUPS[filter] || []).includes(e.type));
+    const evs = all.slice(0, view.secLimit);
+    const btn = (k, l) => `<button class="${filter === k ? "on" : ""}" data-seclog="${k}">${l}</button>`;
+    return `<div class="filters" style="margin-top:0"><div class="seg">${btn("all", "Alle")}${btn("failed", "Fehlversuche")}${btn("logins", "Anmeldungen")}${btn("accounts", "Konten & Tokens")}</div></div>
+      <div class="card" style="margin-top:12px;padding:6px 10px"><div class="table-wrap" style="margin:0"><table>
+        <thead><tr><th>Zeit</th><th>Ereignis</th><th>Benutzer</th><th>IP</th><th class="hide-sm">Ort / Details</th></tr></thead><tbody>
+        ${evs.length ? evs.map((e) => {
+          const det = [e.geo, e.detail && e.detail.name, e.detail && e.detail.count ? `${e.detail.count}×` : ""].filter(Boolean).join(" · ");
+          return `<tr><td class="muted" style="white-space:nowrap">${esc(dateTime(e.ts))}</td>
+            <td><span class="log-ev" style="--c:${SEC_COLOR[e.type] || "var(--idle)"}"><i></i>${esc(SEC_LABELS[e.type] || e.type)}</span></td>
+            <td>${esc(e.user || "–")}</td><td class="mono">${esc(e.ip || "–")}</td><td class="hide-sm">${esc(det)}</td></tr>`;
+        }).join("") : `<tr><td colspan="5" class="muted">Keine Ereignisse.</td></tr>`}
+        </tbody></table></div>
+        ${all.length > evs.length ? `<div style="padding:10px;text-align:center"><button class="link-btn" data-secmore>Weitere ${Math.min(50, all.length - evs.length)} von ${all.length - evs.length} anzeigen</button></div>` : ""}</div>`;
+  }
+
+  function blockedCard(d, s) {
+    const rows = (d.blocked || []).slice(0, 20);
+    return `<section class="card"><div class="chart-title">Vom Worker gesperrte IPs</div>
+      <div class="muted small">Zu viele abgewiesene Zugriffe (falsche Signatur, Token oder Login-Umgehung). ${s.workerAttempts} abgewiesene Zugriffe im Zeitraum.</div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>IP</th><th>Grund</th><th class="num">Versuche</th><th>Gesperrt</th></tr></thead><tbody>
+        ${rows.map((b) => `<tr><td class="mono">${esc(b.ip)}${b.country ? ` <span class="muted">· ${esc(b.country)}</span>` : ""}</td>
+          <td>${esc(String(b.reason || "").split(",").map((k) => ATTACK_KIND[k] || k).join(", "))}</td><td class="num">${b.n || ""}</td>
+          <td>${b.until > d.now ? `<span class="chip" style="--c:var(--critical)">bis ${esc(dateTime(b.until))}</span>` : `<span class="muted">${esc(dateTime(b.ts))}</span>`}</td></tr>`).join("")}
+        </tbody></table></div>` : `<div class="muted" style="margin-top:14px">Keine Sperren.</div>`}</section>`;
+  }
+
+  function renderSecurity(d) {
+    const s = analyseSecurity(d);
+    const sec = d.security;
+    const maxDay = niceMax(Math.max(1, ...s.days.map((r) => r.ha + r.worker)));
+    const opts = { max: maxDay, ticks: [0, maxDay / 4, maxDay / 2, (3 * maxDay) / 4, maxDay].map((v) => Math.round(v * 100) / 100), tick: (t) => String(t), label: "Fehlversuche pro Tag" };
+    return {
+      html: `
+        ${securityHero(sec)}
+        ${rangeRow(d)}
+        <div class="tiles">
+          ${tile("Fehlversuche", String(s.failed), sec ? `${sec.failed_24h} in den letzten 24 h` : "", s.failed > 0)}
+          ${tile("Anmeldungen", String(s.logins), s.newIps ? `${s.newIps} von neuen IPs` : "keine neuen IPs")}
+          ${tile("Gesperrt", String(s.banned), s.brute ? `${s.brute}× Brute-Force-Verdacht` : "von HA und Bastion", s.brute > 0)}
+          ${tile("Konten & Tokens", String(s.accounts), "Änderungen im Zeitraum")}
+          ${tile("Worker", String(s.workerAttempts), s.blockedActive.length ? `${s.blockedActive.length} IP gesperrt` : "abgewiesene Zugriffe", s.workerAttempts > 0)}
+        </div>
+        <div class="grid2" style="margin-top:14px">
+          ${stackCard({ id: "failed-chart", title: "Fehlversuche pro Tag", sub: "", rows: s.days, series: SEC_SERIES, fmt: (n) => String(n), showTable: view.secTable, toggle: "sec" })}
+          ${sourcesCard(s)}
+        </div>
+        <div class="grid2" style="margin-top:14px">${findingsCard(sec)}${blockedCard(d, s)}</div>
+        <h2>Anmeldungen und Konten</h2>
+        ${secLogView(d, view.secLog)}`,
+      bind: () => bindStack("failed-chart", s.days, SEC_SERIES, opts, (n) => String(n)),
+    };
+  }
+
+  function rangeRow(d) {
+    const range = (n, l) => `<button class="${view.days === n ? "on" : ""}" data-days="${n}">${l}</button>`;
+    return `<div class="filters"><div class="seg">${range(7, "7 Tage")}${range(30, "30 Tage")}${range(90, "90 Tage")}${range(365, "1 Jahr")}</div>
+      <span class="grow"></span><span class="muted small">Stand ${esc(timeOnly(d.now))}</span></div>`;
+  }
+
   // ---------------------------------------------------------- dashboard
-  const view = { days: 30, table: false, log: "all", logLimit: 25, data: null };
+  const view = { days: 30, table: false, log: "all", logLimit: 25, secTable: false, secLog: "all", secLimit: 25, data: null };
 
   async function loadDashboard() {
     try {
@@ -486,33 +695,47 @@ footer { padding: 40px 0 28px; text-align: center; }
 
   function renderDashboard() {
     const d = view.data;
-    const a = analyse(d);
-    const k = a.kpi;
-    const range = (n, l) => `<button class="${view.days === n ? "on" : ""}" data-days="${n}">${l}</button>`;
-    app.innerHTML = `
-      ${heroView(d)}
-      <div class="filters"><div class="seg">${range(7, "7 Tage")}${range(30, "30 Tage")}${range(90, "90 Tage")}${range(365, "1 Jahr")}</div>
-        <span class="grow"></span><span class="muted small">Stand ${esc(timeOnly(d.now))}</span></div>
-      <div class="tiles">
-        ${tile("Alarme", String(k.alarms), k.acked ? `${k.acked} quittiert` : "", k.alarms > 0)}
-        ${tile("Vorwarnungen", String(k.pending), `${k.defused} rechtzeitig entschärft`)}
-        ${tile("Scharf", `${Math.round(k.armedShare * 100)} %`, "der Zeit im Zeitraum")}
-        ${tile("Quittierzeit", k.ackMedian == null ? "–" : duration(k.ackMedian), "Median bis zur Bestätigung")}
-        ${tile("Funkstille", String(k.outages), k.outageSec ? `insgesamt ${duration(k.outageSec)}` : "keine Ausfälle", k.outages > 0)}
-        ${tile("Falsche Codes", String(k.wrong), k.shots ? `${k.shots} Kamerabilder gespeichert` : "")}
-      </div>
-      <div class="grid2" style="margin-top:14px">${armedChart(a, view.table)}${triggersCard(a)}</div>
-      <h2>Vorfälle</h2>
-      ${a.incidents.length ? `<div class="incidents">${a.incidents.slice(0, 24).map(incidentCard).join("")}</div>` : `<div class="card muted">Keine Vorfälle im Zeitraum.</div>`}
-      <h2>Protokoll</h2>
-      ${logView(d, view.log)}`;
-    bindArmedChart(a);
+    const tab = location.hash === "#sicherheit" ? "security" : "alarm";
+    const tabs = `<nav class="dtabs" aria-label="Bereiche"><a href="#" class="${tab === "alarm" ? "on" : ""}" data-tab="alarm">Alarmanlage</a><a href="#sicherheit" class="${tab === "security" ? "on" : ""}" data-tab="security">Sicherheit</a></nav>`;
+    let bind = () => {};
+    if (tab === "security") {
+      const sec = renderSecurity(d);
+      app.innerHTML = tabs + sec.html;
+      bind = sec.bind;
+    } else {
+      const a = analyse(d);
+      const k = a.kpi;
+      app.innerHTML = `${tabs}
+        ${heroView(d)}
+        ${rangeRow(d)}
+        <div class="tiles">
+          ${tile("Alarme", String(k.alarms), k.acked ? `${k.acked} quittiert` : "", k.alarms > 0)}
+          ${tile("Vorwarnungen", String(k.pending), `${k.defused} rechtzeitig entschärft`)}
+          ${tile("Scharf", `${Math.round(k.armedShare * 100)} %`, "der Zeit im Zeitraum")}
+          ${tile("Quittierzeit", k.ackMedian == null ? "–" : duration(k.ackMedian), "Median bis zur Bestätigung")}
+          ${tile("Funkstille", String(k.outages), k.outageSec ? `insgesamt ${duration(k.outageSec)}` : "keine Ausfälle", k.outages > 0)}
+          ${tile("Falsche Codes", String(k.wrong), k.shots ? `${k.shots} Kamerabilder gespeichert` : "")}
+        </div>
+        <div class="grid2" style="margin-top:14px">${stackCard({ id: "armed-chart", title: "Scharf-Zeit pro Tag", rows: a.days, series: MODE_SERIES, totals: a.totals, fmt: hours, showTable: view.table, toggle: "armed" })}${triggersCard(a)}</div>
+        <h2>Vorfälle</h2>
+        ${a.incidents.length ? `<div class="incidents">${a.incidents.slice(0, 24).map(incidentCard).join("")}</div>` : `<div class="card muted">Keine Vorfälle im Zeitraum.</div>`}
+        <h2>Protokoll</h2>
+        ${logView(d, view.log)}`;
+      bind = () => bindStack("armed-chart", a.days, MODE_SERIES, ARMED_OPTS, hours);
+    }
+    bind();
     app.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { view.days = Number(b.dataset.days); loadDashboard(); }));
     app.querySelectorAll("[data-log]").forEach((b) => b.addEventListener("click", () => { view.log = b.dataset.log; view.logLimit = 25; renderDashboard(); }));
+    app.querySelectorAll("[data-seclog]").forEach((b) => b.addEventListener("click", () => { view.secLog = b.dataset.seclog; view.secLimit = 25; renderDashboard(); }));
+    app.querySelectorAll("[data-toggle-table]").forEach((b) => b.addEventListener("click", () => {
+      if (b.dataset.toggleTable === "sec") view.secTable = !view.secTable;
+      else view.table = !view.table;
+      renderDashboard();
+    }));
     const more = app.querySelector("[data-more]");
     if (more) more.addEventListener("click", () => { view.logLimit += 50; renderDashboard(); });
-    const tt = app.querySelector("[data-toggle-table]");
-    if (tt) tt.addEventListener("click", () => { view.table = !view.table; renderDashboard(); });
+    const secMore = app.querySelector("[data-secmore]");
+    if (secMore) secMore.addEventListener("click", () => { view.secLimit += 50; renderDashboard(); });
   }
 
   // ------------------------------------------------------------ incident
@@ -582,6 +805,7 @@ footer { padding: 40px 0 28px; text-align: center; }
     loadDashboard();
     setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
     let resizeTimer = null;
+    window.addEventListener("hashchange", () => { if (view.data) renderDashboard(); });
     window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (view.data && !view.table) renderDashboard(); }, 150); });
   }
 })();

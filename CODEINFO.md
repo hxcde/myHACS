@@ -57,7 +57,7 @@ custom_components/bastion/
   strings.json, translations/{en,de}.json, services.yaml, manifest.json
 extras/cloudflare-worker/     Worker: Port-Prüfung, Totmannschalter, Protokoll in D1, Pushover, Vorfallseite, Dashboard
   src/worker.js        Routen, Signaturprüfung, Lebenszeichen, Alarm-Ereignisse, Funkstille-Analyse, Cron
-  src/store.js         D1: events, snapshots, receipts, state (Schema legt der Worker selbst an), Aufbewahrung
+  src/store.js         D1: events, snapshots, receipts, state, secevents, attempts, blocked (Schema legt der Worker selbst an), Aufbewahrung
   src/notify.js        Kanäle Pushover/Telegram/ntfy/Webhook, Pushover-Receipts (Quittierung, Abbruch)
   src/access.js        Prüfung des Cloudflare-Access-JWT (RS256, Audience, Aussteller, Ablauf)
   src/app.html         Dashboard und Vorfallseite (ein Text-Modul, CSP mit Nonce)
@@ -114,8 +114,9 @@ Vorwarnung und Alarm erzeugen eine Vorfall-ID (`engine.incident`), die bis zum U
 engine._record ─► EVENT bastion_alarm, Coordinator (Benachrichtigung, Tag + Vorfall-Link) ─► relay.async_send_event ─► POST /alert
                └► sounds.on_event(kind, state) ─► Schleife (arming/pending/triggered) oder Einmal-Ton (armed/disarmed)
 pending/triggered ─► relay.start_snapshots ─► camera.async_get_image ─► POST /snapshot
-relay (alle 15 s Tick, Intervall bzw. während Alarm) ─► POST /heartbeat {Zustand, offen, nicht erreichbar, Start/Boot, acks_seen}
-                                                    ◄─ {acks} ─► engine.record_ack ─► Protokoll „acknowledged“
+relay (alle 15 s Tick, Intervall bzw. während Alarm) ─► POST /heartbeat {Zustand, offen, nicht erreichbar, Start/Boot, acks_seen,
+                                                      security (bei Änderung), security_events (aus bastion_security_event, dedupliziert)}
+                                                    ◄─ {acks, attack} ─► engine.record_ack / logins.record("worker_attack")
 HA-Stopp ─► relay.async_stop ─► Lebenszeichen mit stopping=true (Worker wartet länger, meldet „geplant“)
 
 Worker-Cron (jede Minute): Funkstille-Analyse (letzter Stand + Ereignisse aus D1), offene Pushover-Receipts prüfen, Aufbewahrung

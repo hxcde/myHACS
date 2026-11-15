@@ -19,6 +19,16 @@ const SCHEMA = [
      receipt TEXT PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT, incident TEXT, expires INTEGER,
      acked_at INTEGER, acked_by TEXT, cancelled INTEGER NOT NULL DEFAULT 0, ha_seen INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS state (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+  // Login and security events reported by Home Assistant (deduplicated by uid).
+  `CREATE TABLE IF NOT EXISTS secevents (
+     uid TEXT PRIMARY KEY, ts INTEGER NOT NULL, type TEXT NOT NULL, ip TEXT, user TEXT, geo TEXT, detail TEXT)`,
+  `CREATE INDEX IF NOT EXISTS secevents_ts ON secevents(ts)`,
+  // Rejected requests against the worker itself, counted per 10 minutes.
+  `CREATE TABLE IF NOT EXISTS attempts (
+     bucket INTEGER NOT NULL, ip TEXT NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
+     country TEXT, path TEXT, PRIMARY KEY (bucket, ip, kind))`,
+  `CREATE TABLE IF NOT EXISTS blocked (
+     ip TEXT PRIMARY KEY, ts INTEGER NOT NULL, until INTEGER NOT NULL, reason TEXT, n INTEGER, country TEXT)`,
 ];
 
 const ready = new WeakMap();
@@ -211,6 +221,108 @@ export async function receiptsSince(env, since) {
   return results;
 }
 
+// ------------------------------------------------------- security events
+export async function addSecEvents(env, events) {
+  if (!events.length) return;
+  const db = await database(env);
+  const stmt = db.prepare("INSERT OR IGNORE INTO secevents (uid, ts, type, ip, user, geo, detail) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  await db.batch(
+    events.map((e) =>
+      stmt.bind(
+        str(e.uid, 64),
+        Math.floor(Number(e.ts) || nowS()),
+        str(e.type, 40),
+        str(e.ip, 64),
+        str(e.user, 80),
+        str(e.geo, 80),
+        e.detail && Object.keys(e.detail).length ? JSON.stringify(e.detail).slice(0, 500) : null,
+      ),
+    ),
+  );
+}
+
+export async function secEventsSince(env, since, limit = 5000) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare("SELECT ts, type, ip, user, geo, detail FROM secevents WHERE ts >= ? ORDER BY ts DESC LIMIT ?")
+    .bind(since, limit)
+    .all();
+  return results.map((r) => ({ ...r, detail: r.detail ? JSON.parse(r.detail) : null }));
+}
+
+// ------------------------------------------------------ attack detection
+export const BUCKET = 600;
+
+export async function addAttempt(env, { ip, kind, country, path }) {
+  const db = await database(env);
+  const bucket = Math.floor(nowS() / BUCKET);
+  await db
+    .prepare(
+      "INSERT INTO attempts (bucket, ip, kind, n, country, path) VALUES (?, ?, ?, 1, ?, ?) " +
+        "ON CONFLICT(bucket, ip, kind) DO UPDATE SET n = n + 1, path = excluded.path",
+    )
+    .bind(bucket, str(ip, 64), str(kind, 30), str(country, 4), str(path, 120))
+    .run();
+}
+
+// Attempts per IP within the last `buckets` buckets (current one included).
+export async function recentAttempts(env, buckets = 2) {
+  const db = await database(env);
+  const since = Math.floor(nowS() / BUCKET) - (buckets - 1);
+  const { results } = await db
+    .prepare(
+      "SELECT ip, MAX(country) AS country, SUM(n) AS n, GROUP_CONCAT(DISTINCT kind) AS kinds, MAX(path) AS path " +
+        "FROM attempts WHERE bucket >= ? GROUP BY ip ORDER BY n DESC LIMIT 20",
+    )
+    .bind(since)
+    .all();
+  return results;
+}
+
+export async function attemptsSince(env, since) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare(
+      "SELECT bucket * ? AS ts, ip, kind, n, country, path FROM attempts WHERE bucket >= ? ORDER BY bucket DESC LIMIT 3000",
+    )
+    .bind(BUCKET, Math.floor(since / BUCKET))
+    .all();
+  return results;
+}
+
+export async function blockedUntil(env, ip) {
+  const db = await database(env);
+  const row = await db.prepare("SELECT until FROM blocked WHERE ip = ?").bind(ip).first();
+  return row && row.until > nowS() ? row.until : null;
+}
+
+export async function block(env, { ip, minutes, reason, n, country }) {
+  const db = await database(env);
+  const until = nowS() + minutes * 60;
+  await db
+    .prepare(
+      "INSERT INTO blocked (ip, ts, until, reason, n, country) VALUES (?, ?, ?, ?, ?, ?) " +
+        "ON CONFLICT(ip) DO UPDATE SET until = excluded.until, reason = excluded.reason, n = excluded.n",
+    )
+    .bind(str(ip, 64), nowS(), until, str(reason, 120), n, str(country, 4))
+    .run();
+  return until;
+}
+
+export async function unblock(env, ip) {
+  const db = await database(env);
+  await db.prepare("DELETE FROM blocked WHERE ip = ?").bind(ip).run();
+}
+
+export async function blockedList(env, since) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare("SELECT ip, ts, until, reason, n, country FROM blocked WHERE until > ? OR ts >= ? ORDER BY ts DESC LIMIT 200")
+    .bind(nowS(), since)
+    .all();
+  return results;
+}
+
 // -------------------------------------------------------------- retention
 export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
   const db = await database(env);
@@ -219,5 +331,8 @@ export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
     db.prepare("DELETE FROM events WHERE ts < ?").bind(now - logDays * 86400),
     db.prepare("DELETE FROM snapshots WHERE ts < ?").bind(now - snapshotDays * 86400),
     db.prepare("DELETE FROM receipts WHERE ts < ?").bind(now - 30 * 86400),
+    db.prepare("DELETE FROM secevents WHERE ts < ?").bind(now - logDays * 86400),
+    db.prepare("DELETE FROM attempts WHERE bucket < ?").bind(Math.floor((now - 90 * 86400) / BUCKET)),
+    db.prepare("DELETE FROM blocked WHERE until < ? AND ts < ?").bind(now, now - 90 * 86400),
   ]);
 }

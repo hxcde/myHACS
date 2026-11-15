@@ -23,10 +23,12 @@ import time
 from typing import Any
 
 import aiohttp
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
+
+from ..const import EVENT_SECURITY, SEVERITY_WEIGHT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +49,11 @@ ACTIVE_STATES = ("pending", "triggered")
 TICK = 15
 SNAPSHOT_INTERVAL = 5
 MAX_SNAPSHOT = 1_400_000  # base64 characters
+SECURITY_RESEND = 1800  # seconds: overview is sent on change, at least this often
+SECURITY_BACKFILL_DAYS = 7
+MAX_QUEUE = 300
+EVENTS_PER_BEAT = 50
+DETAIL_KEYS = ("count", "minutes", "name", "public", "reason", "action", "kind")
 # Process start (module import) and boot time let the worker tell a host reboot,
 # a Home Assistant restart and a network outage apart.
 PROCESS_START = int(time.time())
@@ -82,6 +89,10 @@ class AlarmRelay:
         self.last_ok: str | None = None
         self.last_error: str | None = None
         self.version = ""
+        self._sec_queue: list[dict[str, Any]] = []
+        self._sec_hash: str | None = None
+        self._sec_sent = 0.0
+        self._unsub_security: CALLBACK_TYPE | None = None
 
     @property
     def cfg(self) -> dict[str, Any]:
@@ -105,6 +116,8 @@ class AlarmRelay:
             return
         self._last_beat = 0.0
         self._unsub = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK))
+        self._unsub_security = self.hass.bus.async_listen(EVENT_SECURITY, self._on_security_event)
+        self._backfill_security()
         self._spawn(self._async_heartbeat())
 
     def unload(self) -> None:
@@ -112,6 +125,9 @@ class AlarmRelay:
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
+        if self._unsub_security is not None:
+            self._unsub_security()
+            self._unsub_security = None
         for task in list(self._tasks):
             task.cancel()
 
@@ -159,6 +175,107 @@ class AlarmRelay:
             "instance": self.hass.config.location_name,
         }
 
+    # ----------------------------------------------------------- security
+    @property
+    def _bastion(self):
+        return getattr(self.engine, "bastion", None)
+
+    @staticmethod
+    def _security_event(entry: dict[str, Any]) -> dict[str, Any] | None:
+        """Compact login/security event for the worker (ids and tokens stay at home)."""
+        kind = str(entry.get("type") or "")
+        if not kind or kind == "worker_attack":
+            return None
+        when = dt_util.parse_datetime(str(entry.get("time") or "")) or dt_util.utcnow()
+        ip = entry.get("ip")
+        user = entry.get("user")
+        uid = hashlib.sha256(f"{when.isoformat()}|{kind}|{ip}|{user}".encode()).hexdigest()[:24]
+        return {
+            "uid": uid,
+            "ts": int(when.timestamp()),
+            "type": kind[:40],
+            "ip": str(ip)[:64] if ip else None,
+            "user": str(user)[:80] if user else None,
+            "geo": str(entry.get("geo"))[:80] if entry.get("geo") else None,
+            "detail": {k: entry[k] for k in DETAIL_KEYS if isinstance(entry.get(k), (str, int, float, bool))},
+        }
+
+    @callback
+    def _on_security_event(self, event: Event) -> None:
+        if (item := self._security_event({"time": dt_util.utcnow().isoformat(), **event.data})) is not None:
+            self._sec_queue.append(item)
+            del self._sec_queue[:-MAX_QUEUE]
+
+    def _backfill_security(self) -> None:
+        """Recent login log, so the dashboard is complete after setup (the worker deduplicates)."""
+        logins = getattr(self._bastion, "logins", None)
+        if logins is None:
+            return
+        cutoff = dt_util.utcnow() - timedelta(days=SECURITY_BACKFILL_DAYS)
+        items = []
+        for entry in list(logins.log):
+            when = dt_util.parse_datetime(str(entry.get("time") or ""))
+            if when is not None and when >= cutoff and (item := self._security_event(entry)) is not None:
+                items.append(item)
+        self._sec_queue = (items + self._sec_queue)[-MAX_QUEUE:]
+
+    def _security_overview(self) -> dict[str, Any] | None:
+        bastion = self._bastion
+        if bastion is None:
+            return None
+        summary = bastion.summary()
+        active = sorted(
+            (f for f in bastion.findings if not f.dismissed and SEVERITY_WEIGHT.get(f.severity, 0) > 0),
+            key=lambda f: -SEVERITY_WEIGHT.get(f.severity, 0),
+        )
+        git = bastion.git.status() if getattr(bastion, "git", None) is not None else {}
+        return {
+            "score": summary["score"],
+            "counts": summary["counts"],
+            "open": summary["open"],
+            "last_audit": summary.get("last_audit"),
+            "failed_24h": bastion.logins.failed_last_24h() if getattr(bastion, "logins", None) else 0,
+            "findings": [
+                {
+                    "id": f.id,
+                    "severity": str(f.severity),
+                    "category": str(f.category),
+                    "title": (f.title or f.text_key)[:200],
+                    "since": f.first_seen,
+                }
+                for f in active[:40]
+            ],
+            "git": {"status": git.get("status"), "last": git.get("last_commit_time")} if git else None,
+        }
+
+    def _security_payload(self) -> tuple[dict[str, Any], str | None, int]:
+        """Overview (when changed) and queued events for the next heartbeat."""
+        extra: dict[str, Any] = {}
+        sent_hash = None
+        if (overview := self._security_overview()) is not None:
+            digest = hashlib.sha256(json.dumps(overview, sort_keys=True, default=str).encode()).hexdigest()
+            if digest != self._sec_hash or time.monotonic() - self._sec_sent > SECURITY_RESEND:
+                extra["security"] = overview
+                sent_hash = digest
+        batch = self._sec_queue[:EVENTS_PER_BEAT]
+        if batch:
+            extra["security_events"] = batch
+        return extra, sent_hash, len(batch)
+
+    def _handle_attack(self, attack: dict[str, Any] | None) -> None:
+        """The worker rejected forged requests: log it in HA and fire an event for automations."""
+        if not isinstance(attack, dict):
+            return
+        sources = [s for s in attack.get("sources") or [] if isinstance(s, dict)][:5]
+        data = {
+            "count": int(attack.get("total") or 0),
+            "ip": ", ".join(str(s.get("ip")) for s in sources)[:200],
+            "sources": sources,
+        }
+        if (logins := getattr(self._bastion, "logins", None)) is not None:
+            logins.record("worker_attack", data)
+        self.hass.bus.async_fire(EVENT_SECURITY, {"type": "worker_attack", **data})
+
     def _heartbeat_payload(self, *, stopping: bool = False) -> dict[str, Any]:
         return {
             "ts": int(time.time()),
@@ -182,8 +299,9 @@ class AlarmRelay:
             return
         self._last_beat = time.monotonic()
         sent_seen = set(self._acks_seen)
+        extra, sent_hash, sent_events = self._security_payload()
         try:
-            result = await self._async_post("/heartbeat", self._heartbeat_payload())
+            result = await self._async_post("/heartbeat", {**self._heartbeat_payload(), **extra})
         except (aiohttp.ClientError, TimeoutError) as err:
             self.last_error = str(err)[:200]
             _LOGGER.debug("Bastion heartbeat failed: %s", err)
@@ -191,7 +309,11 @@ class AlarmRelay:
         self.last_ok = dt_util.utcnow().isoformat()
         self.last_error = None
         self._acks_seen -= sent_seen
+        if sent_hash:
+            self._sec_hash, self._sec_sent = sent_hash, time.monotonic()
+        del self._sec_queue[:sent_events]
         self._handle_acks(result.get("acks") or [])
+        self._handle_attack(result.get("attack"))
 
     def _handle_acks(self, acks: list[dict[str, Any]]) -> None:
         for ack in acks[:10]:

@@ -200,13 +200,23 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Bei unscharfer Anlage werden Ausfälle nur protokolliert (`ALERT_WHEN_DISARMED=1` meldet auch diese).
 
 **Dashboard (nur lesend, hinter Cloudflare Access):**
-- Zeigt Status, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Tab „Alarmanlage“: Status, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Tab „Sicherheit“: siehe unten.
 - Einrichten:
   1. Worker → Settings → Domains & Routes → Custom Domain hinzufügen, z. B. `bastion.example.com`.
   2. Zero Trust → Access → Applications → Self-hosted, Domain wie oben, Policy mit den erlaubten E-Mail-Adressen.
   3. Den „Application Audience (AUD) Tag“ der Anwendung kopieren.
   4. Im Worker die Variablen `DASHBOARD_HOST` (die Domain), `ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) und `ACCESS_AUD` setzen.
 - Der Worker prüft das Access-Token selbst (Signatur, Audience, Aussteller, Ablauf). Über die workers.dev-Adresse ist das Dashboard nicht erreichbar. HA spricht weiter über die workers.dev-Adresse, sie liegt nicht hinter Access.
+
+**Angriffserkennung am Worker:**
+- Gezählt werden abgewiesene Zugriffe: falsche Signatur, falscher Probe-Token, gefälschter Pushover-Rückruf, falscher Vorfall-Link und Zugriffe auf das Dashboard ohne gültiges Access-Token. Aufrufe unbekannter Pfade (Scanner) zählen nicht.
+- Ab `ATTACK_ALERT_AFTER` (Standard 5) abgewiesenen Zugriffen in 20 Minuten kommt eine Meldung über alle Kanäle, höchstens einmal pro Stunde. HA trägt den Angriff ins Anmelde-Protokoll ein und feuert `bastion_security_event` mit dem Typ `worker_attack`.
+- Eine IP mit `ATTACK_BLOCK_AFTER` (Standard 10) Fehlversuchen in 20 Minuten wird für `ATTACK_BLOCK_MINUTES` (Standard 60) gesperrt. Die IP des letzten gültigen Lebenszeichens wird nie gesperrt, eine gültige Signatur hebt eine Sperre auf.
+- Ein gültig signiertes, aber zu altes Lebenszeichen gilt als Uhrenproblem, nicht als Angriff.
+- Schreibzugriffe auf D1 sind pro Worker-Instanz begrenzt, damit eine Flut das Tageskontingent nicht aufbraucht.
+
+**Dashboard, Tab „Sicherheit“:** Sicherheitswert mit offenen Befunden, Fehlversuche pro Tag (HA und Worker), häufigste Quellen, gesperrte IPs und das Anmelde-Protokoll (Anmeldungen, neue IPs, Fehlversuche, Sperren, Konten und Tokens). HA schickt dafür mit dem Lebenszeichen den Überblick (bei Änderung, sonst alle 30 Minuten) und neue Anmeldeereignisse. Nach dem Einrichten werden die letzten 7 Tage nachgeliefert. Interne IDs von Benutzern und Tokens verlassen HA nicht.
 
 **Sicherheit:**
 - Jede Meldung von HA trägt eine HMAC-SHA256-Signatur über Zeitstempel und Inhalt, Wiederholungen werden nach 5 Minuten abgewiesen.

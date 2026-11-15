@@ -261,9 +261,11 @@ async function accessSetup() {
     ["sign", "verify"],
   );
   const jwk = await webcrypto.subtle.exportKey("jwk", keys.publicKey);
-  accessJwks = { keys: [{ ...jwk, kid: "k1", alg: "RS256" }] };
+  // A new key id per setup: the worker caches keys per team domain.
+  const keyId = `k${Math.random().toString(36).slice(2)}`;
+  accessJwks = { keys: [{ ...jwk, kid: keyId, alg: "RS256" }] };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  return async (payload, kid = "k1") => {
+  return async (payload, kid = keyId) => {
     const head = `${b64({ alg: "RS256", kid })}.${b64(payload)}`;
     const sig = await webcrypto.subtle.sign("RSASSA-PKCS1-v1_5", keys.privateKey, new TextEncoder().encode(head));
     return `${head}.${Buffer.from(sig).toString("base64url")}`;
@@ -297,4 +299,71 @@ test("dashboard only behind a valid Access token on the dashboard host", async (
   await worker.fetch(signed("/alert", { event: "pending", push: false, incident: "abcdef99", state: "pending", mode: "away" }), env);
   assert.equal((await get("bastion.example.com", "/api/incident/abcdef99", good)).status, 200);
   assert.equal((await get("bastion.example.com", "/api/incident/abcdef99", null)).status, 404);
+});
+
+const fromIp = (req, ip) => {
+  const headers = new Headers(req.headers);
+  headers.set("cf-connecting-ip", ip);
+  return new Request(req, { headers });
+};
+
+test("forged requests are counted, pushed once and noisy IPs blocked", async () => {
+  const env = makeEnv();
+  await worker.fetch(fromIp(signed("/heartbeat", HB), "198.51.100.1"), env); // Home Assistant
+  sent.length = 0;
+  const statuses = [];
+  for (let i = 0; i < 11; i++) {
+    statuses.push((await worker.fetch(fromIp(signed("/alert", { event: "disarmed" }, { secret: "guess" }), "203.0.113.9"), env)).status);
+  }
+  assert.deepEqual(statuses.slice(0, 9), Array(9).fill(401));
+  assert.equal(statuses.at(-1), 429, "blocked after 10 attempts");
+  const pushes = sent.filter((x) => x.url.endsWith("/1/messages.json"));
+  assert.equal(pushes.length, 1, "one warning per hour");
+  const text = decoded(pushes[0]);
+  assert.ok(text.includes("Angriffsversuch") && text.includes("203.0.113.9") && text.includes("falsche Signatur"), text);
+  assert.ok(text.includes("priority=1"));
+  assert.equal((await events(env)).filter((e) => e.event === "attack").length, 1);
+  assert.equal((await events(env)).filter((e) => e.event === "disarmed").length, 0, "nothing forged was stored");
+  // blocked IP is rejected on other routes too
+  assert.equal((await worker.fetch(fromIp(new Request("https://w.example/api/incident/abcdef12?t=x"), "203.0.113.9"), env)).status, 429);
+  // Home Assistant keeps working and learns about the attack once
+  let hb = await (await worker.fetch(fromIp(signed("/heartbeat", HB), "198.51.100.1"), env)).json();
+  assert.equal(hb.attack.total >= 5, true);
+  hb = await (await worker.fetch(fromIp(signed("/heartbeat", HB), "198.51.100.1"), env)).json();
+  assert.equal(hb.attack, null);
+});
+
+test("Home Assistant's own IP is never blocked and clock drift is no attack", async () => {
+  const env = makeEnv({ ATTACK_BLOCK_AFTER: "3" });
+  await worker.fetch(fromIp(signed("/heartbeat", HB), "198.51.100.1"), env);
+  for (let i = 0; i < 5; i++) await worker.fetch(fromIp(signed("/alert", {}, { secret: "old" }), "198.51.100.1"), env);
+  assert.equal((await worker.fetch(fromIp(signed("/heartbeat", HB), "198.51.100.1"), env)).status, 200);
+  for (let i = 0; i < 5; i++) {
+    assert.equal((await worker.fetch(fromIp(signed("/heartbeat", HB, { ts: 1000 }), "192.0.2.7"), env)).status, 401);
+  }
+  const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM attempts WHERE ip = '192.0.2.7'").first()).n;
+  assert.equal(n, 0, "valid signature with old timestamp is not counted");
+});
+
+test("security overview and login events reach the dashboard", async () => {
+  const jwt = await accessSetup();
+  const env = makeEnv({ ACCESS_TEAM_DOMAIN: "team.cloudflareaccess.com", ACCESS_AUD: "aud123", DASHBOARD_HOST: "bastion.example.com" });
+  const now = Math.floor(Date.now() / 1000);
+  const security = {
+    score: 82, open: 3, counts: { critical: 0, high: 1, medium: 2, low: 0, info: 1 }, last_audit: new Date().toISOString(), failed_24h: 2,
+    findings: [{ id: "f1", severity: "high", category: "access", title: "Admin ohne MFA", since: null }],
+  };
+  const login = [
+    { uid: "a1", ts: now - 60, type: "failed_login", ip: "203.0.113.5", user: null, geo: "NL" },
+    { uid: "a2", ts: now - 30, type: "login", ip: "192.168.1.10", user: "Yann", geo: "" },
+  ];
+  await worker.fetch(signed("/heartbeat", { ...HB, security, security_events: login }), env);
+  await worker.fetch(signed("/heartbeat", { ...HB, security_events: login }), env); // resent after a restart
+  const token = await jwt({ aud: ["aud123"], iss: "https://team.cloudflareaccess.com", exp: now + 600, email: "o@example.com" });
+  const sum = await (await worker.fetch(new Request("https://bastion.example.com/api/summary?days=7", { headers: { "cf-access-jwt-assertion": token } }), env)).json();
+  assert.equal(sum.security.score, 82);
+  assert.equal(sum.security.findings[0].title, "Admin ohne MFA");
+  assert.equal(sum.secevents.length, 2, "deduplicated");
+  assert.equal(sum.secevents.find((e) => e.type === "failed_login").ip, "203.0.113.5");
+  assert.ok(Array.isArray(sum.attempts) && Array.isArray(sum.blocked));
 });

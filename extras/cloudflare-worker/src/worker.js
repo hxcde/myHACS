@@ -21,6 +21,9 @@
 //   OFFLINE_MINUTES      default 10, PLANNED_MINUTES default 20 (after a planned restart)
 //   ALERT_WHEN_DISARMED  "1" to also report outages while disarmed
 //   LOG_DAYS             default 365, SNAPSHOT_DAYS default 30
+//   ATTACK_ALERT_AFTER   default 5 rejected requests in 20 min -> push (at most hourly)
+//   ATTACK_BLOCK_AFTER   default 10 rejected requests of one IP in 20 min -> block
+//   ATTACK_BLOCK_MINUTES default 60
 // D1 binding: DB
 
 import { connect } from "cloudflare:sockets";
@@ -37,6 +40,7 @@ const MAX_PORTS = 40;
 const TIMEOUT_MS = 3000;
 const REPLAY_WINDOW = 300;
 const MAX_BODY = 64 * 1024;
+const MAX_HEARTBEAT = 160 * 1024; // carries the security overview and login events
 const MAX_SNAPSHOT = 1_500_000; // base64 characters, D1 allows 2 MB per value
 const MODES = { home: "Zuhause", night: "Nacht", away: "Abwesend" };
 const LABELS = {
@@ -54,6 +58,14 @@ const LABELS = {
   offline: "Funkstille",
   online: "Wieder erreichbar",
   restart: "Neustart",
+  attack: "Angriffsversuch",
+};
+const ATTACK_LABELS = {
+  signature: "falsche Signatur",
+  probe_token: "falscher Probe-Token",
+  callback: "falscher Pushover-Rückruf",
+  link_token: "falscher Vorfall-Link",
+  access: "ungültiger Access-Login",
 };
 // Events pushed by older Bastion versions that do not send a push flag.
 const LEGACY_PUSH = new Set(["triggered", "pending", "disarmed", "armed", "sensor_unavailable"]);
@@ -98,23 +110,106 @@ async function callbackToken(env) {
   return (await hmacHex(env.ALARM_SECRET, "pushover-callback")).slice(0, 32);
 }
 
-// Returns the parsed body or a Response with the error.
+// Returns { data } or { response } (with `attack` set for a forged signature).
 async function verified(request, env, maxBody = MAX_BODY) {
-  if (!env.ALARM_SECRET) return json({ error: "ALARM_SECRET not set" }, 500);
-  if (Number(request.headers.get("content-length") || 0) > maxBody) return json({ error: "too large" }, 413);
+  if (!env.ALARM_SECRET) return { response: json({ error: "ALARM_SECRET not set" }, 500) };
+  if (Number(request.headers.get("content-length") || 0) > maxBody) return { response: json({ error: "too large" }, 413) };
   const ts = request.headers.get("x-bastion-timestamp") || "";
   const sig = request.headers.get("x-bastion-signature") || "";
   const body = await request.text();
-  if (body.length > maxBody) return json({ error: "too large" }, 413);
-  if (Math.abs(Date.now() / 1000 - Number(ts)) > REPLAY_WINDOW) return json({ error: "stale" }, 401);
+  if (body.length > maxBody) return { response: json({ error: "too large" }, 413) };
   const expected = await hmacHex(env.ALARM_SECRET, `${ts}.${body}`);
-  if (!timingSafeEqual(sig, expected)) return json({ error: "unauthorized" }, 401);
+  if (!timingSafeEqual(sig, expected)) return { response: json({ error: "unauthorized" }, 401), attack: "signature" };
+  // A valid signature with an old timestamp is a clock problem (or a replay), not a guess.
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > REPLAY_WINDOW) return { response: json({ error: "stale" }, 401) };
   try {
     const data = JSON.parse(body);
-    return data && typeof data === "object" ? data : json({ error: "invalid json" }, 400);
+    return data && typeof data === "object" ? { data } : { response: json({ error: "invalid json" }, 400) };
   } catch {
-    return json({ error: "invalid json" }, 400);
+    return { response: json({ error: "invalid json" }, 400) };
   }
+}
+
+// --------------------------------------------------------- attack detection
+const writes = { minute: 0, n: 0 };
+const blockedCache = new Map(); // ip -> until (seconds)
+
+function clientIp(request) {
+  return request.headers.get("cf-connecting-ip") || "unknown";
+}
+
+// Caps D1 writes per isolate so a flood cannot exhaust the daily write quota.
+function writeBudget() {
+  const minute = Math.floor(Date.now() / 60000);
+  if (writes.minute !== minute) Object.assign(writes, { minute, n: 0 });
+  return ++writes.n <= 60;
+}
+
+async function isBlocked(env, request) {
+  const ip = clientIp(request);
+  const cached = blockedCache.get(ip);
+  if (cached && cached > nowS()) return true;
+  if (!env.DB) return false;
+  const until = await store.blockedUntil(env, ip);
+  if (until) blockedCache.set(ip, until);
+  return Boolean(until);
+}
+
+function tooMany() {
+  return json({ error: "blocked" }, 429);
+}
+
+// Counts a rejected request; blocks noisy IPs and pushes a warning (at most hourly).
+async function recordAttempt(request, env, kind, url) {
+  if (!env.DB || !writeBudget()) return;
+  const ip = clientIp(request);
+  const country = (request.cf && request.cf.country) || "";
+  await store.addAttempt(env, { ip, kind, country, path: url.pathname });
+  const recent = await store.recentAttempts(env, 2);
+  const hb = await store.getState(env, "hb");
+  const own = recent.find((r) => r.ip === ip);
+  const blockAfter = Number(env.ATTACK_BLOCK_AFTER || 10);
+  if (own && own.n >= blockAfter && ip !== "unknown" && ip !== (hb && hb.ip) && !(await store.blockedUntil(env, ip))) {
+    const until = await store.block(env, { ip, minutes: Number(env.ATTACK_BLOCK_MINUTES || 60), reason: own.kinds, n: own.n, country });
+    blockedCache.set(ip, until);
+  }
+  const total = recent.reduce((sum, r) => sum + r.n, 0);
+  if (total < Number(env.ATTACK_ALERT_AFTER || 5)) return;
+  const last = (await store.getState(env, "attack_alert")) || 0;
+  if (Date.now() - last < 3600 * 1000) return;
+  await store.setState(env, "attack_alert", Date.now());
+  const sources = [];
+  for (const r of recent.slice(0, 5)) {
+    const blocked = Boolean(await store.blockedUntil(env, r.ip));
+    sources.push({ ip: r.ip, country: r.country, n: r.n, kinds: String(r.kinds || "").split(","), blocked });
+  }
+  const lines = sources.map(
+    (r) => `• ${r.ip}${r.country ? ` (${r.country})` : ""}: ${r.n}× ${r.kinds.map((k) => ATTACK_LABELS[k] || k).join(", ")}${r.blocked ? " – gesperrt" : ""}`,
+  );
+  await notify(env, {
+    title: "🛡 Angriffsversuch auf den Bastion-Worker",
+    message: `${total} abgewiesene Zugriffe in den letzten 20 Min.\n${lines.join("\n")}\n\nAlles wurde abgewiesen. Häufen sich falsche Signaturen, in Bastion ein neues ALARM_SECRET erzeugen.`,
+    priority: "high",
+  });
+  await store.addEvent(env, { event: "attack", detail: { total, sources } });
+  await store.setState(env, "attack_pending", { ts: nowS(), total, sources });
+}
+
+async function rejected(request, env, ctx, kind, url) {
+  const job = recordAttempt(request, env, kind, url).catch((err) => console.error("bastion attack log", err && err.stack ? err.stack : err));
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job);
+  else await job;
+}
+
+// Signed endpoints: a forged signature is counted, a blocked IP gets 429.
+async function signedBody(request, env, ctx, url, maxBody) {
+  const res = await verified(request, env, maxBody);
+  if (res.data) return res;
+  if (res.attack) {
+    await rejected(request, env, ctx, res.attack, url);
+    if (await isBlocked(env, request)) return { response: tooMany() };
+  }
+  return res;
 }
 
 const list = (v, n = 20) => (Array.isArray(v) ? v.slice(0, n).map((x) => String(x).slice(0, 80)) : []);
@@ -164,10 +259,14 @@ async function probe(ip, port) {
   }
 }
 
-async function handleProbe(request, env) {
+async function handleProbe(request, env, ctx, url) {
+  if (await isBlocked(env, request)) return tooMany();
   if (env.PROBE_TOKEN) {
     const auth = request.headers.get("authorization") || "";
-    if (!timingSafeEqual(auth, `Bearer ${env.PROBE_TOKEN}`)) return json({ error: "unauthorized" }, 401);
+    if (!timingSafeEqual(auth, `Bearer ${env.PROBE_TOKEN}`)) {
+      await rejected(request, env, ctx, "probe_token", url);
+      return json({ error: "unauthorized" }, 401);
+    }
   }
   const ip = request.headers.get("cf-connecting-ip");
   if (!ip) return json({ error: "no client ip" }, 400);
@@ -222,9 +321,29 @@ async function cancelOpen(env, kind) {
   }
 }
 
-async function handleHeartbeat(request, env, url) {
-  const data = await verified(request, env);
-  if (data instanceof Response) return data;
+function securityOverview(sec) {
+  const counts = sec.counts && typeof sec.counts === "object" ? sec.counts : {};
+  return {
+    score: Math.max(0, Math.min(100, Number(sec.score) || 0)),
+    counts: Object.fromEntries(["critical", "high", "medium", "low", "info"].map((k) => [k, Number(counts[k]) || 0])),
+    open: Number(sec.open) || 0,
+    last_audit: typeof sec.last_audit === "string" ? sec.last_audit.slice(0, 40) : null,
+    failed_24h: Number(sec.failed_24h) || 0,
+    findings: (Array.isArray(sec.findings) ? sec.findings : []).slice(0, 40).map((f) => ({
+      id: String(f.id || "").slice(0, 40),
+      severity: String(f.severity || "info").slice(0, 10),
+      category: String(f.category || "").slice(0, 20),
+      title: String(f.title || "").slice(0, 200),
+      since: typeof f.since === "string" ? f.since.slice(0, 40) : null,
+    })),
+    git: sec.git && typeof sec.git === "object" ? { status: String(sec.git.status || "").slice(0, 20), last: String(sec.git.last || "").slice(0, 40) } : null,
+    received: nowS(),
+  };
+}
+
+async function handleHeartbeat(request, env, url, ctx) {
+  const { data, response } = await signedBody(request, env, ctx, url, MAX_HEARTBEAT);
+  if (response) return response;
   const prev = await store.getState(env, "hb");
   const seen = list(data.acks_seen);
   const record = {
@@ -244,6 +363,7 @@ async function handleHeartbeat(request, env, url) {
     stopping: Boolean(data.stopping),
     received: Date.now(),
     origin: url.origin,
+    ip: clientIp(request),
     offline: false,
     offline_notified: false,
   };
@@ -263,7 +383,16 @@ async function handleHeartbeat(request, env, url) {
   }
   await store.setState(env, "hb", record);
   if (seen.length) await store.markSeen(env, seen);
-  return json({ ok: true, acks: await store.unseenAcks(env) });
+  // A valid signature lifts a block of this IP (e.g. HA behind a new address).
+  if (await store.blockedUntil(env, record.ip)) await store.unblock(env, record.ip);
+  blockedCache.delete(record.ip);
+  if (data.security && typeof data.security === "object") await store.setState(env, "security", securityOverview(data.security));
+  if (Array.isArray(data.security_events)) {
+    await store.addSecEvents(env, data.security_events.slice(0, 60).filter((e) => e && typeof e === "object" && e.uid && e.type));
+  }
+  const attack = await store.getState(env, "attack_pending");
+  if (attack) await store.setState(env, "attack_pending", null);
+  return json({ ok: true, acks: await store.unseenAcks(env), attack: attack || null });
 }
 
 function restarted(prev, cur) {
@@ -280,9 +409,9 @@ function recoveryCause(prev, cur) {
   return "Home Assistant lief durch – Internet oder Netzwerk war unterbrochen.";
 }
 
-async function handleAlert(request, env, url) {
-  const data = await verified(request, env);
-  if (data instanceof Response) return data;
+async function handleAlert(request, env, url, ctx) {
+  const { data, response } = await signedBody(request, env, ctx, url);
+  if (response) return response;
   const incident = validIncident(data.incident) ? data.incident : null;
   if (data.event !== "test") {
     await store.addEvent(env, {
@@ -319,9 +448,9 @@ async function handleAlert(request, env, url) {
   return json({ ok: true, channels, view });
 }
 
-async function handleSnapshot(request, env) {
-  const data = await verified(request, env, MAX_SNAPSHOT + 4096);
-  if (data instanceof Response) return data;
+async function handleSnapshot(request, env, url, ctx) {
+  const { data, response } = await signedBody(request, env, ctx, url, MAX_SNAPSHOT + 4096);
+  if (response) return response;
   if (!validIncident(data.incident)) return json({ error: "invalid incident" }, 400);
   const type = String(data.type || "image/jpeg");
   if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) return json({ error: "invalid type" }, 400);
@@ -347,9 +476,13 @@ async function checkReceipt(env, rec) {
   }
 }
 
-async function handlePushoverCallback(request, env, token) {
+async function handlePushoverCallback(request, env, token, ctx, url) {
   if (!env.ALARM_SECRET || !pushoverEnabled(env)) return json({ error: "not found" }, 404);
-  if (!timingSafeEqual(token, await callbackToken(env))) return json({ error: "unauthorized" }, 401);
+  if (await isBlocked(env, request)) return tooMany();
+  if (!timingSafeEqual(token, await callbackToken(env))) {
+    await rejected(request, env, ctx, "callback", url);
+    return json({ error: "unauthorized" }, 401);
+  }
   let receipt = "";
   try {
     receipt = String((await request.formData()).get("receipt") || "");
@@ -465,8 +598,11 @@ async function incidentAllowed(request, env, url, incident) {
   return Boolean(await dashboardUser(request, env, url));
 }
 
-async function apiIncident(request, env, url, incident) {
-  if (!validIncident(incident) || !(await incidentAllowed(request, env, url, incident))) return json({ error: "not found" }, 404);
+async function apiIncident(request, env, url, incident, ctx) {
+  if (!validIncident(incident) || !(await incidentAllowed(request, env, url, incident))) {
+    await rejected(request, env, ctx, onDashboardHost(env, url) && accessConfigured(env) ? "access" : "link_token", url);
+    return json({ error: "not found" }, 404);
+  }
   const hb = await store.getState(env, "hb");
   return json({
     incident,
@@ -477,9 +613,10 @@ async function apiIncident(request, env, url, incident) {
   });
 }
 
-async function apiImage(request, env, url, id) {
+async function apiImage(request, env, url, id, ctx) {
   const incident = url.searchParams.get("i") || "";
   if (!/^\d+$/.test(id) || !validIncident(incident) || !(await incidentAllowed(request, env, url, incident))) {
+    await rejected(request, env, ctx, onDashboardHost(env, url) && accessConfigured(env) ? "access" : "link_token", url);
     return json({ error: "not found" }, 404);
   }
   const row = await store.getSnapshot(env, Number(id));
@@ -504,36 +641,46 @@ async function apiSummary(env, url, user) {
     events: await store.eventsSince(env, since),
     receipts: await store.receiptsSince(env, since),
     snapshots: await store.snapshotCounts(env, since),
+    security: await store.getState(env, "security"),
+    secevents: await store.secEventsSince(env, since),
+    attempts: await store.attemptsSince(env, since),
+    blocked: await store.blockedList(env, since),
   });
 }
 
-async function handleGet(request, env, url) {
+async function handleGet(request, env, url, ctx) {
   const path = url.pathname;
+  const known = path === "/" || path.startsWith("/i/") || path.startsWith("/api/");
+  if (known && (await isBlocked(env, request))) return tooMany();
   if (path.startsWith("/i/")) return validIncident(path.slice(3)) ? page(env) : json({ error: "not found" }, 404);
   let m = path.match(/^\/api\/incident\/([a-f0-9]{8,32})$/);
-  if (m) return apiIncident(request, env, url, m[1]);
+  if (m) return apiIncident(request, env, url, m[1], ctx);
   m = path.match(/^\/api\/img\/(\d+)$/);
-  if (m) return apiImage(request, env, url, m[1]);
+  if (m) return apiImage(request, env, url, m[1], ctx);
   if (path === "/" || path === "/api/summary") {
     const user = await dashboardUser(request, env, url);
-    if (!user) return json({ error: "not found" }, 404);
+    if (!user) {
+      // Behind Access every request carries a valid token; anything else is a bypass attempt.
+      if (accessConfigured(env) && onDashboardHost(env, url) && env.DASHBOARD_HOST) await rejected(request, env, ctx, "access", url);
+      return json({ error: "not found" }, 404);
+    }
     return path === "/" ? page(env) : apiSummary(env, url, user);
   }
   return json({ error: "not found" }, 404);
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     try {
-      if (request.method === "GET" || request.method === "HEAD") return await handleGet(request, env, url);
+      if (request.method === "GET" || request.method === "HEAD") return await handleGet(request, env, url, ctx);
       if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
-      if (path === "/probe") return await handleProbe(request, env);
-      if (path === "/heartbeat") return await handleHeartbeat(request, env, url);
-      if (path === "/alert") return await handleAlert(request, env, url);
-      if (path === "/snapshot") return await handleSnapshot(request, env);
-      if (path.startsWith("/pushover/")) return await handlePushoverCallback(request, env, path.slice(10));
+      if (path === "/probe") return await handleProbe(request, env, ctx, url);
+      if (path === "/heartbeat") return await handleHeartbeat(request, env, url, ctx);
+      if (path === "/alert") return await handleAlert(request, env, url, ctx);
+      if (path === "/snapshot") return await handleSnapshot(request, env, url, ctx);
+      if (path.startsWith("/pushover/")) return await handlePushoverCallback(request, env, path.slice(10), ctx, url);
       return json({ error: "not found" }, 404);
     } catch (err) {
       console.error("bastion worker", err && err.stack ? err.stack : err);

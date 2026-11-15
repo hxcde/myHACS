@@ -252,3 +252,40 @@ async def test_own_sensor_names(hass: HomeAssistant, alarm, hass_ws_client) -> N
     assert pending["name"] == "Haustür"
     assert alarm.triggered_by["name"] == "Haustür"
     assert alarm._name("binary_sensor.motion") == "Motion"
+
+
+async def test_security_overview_login_events_and_worker_attack(hass: HomeAssistant, alarm, aioclient_mock) -> None:  # noqa: F811
+    bastion = alarm.bastion
+    bastion.logins.log.append({"time": "2000-01-01T00:00:00+00:00", "type": "failed_login", "ip": "203.0.113.1"})
+    bastion.logins.record("failed_login", {"ip": "203.0.113.5"})
+    attack = {
+        "ts": 1,
+        "total": 7,
+        "sources": [{"ip": "198.51.100.66", "country": "NL", "n": 7, "kinds": ["signature"], "blocked": True}],
+    }
+    aioclient_mock.post(f"{WORKER}/heartbeat", json={"ok": True, "acks": [], "attack": attack})
+    aioclient_mock.post(f"{WORKER}/alert", json={"ok": True, "channels": []})
+    seen = []
+    hass.bus.async_listen("bastion_security_event", lambda e: seen.append(e.data))
+    await alarm.async_update_config({"worker": {"url": WORKER, "enabled": True, "interval": 60}})
+    relay = bastion.relay
+    relay.setup()
+    await hass.async_block_till_done()
+
+    beat = _payload(_calls(aioclient_mock, "/heartbeat")[-1])
+    assert set(beat["security"]) >= {"score", "counts", "open", "findings", "failed_24h"}
+    events = beat["security_events"]
+    assert [e["ip"] for e in events] == ["203.0.113.5"], "only the last 7 days are backfilled"
+    assert "user_id" not in events[0] and len(events[0]["uid"]) == 24
+
+    # worker attack is logged in HA and fired for automations, but not sent back
+    assert any(e["type"] == "worker_attack" and e["count"] == 7 for e in bastion.logins.log)
+    assert any(e.get("type") == "worker_attack" for e in seen)
+
+    hass.bus.async_fire("bastion_security_event", {"type": "new_ip", "ip": "192.0.2.4", "user": "Yann", "user_id": "x"})
+    await hass.async_block_till_done()
+    await relay._async_heartbeat()
+    beat = _payload(_calls(aioclient_mock, "/heartbeat")[-1])
+    assert "security" not in beat, "unchanged overview is not resent"
+    types = [e["type"] for e in beat["security_events"]]
+    assert "new_ip" in types and "worker_attack" not in types

@@ -139,7 +139,7 @@ const I18N = {
       user_added: "Benutzer angelegt", user_removed: "Benutzer gelöscht", admin_granted: "Admin-Rechte vergeben",
       user_activated: "Benutzer aktiviert", canary: "Köder ausgelöst", blocked: "Gesperrt", confirmed: "Bestätigt",
       unusual_login_time: "Ungewöhnliche Anmeldezeit", unusual_action: "Ungewöhnliche Aktion", sabotage: "Sabotageverdacht",
-      tamper: "Manipulation", anomaly: "Anomalie", new_destination: "Neues Verbindungsziel",
+      tamper: "Manipulation", anomaly: "Anomalie", new_destination: "Neues Verbindungsziel", worker_attack: "Angriffsversuch am Worker",
       external_config_change: "Extern geändert", deviation: "Abweichung", continuous: "Dauerbetrieb", drift: "Steigende Grundlast",
       token: "Token", webhook: "Webhook",
     },
@@ -362,7 +362,7 @@ const I18N = {
       user_added: "User created", user_removed: "User removed", admin_granted: "Admin rights granted",
       user_activated: "User activated", canary: "Decoy triggered", blocked: "Blocked", confirmed: "Confirmed",
       unusual_login_time: "Unusual login time", unusual_action: "Unusual action", sabotage: "Sabotage suspicion",
-      tamper: "Tampering", anomaly: "Anomaly", new_destination: "New destination",
+      tamper: "Tampering", anomaly: "Anomaly", new_destination: "New destination", worker_attack: "Attack on the worker",
       external_config_change: "Changed outside the UI", deviation: "Deviation", continuous: "Continuous run", drift: "Rising base load",
       token: "Token", webhook: "Webhook",
     },
@@ -475,7 +475,7 @@ const LOG_ICON = {
   token_created: ["mdi:key-plus", SEV.medium.color], token_removed: ["mdi:key-remove", "#8a8f98"],
   user_added: ["mdi:account-plus-outline", SEV.medium.color], user_removed: ["mdi:account-remove-outline", "#8a8f98"],
   admin_granted: ["mdi:shield-account-outline", SEV.high.color], user_activated: ["mdi:account-check-outline", SEV.medium.color],
-  canary: ["mdi:bird", SEV.critical.color], blocked: ["mdi:block-helper", SEV.critical.color],
+  canary: ["mdi:bird", SEV.critical.color], blocked: ["mdi:block-helper", SEV.critical.color], worker_attack: ["mdi:shield-bug-outline", SEV.high.color],
   confirmed: ["mdi:check-circle-outline", GOOD],
 };
 const PORT_NAMES = {
