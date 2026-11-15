@@ -101,6 +101,29 @@ data:
 
 ESPHome und Z2M: Zigbee2MQTT vor dem Wiederherstellen stoppen, sonst überschreibt es `database.db`.
 
+## Reaktion, Köder, Wochenbericht
+
+**Aktionen in Benachrichtigungen:** Benachrichtigungsziele vom Typ `notify.mobile_app_*` bekommen bei Anmeldungen, neuen IPs, neuen Tokens und Benutzern die Buttons „War ich“ und „Sperren“. „Sperren“ hat folgende Wirkung:
+
+- Der betroffene Token wird widerrufen.
+- Die IP landet auf der HA-Bannliste (`ip_bans.yaml`). Loopback und Reverse-Proxy-IPs werden nie gesperrt.
+- Neu angelegte oder hochgestufte Benutzer werden deaktiviert. Besitzer und du selbst sind geschützt.
+
+Jeder Button gilt 48 Stunden, nur einmal und nur für Admins. Dieselbe Funktion gibt es im Panel und als Aktion `bastion.block`.
+
+**Köder** (Konfigurieren → Köder): Bastion legt den Benutzer `api-backup` an (nur lesen, nur lokal) und dazu einen Long-Lived-Token und einen Webhook. Der Token-Wächter weist jede Benutzung des Tokens ab (HTTP 401), jeder Aufruf des Webhooks löst ebenfalls aus. Folgen eines Auslösers:
+
+- Bastion meldet sofort kritisch mit Absender-IP, Event `bastion_security_event` vom Typ `canary`.
+- `binary_sensor.bastion_decoy_triggered` geht für 24 Stunden an.
+
+Token und URL stehen im Panel unter „Anomalien & Köder“. Leg sie dort ab, wo ein Eindringling suchen würde (Notizen, NAS-Freigabe, alte Backups). Ist „Köder ins Git-Repo“ aktiv, liegt zusätzlich `homeassistant/.env` mit diesen Daten unverschlüsselt im Repo. Ein Leck des Repos fällt damit beim ersten Benutzungsversuch auf. Diese Datei wird beim Wiederherstellen nie nach `/config` geschrieben.
+
+**Token-Nutzung:** HA selbst protokolliert nicht, wann ein Long-Lived-Token per API benutzt wird. Bastion erfasst das ab der Installation selbst, mit Zeit und IP. Darauf beruhen der Befund „ungenutzter Token“ (erst nach genügend Beobachtungszeit) und der Alarm „Token von neuer IP“.
+
+**Wochenbericht** (Konfigurieren → Wochenbericht): standardmäßig montags 08:13 an alle Benachrichtigungsziele, manuell per Button oder Aktion `bastion.send_report`.
+
+**Firmware:** Die Firmware-Versionen von ESPHome-, Tasmota- und WLED-Geräten sowie der Zigbee2MQTT-Bridge aus der Geräteübersicht werden gegen die GitHub-Advisories dieser Projekte geprüft.
+
 ## Externe Prüfung (Cloudflare Worker)
 
 ```bash

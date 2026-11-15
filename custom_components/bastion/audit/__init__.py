@@ -29,20 +29,21 @@ CheckFunc = Callable[[AuditContext], Awaitable[list[Finding]]]
 
 
 def _checks() -> dict[str, CheckFunc]:
-    from . import access, config, exposure, supervisor, supply_chain, updates  # noqa: PLC0415
+    from . import access, config, exposure, firmware, supervisor, supply_chain, updates  # noqa: PLC0415
 
     return {
         "access": access.async_check,
         "http": exposure.async_check_http,
         "exposure": exposure.async_check,
         "updates": updates.async_check,
+        "firmware": firmware.async_check,
         "supply_chain": supply_chain.async_check,
         "config": config.async_check,
         "supervisor": supervisor.async_check,
     }
 
 
-CHECK_GROUPS = ("access", "http", "exposure", "updates", "supply_chain", "config", "supervisor")
+CHECK_GROUPS = ("access", "http", "exposure", "updates", "firmware", "supply_chain", "config", "supervisor")
 
 
 async def async_run_audit(ctx: AuditContext, disabled: list[str] | None = None) -> list[Finding]:

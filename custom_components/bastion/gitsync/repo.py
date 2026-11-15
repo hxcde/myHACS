@@ -21,7 +21,7 @@ from dulwich.index import commit_tree
 from dulwich.objects import Blob, Commit
 from dulwich.repo import Repo
 
-from ..crypto import DecryptionError, FileCipher, kdf_params
+from ..crypto import FORMAT_VERSION as ENC_FORMAT, DecryptionError, FileCipher, kdf_params
 from ..secret_scan import is_text_path, scan_bytes
 from .collector import ENC_SUFFIX, MANAGED_PREFIXES, MANIFEST_PATH, SourceFile
 from .remote import RemoteContext, RemoteError
@@ -30,6 +30,7 @@ FILE_MODE = 0o100644
 SYMLINK_MODE = 0o120000
 MANIFEST_FORMAT = 1
 MAX_DIFF_BYTES = 200_000
+GITATTRIBUTES = b"# Encrypted by Bastion: no diffs, no merges\n*.bastion.enc -diff -merge linguist-generated\n"
 
 
 @dataclass(slots=True)
@@ -236,7 +237,12 @@ def build_snapshot(
     parent_tree = commit_tree_id(repo, parent)
     parent_files = tree_files(repo, parent_tree)
     parent_manifest = read_manifest(repo, parent_files)
-    parent_macs: dict[str, str] = parent_manifest.get("encrypted", {}) if parent_manifest.get("salt") == salt else {}
+    # Unchanged encrypted files are reused, unless the key or the file format changed.
+    parent_macs: dict[str, str] = (
+        parent_manifest.get("encrypted", {})
+        if parent_manifest.get("salt") == salt and parent_manifest.get("enc_format") == ENC_FORMAT
+        else {}
+    )
 
     entries: dict[str, tuple[int, bytes]] = {}
     # Keep everything Bastion does not manage.
@@ -256,7 +262,7 @@ def build_snapshot(
         except OSError:
             continue
         must_encrypt = src.encrypt
-        if not must_encrypt and is_text_path(src.repo_path) and scan_bytes(data):
+        if not must_encrypt and not src.plain and is_text_path(src.repo_path) and scan_bytes(data):
             must_encrypt = True
             auto_encrypted.append(src.repo_path)
         if must_encrypt:
@@ -282,6 +288,7 @@ def build_snapshot(
         "format": MANIFEST_FORMAT,
         **meta,
         "salt": salt if cipher is not None else None,
+        "enc_format": ENC_FORMAT,
         "kdf": kdf_params() if cipher is not None else None,
         "encrypted": dict(sorted(macs.items())),
     }
@@ -294,6 +301,10 @@ def build_snapshot(
         readme_blob = Blob.from_string(readme)
         store.add_object(readme_blob)
         entries["README.md"] = (FILE_MODE, readme_blob.id)
+    if ".gitattributes" not in entries:
+        attributes = Blob.from_string(GITATTRIBUTES)
+        store.add_object(attributes)
+        entries[".gitattributes"] = (FILE_MODE, attributes.id)
 
     tree_id = commit_tree(
         store, [(p.encode("utf-8", "surrogateescape"), sha, mode) for p, (mode, sha) in sorted(entries.items())]

@@ -121,6 +121,11 @@ class LoginMonitor:
         self._unsubs: list[CALLBACK_TYPE] = []
         self._first_poll = True
         self._poll_lock = asyncio.Lock()
+        self.responder = None
+        self.ignored_user_ids: Callable[[], set[str]] = set
+        # Long-lived token usage observed by the token guard (HA does not record it).
+        self.token_usage: dict[str, dict[str, Any]] = {}
+        self.usage_since: str | None = None
 
     async def async_setup(self) -> None:
         """Load state, hook the logger, start polling."""
@@ -129,7 +134,11 @@ class LoginMonitor:
             self.tokens = data.get("tokens", {})
             self.users = data.get("users", {})
             self.known_ips = data.get("known_ips", {})
+            self.token_usage = data.get("token_usage", {})
+            self.usage_since = data.get("usage_since")
             self._first_poll = not bool(self.tokens or self.users)
+        if self.usage_since is None:
+            self.usage_since = dt_util.utcnow().isoformat()
         logger = logging.getLogger(BAN_LOGGER)
         if logger.getEffectiveLevel() > logging.WARNING:
             logger.setLevel(logging.WARNING)
@@ -150,27 +159,62 @@ class LoginMonitor:
         self._unsubs.clear()
         await self._async_save()
 
+    def _data(self) -> dict[str, Any]:
+        return {
+            "log": list(self.log),
+            "tokens": self.tokens,
+            "users": self.users,
+            "known_ips": self.known_ips,
+            "token_usage": self.token_usage,
+            "usage_since": self.usage_since,
+        }
+
     async def _async_save(self) -> None:
-        await self._store.async_save(
-            {
-                "log": list(self.log),
-                "tokens": self.tokens,
-                "users": self.users,
-                "known_ips": self.known_ips,
-            }
-        )
+        await self._store.async_save(self._data())
 
     def _schedule_save(self) -> None:
-        self._store.async_delay_save(
-            lambda: {
-                "log": list(self.log),
-                "tokens": self.tokens,
-                "users": self.users,
-                "known_ips": self.known_ips,
-            },
-            10,
-        )
+        self._store.async_delay_save(self._data, 10)
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+
+    @callback
+    def record(self, kind: str, data: dict[str, Any]) -> None:
+        """Add an entry to the log (used by responder and decoys)."""
+        self.log.append({"time": dt_util.utcnow().isoformat(), "type": kind, **data})
+        self._schedule_save()
+
+    # ------------------------------------------------------------ token usage
+    @callback
+    def on_token_used(self, token, ip: str | None) -> None:
+        """Called by the token guard for every use of a long-lived token."""
+        usage = self.token_usage.setdefault(token.id, {"ips": []})
+        usage["last_used_at"] = dt_util.utcnow().isoformat()
+        usage["last_ip"] = ip
+        if ip and ip not in usage["ips"]:
+            first = not usage["ips"]
+            usage["ips"].append(ip)
+            del usage["ips"][:-50]
+            if not first and token.user.id not in self.ignored_user_ids():
+                self.hass.async_create_task(self._async_token_new_ip(token, ip), eager_start=True)
+        self._store.async_delay_save(self._data, 60)
+
+    async def _async_token_new_ip(self, token, ip: str) -> None:
+        opts = self._options()
+        public = is_public_ip(ip)
+        notify = bool(opts.get(CONF_NOTIFY_LOGINS, True)) and (public or not opts.get(CONF_NOTIFY_PUBLIC_ONLY, True))
+        data = {
+            "user": token.user.name,
+            "user_id": token.user.id,
+            "name": token.client_name or token.id[:8],
+            "token_id": token.id,
+            "ip": ip,
+            "public": public,
+            "geo": await self._async_geo(ip),
+        }
+        await self._async_event("token_new_ip", data, notify=notify, rate_key=f"tokenip_{token.id}_{ip}", rate=3600)
+
+    def token_last_used(self, token_id: str) -> str | None:
+        """Observed last use of a long-lived token."""
+        return (self.token_usage.get(token_id) or {}).get("last_used_at")
 
     # ---------------------------------------------------------------- events
     async def _async_event(
@@ -182,7 +226,8 @@ class LoginMonitor:
         self._schedule_save()
         if notify:
             title, message = event_text(kind, self.hass.config.language, _render_data(data))
-            await self.notifier.async_send(title, message, key=rate_key or kind, rate_limit=rate)
+            actions = self.responder.actions_for(kind, data) if self.responder is not None else None
+            await self.notifier.async_send(title, message, key=rate_key or kind, rate_limit=rate, actions=actions)
 
     @callback
     def _on_log_event(self, kind: str, data: dict[str, Any]) -> None:
@@ -225,10 +270,11 @@ class LoginMonitor:
         public_only = bool(opts.get(CONF_NOTIFY_PUBLIC_ONLY, True))
         users = await self.hass.auth.async_get_users()
         silent = self._first_poll
+        ignored = self.ignored_user_ids()
         current_users: dict[str, dict[str, Any]] = {}
         current_tokens: dict[str, dict[str, Any]] = {}
         for user in users:
-            if user.system_generated:
+            if user.system_generated or user.id in ignored:
                 continue
             is_admin = user.is_admin
             current_users[user.id] = {
@@ -304,6 +350,9 @@ class LoginMonitor:
                     },
                     notify=False,
                 )
+        for token_id in list(self.token_usage):
+            if token_id not in current_tokens:
+                self.token_usage.pop(token_id)
         changed = current_tokens != self.tokens or current_users != self.users
         self.users = current_users
         self.tokens = current_tokens

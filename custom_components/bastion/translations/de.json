@@ -18,6 +18,8 @@
           "audit": "Sicherheitsaudit",
           "notifications": "Benachrichtigungen",
           "git": "Git-Versionierung",
+          "canary": "Köder",
+          "report": "Wochenbericht",
           "probe": "Externe Prüfung",
           "anomaly": "Anomalie-Erkennung"
         }
@@ -45,7 +47,8 @@
           "notify_logins": "Bei Anmeldungen und neuen IPs benachrichtigen",
           "notify_public_ip_only": "Nur bei Anmeldungen von öffentlichen IPs",
           "brute_force_threshold": "Brute-Force-Alarm ab Fehlversuchen (10 Min.)",
-          "geoip_lookup": "Land öffentlicher IPs ermitteln (sendet die IP an ipwho.is)"
+          "geoip_lookup": "Land öffentlicher IPs ermitteln (sendet die IP an ipwho.is)",
+          "notify_actions": "Buttons „War ich“ / „Sperren“ in der Companion App"
         }
       },
       "git": {
@@ -105,6 +108,22 @@
           "sabotage_window_seconds": "Innerhalb von",
           "anomaly_outbound": "Ausgehende Verbindungen beobachten (neue Ziele)"
         }
+      },
+      "canary": {
+        "title": "Köder",
+        "description": "Bastion legt einen Köder-Token (Benutzer „api-backup“, nur lesen, nur lokal) und einen Köder-Webhook an. Jede Benutzung wird sofort abgewiesen und löst Alarm aus. Token und URL findest du im Panel unter Anomalien und kannst sie dort hinterlegen, wo ein Eindringling suchen würde (z. B. Notizen, NAS-Freigabe).",
+        "data": {
+          "canary_enabled": "Köder aktivieren",
+          "canary_in_git": "Köder als .env ins Git-Repo legen (meldet Lecks des Repos)"
+        }
+      },
+      "report": {
+        "title": "Wochenbericht",
+        "data": {
+          "report_enabled": "Wochenbericht senden",
+          "report_weekday": "Wochentag",
+          "report_time": "Uhrzeit"
+        }
       }
     },
     "error": {
@@ -143,6 +162,7 @@
         "http": "HTTP-Konfiguration",
         "exposure": "Webhooks, Sprachassistenten, MQTT",
         "updates": "Updates und Sicherheitslücken",
+        "firmware": "Firmware-Schwachstellen (ESPHome, Tasmota, WLED, Z2M)",
         "supply_chain": "Custom-Integrationen",
         "config": "Konfiguration und Backups",
         "supervisor": "Add-ons (Supervisor)"
@@ -164,6 +184,17 @@
         "zigbee2mqtt": "Zigbee2MQTT",
         "addons": "Add-on-Optionen (Supervisor)",
         "extra": "Zusätzliche Pfade"
+      }
+    },
+    "weekday": {
+      "options": {
+        "0": "Montag",
+        "1": "Dienstag",
+        "2": "Mittwoch",
+        "3": "Donnerstag",
+        "4": "Freitag",
+        "5": "Samstag",
+        "6": "Sonntag"
       }
     }
   },
@@ -201,6 +232,9 @@
       },
       "anomaly": {
         "name": "Anomalie {entity}"
+      },
+      "canary": {
+        "name": "Köder ausgelöst"
       }
     },
     "button": {
@@ -212,6 +246,9 @@
       },
       "external_scan": {
         "name": "Externe Prüfung ausführen"
+      },
+      "send_report": {
+        "name": "Wochenbericht senden"
       }
     }
   },
@@ -289,6 +326,28 @@
     "reset_git_host_key": {
       "name": "Git-Server-Schlüssel zurücksetzen",
       "description": "Vergisst den gespeicherten SSH-Hostkey, nachdem eine legitime Änderung geprüft wurde."
+    },
+    "send_report": {
+      "name": "Wochenbericht senden",
+      "description": "Erstellt den Wochenbericht und sendet ihn sofort."
+    },
+    "block": {
+      "name": "Sperren",
+      "description": "Widerruft einen Token, sperrt eine IP und/oder deaktiviert einen Benutzer.",
+      "fields": {
+        "ip": {
+          "name": "IP",
+          "description": "Zu sperrende IP-Adresse."
+        },
+        "token_id": {
+          "name": "Token-ID",
+          "description": "Zu widerrufender Token."
+        },
+        "user_id": {
+          "name": "Benutzer-ID",
+          "description": "Zu deaktivierender Benutzer."
+        }
+      }
     }
   }
 }

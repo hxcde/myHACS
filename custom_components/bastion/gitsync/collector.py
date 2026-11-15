@@ -151,6 +151,7 @@ class SourceFile:
     abs_path: str | None = None
     data: bytes | None = None
     encrypt: bool = False
+    plain: bool = False  # never encrypted automatically (decoy file)
 
     def read(self) -> bytes:
         """Return the file content."""

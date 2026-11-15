@@ -46,3 +46,15 @@ accept_integrity:
       selector:
         text:
 reset_git_host_key:
+send_report:
+block:
+  fields:
+    ip:
+      selector:
+        text:
+    token_id:
+      selector:
+        text:
+    user_id:
+      selector:
+        text:

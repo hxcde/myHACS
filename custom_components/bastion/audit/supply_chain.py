@@ -91,6 +91,8 @@ def compute_integrity(config_dir: str, baseline: dict[str, Any], versions: dict[
             path = os.path.join(custom_dir, name)
             if not os.path.isdir(path) or os.path.islink(path) or name.startswith((".", "__")):
                 continue
+            if name == DOMAIN:
+                continue  # Bastion does not audit itself (updates would always look like tampering)
             current["custom"][name] = {
                 "version": versions.get(name),
                 "files": scan_tree(path, (old_custom.get(name) or {}).get("files")),

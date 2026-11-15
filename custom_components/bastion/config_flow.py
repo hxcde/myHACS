@@ -36,6 +36,8 @@ from .const import (
     CONF_ANOMALY_SENSITIVITY,
     CONF_AUDIT_INTERVAL,
     CONF_BRUTE_FORCE_THRESHOLD,
+    CONF_CANARY_ENABLED,
+    CONF_CANARY_GIT,
     CONF_DISABLED_CHECKS,
     CONF_GEOIP,
     CONF_GIT_ALLOW_UNVERIFIED_PRIVATE,
@@ -60,6 +62,7 @@ from .const import (
     CONF_GIT_Z2M_PATH,
     CONF_GITHUB_TOKEN,
     CONF_MAX_ADMINS,
+    CONF_NOTIFY_ACTIONS,
     CONF_NOTIFY_LOGINS,
     CONF_NOTIFY_MIN_SEVERITY,
     CONF_NOTIFY_PUBLIC_ONLY,
@@ -68,6 +71,9 @@ from .const import (
     CONF_PROBE_TOKEN,
     CONF_PROBE_URL,
     CONF_REPAIRS_MIN_SEVERITY,
+    CONF_REPORT_ENABLED,
+    CONF_REPORT_TIME,
+    CONF_REPORT_WEEKDAY,
     CONF_SABOTAGE_COUNT,
     CONF_SABOTAGE_WINDOW,
     CONF_TOKEN_MAX_AGE_DAYS,
@@ -157,7 +163,10 @@ class BastionOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Main menu."""
-        return self.async_show_menu(step_id="init", menu_options=["audit", "notifications", "git", "probe", "anomaly"])
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["audit", "notifications", "git", "canary", "report", "probe", "anomaly"],
+        )
 
     # ------------------------------------------------------------------ audit
     async def async_step_audit(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -227,10 +236,42 @@ class BastionOptionsFlow(OptionsFlow):
                 probatio.Required(CONF_BRUTE_FORCE_THRESHOLD, default=opts[CONF_BRUTE_FORCE_THRESHOLD]): _number(
                     2, 100
                 ),
+                probatio.Required(CONF_NOTIFY_ACTIONS, default=opts[CONF_NOTIFY_ACTIONS]): BooleanSelector(),
                 probatio.Required(CONF_GEOIP, default=opts[CONF_GEOIP]): BooleanSelector(),
             }
         )
         return self.async_show_form(step_id="notifications", data_schema=schema)
+
+    # ----------------------------------------------------------------- canary
+    async def async_step_canary(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Decoy token and webhook."""
+        opts = self._opts
+        if user_input is not None:
+            return self._save(user_input)
+        schema = probatio.Schema(
+            {
+                probatio.Required(CONF_CANARY_ENABLED, default=opts[CONF_CANARY_ENABLED]): BooleanSelector(),
+                probatio.Required(CONF_CANARY_GIT, default=opts[CONF_CANARY_GIT]): BooleanSelector(),
+            }
+        )
+        return self.async_show_form(step_id="canary", data_schema=schema)
+
+    # ----------------------------------------------------------------- report
+    async def async_step_report(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Weekly report."""
+        opts = self._opts
+        if user_input is not None:
+            return self._save(user_input)
+        schema = probatio.Schema(
+            {
+                probatio.Required(CONF_REPORT_ENABLED, default=opts[CONF_REPORT_ENABLED]): BooleanSelector(),
+                probatio.Required(CONF_REPORT_WEEKDAY, default=str(opts[CONF_REPORT_WEEKDAY])): _select(
+                    [str(d) for d in range(7)], "weekday"
+                ),
+                probatio.Required(CONF_REPORT_TIME, default=opts[CONF_REPORT_TIME]): TimeSelector(),
+            }
+        )
+        return self.async_show_form(step_id="report", data_schema=schema)
 
     # -------------------------------------------------------------------- git
     async def async_step_git(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

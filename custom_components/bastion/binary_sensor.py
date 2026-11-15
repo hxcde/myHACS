@@ -15,7 +15,7 @@ from .entity import BastionEntity
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
     """Set up binary sensors."""
     bastion = entry.runtime_data
-    entities: list[BinarySensorEntity] = [CriticalSensor(bastion), SabotageSensor(bastion)]
+    entities: list[BinarySensorEntity] = [CriticalSensor(bastion), SabotageSensor(bastion), CanarySensor(bastion)]
     for entity_id in bastion.options.get(CONF_ANOMALY_ENTITIES) or []:
         entities.append(AnomalySensor(bastion, entity_id))
     async_add_entities(entities)
@@ -46,6 +46,24 @@ class SabotageSensor(BastionEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self.bastion.anomaly.sabotage_active
+
+
+class CanarySensor(BastionEntity, BinarySensorEntity):
+    """On for 24 h after a decoy was used."""
+
+    _attr_device_class = BinarySensorDeviceClass.SAFETY
+
+    def __init__(self, bastion) -> None:
+        super().__init__(bastion, "canary")
+
+    @property
+    def is_on(self) -> bool:
+        return self.bastion.canary.alarm_active
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        triggers = self.bastion.canary.state.get("triggers", [])
+        return {"last_trigger": triggers[-1] if triggers else None}
 
 
 class AnomalySensor(BastionEntity, BinarySensorEntity):

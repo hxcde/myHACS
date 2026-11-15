@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
@@ -34,6 +35,7 @@ from ..const import (
     AREA_INVENTORY,
     AREA_STORAGE,
     AREA_Z2M,
+    CONF_CANARY_GIT,
     CONF_GIT_ALLOW_UNVERIFIED_PRIVATE,
     CONF_GIT_AREAS,
     CONF_GIT_AUTH,
@@ -48,6 +50,7 @@ from ..const import (
     CONF_GIT_HOST_KEY,
     CONF_GIT_PASSPHRASE,
     CONF_GIT_PRIVATE_KEY,
+    CONF_GIT_PUBLIC_KEY,
     CONF_GIT_SALT,
     CONF_GIT_TOKEN,
     CONF_GIT_URL,
@@ -210,6 +213,8 @@ class GitSyncManager:
         self._last_push_try: float | None = None
         self._new_host_key: tuple[str, str] | None = None
         self._last_config_files: dict[str, tuple[int, int]] = {}
+        # Set by the coordinator: returns the decoy file content or None.
+        self.decoy: Callable[[], str | None] | None = None
 
     # ------------------------------------------------------------ lifecycle
     @property
@@ -364,6 +369,17 @@ class GitSyncManager:
             )
         if AREA_ADDONS in areas and "hassio" in self.hass.config.components:
             out.extend(await self._async_addon_files())
+        if self.decoy is not None and self.options.get(CONF_CANARY_GIT) and (text := self.decoy()):
+            # Plain on purpose: whoever obtains the repository finds working looking
+            # credentials, and their first use raises an alarm.
+            out.append(
+                collector.SourceFile(
+                    repo_path=collector.PREFIX[AREA_CONFIG] + ".env",
+                    area=AREA_CONFIG,
+                    data=text.encode(),
+                    plain=True,
+                )
+            )
         return out
 
     async def _async_inventory(self) -> bytes:
@@ -1028,6 +1044,7 @@ class GitSyncManager:
             "privacy": state.privacy,
             "host_key_fp": state.host_key_fp,
             "encryption": bool(self.options.get(CONF_GIT_PASSPHRASE)),
+            "public_key": self.options.get(CONF_GIT_PUBLIC_KEY) if self.options.get(CONF_GIT_AUTH) == "ssh" else None,
             "areas": self.options.get(CONF_GIT_AREAS),
         }
 

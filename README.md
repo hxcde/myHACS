@@ -13,6 +13,10 @@ Home-Assistant-Integration für Sicherheit und Konfigurationsschutz:
 - **Login-Monitor:** protokolliert Anmeldungen, Fehlversuche, neue IPs, neue Tokens und Benutzer dauerhaft.
 - **Git-Versionierung:** sichert die komplette Smart-Home-Konfiguration in ein **privates** Repository. Secrets landen dort verschlüsselt. Jeder Stand lässt sich vergleichen und wiederherstellen.
 - **Anomalie-Erkennung:** lernt Sensoren (Strom, Wasser, …), Login-Zeiten und sensible Aktionen. Erkennt Sabotage und neue Verbindungsziele.
+- **Reaktion per Knopfdruck:** Benachrichtigungen in der Companion App mit „War ich“ / „Sperren“ (Token widerrufen, IP sperren, Benutzer deaktivieren).
+- **Köder:** Köder-Token und Köder-Webhook, optional als `.env` im Git-Repo. Jede Benutzung wird abgewiesen und meldet Alarm.
+- **Wochenbericht:** Score-Verlauf, neue und behobene Befunde, Anmeldungen, Köder, Git, offene Ports.
+- **Firmware-Schwachstellen:** ESPHome-, Tasmota-, WLED- und Zigbee2MQTT-Versionen gegen GitHub-Advisories.
 - **Externe Prüfung:** ein Cloudflare Worker prüft, welche Ports der eigenen öffentlichen IP offen sind.
 
 ## Setup

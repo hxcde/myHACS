@@ -32,7 +32,10 @@ async def async_check(ctx: AuditContext) -> list[Finding]:
     max_age = int(ctx.options.get(CONF_TOKEN_MAX_AGE_DAYS) or 365)
     unused_days = int(ctx.options.get(CONF_TOKEN_UNUSED_DAYS) or 90)
 
-    users = [u for u in await hass.auth.async_get_users() if not u.system_generated]
+    canary_user = ctx.cache.get("canary_user")
+    usage: dict = ctx.cache.get("token_usage") or {}
+    usage_since = dt_util.parse_datetime(ctx.cache.get("usage_since") or "")
+    users = [u for u in await hass.auth.async_get_users() if not u.system_generated and u.id != canary_user]
     admins = []
     for user in users:
         if not user.is_active:
@@ -74,21 +77,15 @@ async def async_check(ctx: AuditContext) -> list[Finding]:
                         token_id=token.id,
                     )
                 )
-            if token.last_used_at is None:
-                if age > unused_days:
-                    out.append(
-                        make_finding(
-                            "token_unused",
-                            Severity.MEDIUM,
-                            Category.ACCESS,
-                            token.id,
-                            name=token_name,
-                            user=name,
-                            when=misc("never_used", language),
-                            token_id=token.id,
-                        )
-                    )
-            elif (now - token.last_used_at).days > unused_days:
+            # HA does not record API use of long-lived tokens; Bastion's token guard does.
+            observed = dt_util.parse_datetime(usage.get(token.id, {}).get("last_used_at") or "")
+            if observed is not None and (last_used is None or observed > last_used):
+                last_used = observed
+            if observed is None and (usage_since is None or (now - usage_since).days < unused_days):
+                continue  # not observed long enough to judge
+            reference = observed or max(usage_since, token.created_at)
+            idle = (now - reference).days
+            if idle > unused_days:
                 out.append(
                     make_finding(
                         "token_unused",
@@ -97,7 +94,7 @@ async def async_check(ctx: AuditContext) -> list[Finding]:
                         token.id,
                         name=token_name,
                         user=name,
-                        when=misc("unused_days", language, days=(now - token.last_used_at).days),
+                        when=misc("unused_days", language, days=idle),
                         token_id=token.id,
                     )
                 )

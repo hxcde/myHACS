@@ -25,6 +25,15 @@ def _guard(connection, msg) -> Any:
     return bastion
 
 
+def _with_usage(monitor, token_id: str, token: dict[str, Any]) -> dict[str, Any]:
+    out = {**token, "id": token_id}
+    if token.get("type") == "long_lived_access_token":
+        usage = monitor.token_usage.get(token_id) or {}
+        out["last_used_at"] = usage.get("last_used_at")
+        out["last_used_ip"] = usage.get("last_ip")
+    return out
+
+
 def _overview(bastion) -> dict[str, Any]:
     return {
         "summary": bastion.summary(),
@@ -33,6 +42,9 @@ def _overview(bastion) -> dict[str, Any]:
         "logins": bastion.logins.stats(),
         "anomaly": bastion.anomaly.summary(),
         "probe": bastion.data.get("probe"),
+        "canary": bastion.canary.summary(),
+        "report": bastion.data.get("last_report"),
+        "history": bastion.data.get("history", [])[-30:],
         "language": bastion.hass.config.language,
     }
 
@@ -100,7 +112,11 @@ async def ws_logins(hass, connection, msg) -> None:
         msg["id"],
         {
             "log": list(monitor.log)[-400:][::-1],
-            "tokens": sorted(monitor.tokens.values(), key=lambda t: t.get("last_used_at") or "", reverse=True),
+            "tokens": sorted(
+                (_with_usage(monitor, token_id, token) for token_id, token in monitor.tokens.items()),
+                key=lambda t: t.get("last_used_at") or "",
+                reverse=True,
+            ),
             "users": monitor.users,
             "stats": monitor.stats(),
         },
@@ -237,6 +253,50 @@ async def ws_probe(hass, connection, msg) -> None:
     connection.send_result(msg["id"], _overview(bastion))
 
 
+@websocket_api.websocket_command({probatio.Required("type"): "bastion/report/send"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_report(hass, connection, msg) -> None:
+    """Build and send the weekly report now."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    await bastion.async_send_report()
+    connection.send_result(msg["id"], _overview(bastion))
+
+
+@websocket_api.websocket_command(
+    {
+        probatio.Required("type"): "bastion/security/block",
+        probatio.Optional("ip"): str,
+        probatio.Optional("token_id"): str,
+        probatio.Optional("user_id"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_block(hass, connection, msg) -> None:
+    """Revoke a token, ban an IP and/or deactivate a user."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    result = await bastion.responder.async_block(
+        ip=msg.get("ip"),
+        token_id=msg.get("token_id"),
+        user_id=msg.get("user_id"),
+        actor_id=connection.user.id,
+    )
+    bastion.logins.record(
+        "blocked",
+        {
+            "ip": msg.get("ip"),
+            "token_id": msg.get("token_id"),
+            "user_id": msg.get("user_id"),
+            "result": "; ".join(result),
+            "actor": connection.user.id,
+        },
+    )
+    connection.send_result(msg["id"], {"result": result})
+
+
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register all commands."""
     for command in (
@@ -251,5 +311,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_git_commit,
         ws_git_restore,
         ws_probe,
+        ws_report,
+        ws_block,
     ):
         websocket_api.async_register_command(hass, command)

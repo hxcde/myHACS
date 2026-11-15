@@ -118,6 +118,13 @@ CONF_SABOTAGE_COUNT: Final = "sabotage_count"
 CONF_SABOTAGE_WINDOW: Final = "sabotage_window_seconds"
 CONF_ANOMALY_OUTBOUND: Final = "anomaly_outbound"
 
+CONF_NOTIFY_ACTIONS: Final = "notify_actions"
+CONF_CANARY_ENABLED: Final = "canary_enabled"
+CONF_CANARY_GIT: Final = "canary_in_git"
+CONF_REPORT_ENABLED: Final = "report_enabled"
+CONF_REPORT_WEEKDAY: Final = "report_weekday"
+CONF_REPORT_TIME: Final = "report_time"
+
 GIT_AUTH_SSH: Final = "ssh"
 GIT_AUTH_TOKEN: Final = "token"
 GIT_AUTH_NONE: Final = "none"
@@ -185,6 +192,12 @@ DEFAULT_OPTIONS: Final = {
     CONF_SABOTAGE_COUNT: 3,
     CONF_SABOTAGE_WINDOW: 120,
     CONF_ANOMALY_OUTBOUND: False,
+    CONF_NOTIFY_ACTIONS: True,
+    CONF_CANARY_ENABLED: False,
+    CONF_CANARY_GIT: True,
+    CONF_REPORT_ENABLED: True,
+    CONF_REPORT_WEEKDAY: "0",
+    CONF_REPORT_TIME: "08:13:00",
 }
 
 # Options that hold secrets and must never leave HA in clear text.

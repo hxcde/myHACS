@@ -12,13 +12,14 @@ from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, EVENT_HOMEASSISTANT_S
 from homeassistant.core import CALLBACK_TYPE, CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_change, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .anomaly.engine import AnomalyEngine
 from .audit import AuditContext, async_run_audit
 from .audit.supply_chain import accept_integrity
+from .canary import CanaryManager
 from .const import (
     CONF_AUDIT_INTERVAL,
     CONF_DISABLED_CHECKS,
@@ -27,6 +28,9 @@ from .const import (
     CONF_PROBE_TOKEN,
     CONF_PROBE_URL,
     CONF_REPAIRS_MIN_SEVERITY,
+    CONF_REPORT_ENABLED,
+    CONF_REPORT_TIME,
+    CONF_REPORT_WEEKDAY,
     DOMAIN,
     EVENT_FINDING,
     SEVERITY_ORDER,
@@ -37,10 +41,13 @@ from .const import (
     Severity,
 )
 from .gitsync.manager import GitSyncManager, apply_pending_restore
+from .guard import TokenGuard
 from .login_monitor import LoginMonitor
 from .models import Finding
 from .notifier import Notifier
 from .probe import async_run_probe, probe_findings
+from .report import build_report
+from .responder import Responder
 from .texts import event_text, finding_text
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +73,12 @@ class Bastion:
         self.anomaly = AnomalyEngine(hass, self.notifier, lambda: self.options)
         self.logins = LoginMonitor(hass, self.notifier, lambda: self.options, self.anomaly)
         self.git = GitSyncManager(hass, entry, self.notifier)
+        self.responder = Responder(hass, self)
+        self.canary = CanaryManager(hass, self)
+        self.guard = TokenGuard(hass, self.logins.on_token_used, self.canary.on_token_used)
+        self.logins.responder = self.responder
+        self.logins.ignored_user_ids = lambda: {self.canary.user_id} if self.canary.user_id else set()
+        self.git.decoy = self.canary.decoy_text
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_DATA)
         self.data: dict[str, Any] = {}
         self.findings: list[Finding] = []
@@ -93,7 +106,10 @@ class Bastion:
         self.data.setdefault("baseline", {})
         self.data.setdefault("issues", [])
         self.findings = [_finding_from_dict(f) for f in self.data.get("findings", [])]
+        self.guard.install()
+        self.responder.setup()
         await self.anomaly.async_setup()
+        await self.canary.async_setup()
         await self.logins.async_setup()
         await self.git.async_setup()
 
@@ -108,6 +124,11 @@ class Bastion:
                 async_track_time_interval(
                     self.hass, self._async_scheduled_probe, timedelta(hours=float(opts.get(CONF_PROBE_INTERVAL) or 24))
                 )
+            )
+        if opts.get(CONF_REPORT_ENABLED):
+            h, m, sec = (int(x) for x in str(opts.get(CONF_REPORT_TIME) or "08:13:00").split(":"))
+            self._unsubs.append(
+                async_track_time_change(self.hass, self._async_scheduled_report, hour=h, minute=m, second=sec)
             )
 
         @callback
@@ -139,6 +160,9 @@ class Bastion:
         if self._started_unsub is not None:
             self._started_unsub()
             self._started_unsub = None
+        self.guard.uninstall()
+        self.responder.unload()
+        self.canary.unload()
         await self.git.async_unload()
         await self.logins.async_unload()
         await self.anomaly.async_unload()
@@ -155,6 +179,15 @@ class Bastion:
         self.data["findings"] = [f.as_dict() for f in self.findings]
         await self._store.async_save(self.data)
 
+    def schedule_save(self) -> None:
+        """Delayed save (used by responder and decoys)."""
+
+        def _data() -> dict[str, Any]:
+            self.data["findings"] = [f.as_dict() for f in self.findings]
+            return self.data
+
+        self._store.async_delay_save(_data, 5)
+
     # -------------------------------------------------------------------- audit
     async def _async_scheduled_audit(self, _now: datetime | None = None) -> None:
         try:
@@ -170,6 +203,9 @@ class Bastion:
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
         try:
             opts = self.options
+            self._cache["token_usage"] = self.logins.token_usage
+            self._cache["usage_since"] = self.logins.usage_since
+            self._cache["canary_user"] = self.canary.user_id
             ctx = AuditContext(self.hass, opts, self._cache, self.data["baseline"])
             findings = await async_run_audit(ctx, list(opts.get(CONF_DISABLED_CHECKS) or []))
             findings.extend(self.git.findings(await self.hass.async_add_executor_job(self.git.pending_restore)))
@@ -177,6 +213,7 @@ class Bastion:
             self.audit_errors = ctx.errors
             await self._async_apply_findings(findings, notify)
             self.data["last_audit"] = dt_util.utcnow().isoformat()
+            self._record_history()
             await self._async_save()
             return self.findings
         finally:
@@ -202,9 +239,14 @@ class Bastion:
             finding.first_seen = known[finding.id]
             finding.dismissed = finding.id in dismissed
         # Forget findings that are resolved, so they notify again if they return.
+        previous = {f.id: f for f in self.findings}
+        resolved: list[dict[str, Any]] = self.data.setdefault("resolved", [])
         for fid in list(known):
             if fid not in unique:
                 known.pop(fid)
+                if (old := previous.get(fid)) is not None:
+                    resolved.append({"time": now, "title": old.title, "severity": old.severity.value})
+        del resolved[:-200]
         self.findings = sorted(unique.values(), key=lambda f: (-f.rank, f.title))
 
         notify_min = SEVERITY_ORDER[Severity(self.options.get(CONF_NOTIFY_MIN_SEVERITY) or "high")]
@@ -275,6 +317,47 @@ class Bastion:
             current = self._cache.get("integrity_current")
         accept_integrity(self.data["baseline"], current, domain)
         await self.async_run_audit(notify=False)
+
+    def _record_history(self) -> None:
+        """One score entry per day (last audit of the day wins), 120 days."""
+        summary = self.summary()
+        today = dt_util.now().date().isoformat()
+        history: list[dict[str, Any]] = self.data.setdefault("history", [])
+        entry = {"date": today, "score": summary["score"], "counts": summary["counts"]}
+        if history and history[-1].get("date") == today:
+            history[-1] = entry
+        else:
+            history.append(entry)
+        del history[:-120]
+
+    # ------------------------------------------------------------------- report
+    async def _async_scheduled_report(self, now: datetime) -> None:
+        if str(dt_util.as_local(now).weekday()) != str(self.options.get(CONF_REPORT_WEEKDAY, "0")):
+            return
+        try:
+            await self.async_send_report()
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Bastion weekly report failed")
+
+    async def async_build_report(self) -> tuple[str, str]:
+        """Title and markdown of the weekly report."""
+        commits = None
+        if self.git.enabled:
+            try:
+                history = await self.git.async_history(limit=200, refresh=False)
+                cutoff = dt_util.utcnow().timestamp() - 7 * 86400
+                commits = sum(1 for c in history["commits"] if c["time"] >= cutoff)
+            except Exception:  # noqa: BLE001
+                commits = None
+        return build_report(self, commits)
+
+    async def async_send_report(self) -> dict[str, str]:
+        """Build and send the weekly report."""
+        title, message = await self.async_build_report()
+        self.data["last_report"] = {"time": dt_util.utcnow().isoformat(), "title": title, "message": message}
+        self.schedule_save()
+        await self.notifier.async_send(title, message, key="weekly_report")
+        return {"title": title, "message": message}
 
     # -------------------------------------------------------------------- probe
     async def _async_scheduled_probe(self, _now: datetime | None = None) -> None:

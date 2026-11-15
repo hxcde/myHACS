@@ -18,6 +18,8 @@
           "audit": "Security audit",
           "notifications": "Notifications",
           "git": "Git versioning",
+          "canary": "Decoys",
+          "report": "Weekly report",
           "probe": "External check",
           "anomaly": "Anomaly detection"
         }
@@ -45,7 +47,8 @@
           "notify_logins": "Notify on logins and new IPs",
           "notify_public_ip_only": "Only for logins from public IPs",
           "brute_force_threshold": "Brute force alarm after failed logins (10 min)",
-          "geoip_lookup": "Look up country of public IPs (sends the IP to ipwho.is)"
+          "geoip_lookup": "Look up country of public IPs (sends the IP to ipwho.is)",
+          "notify_actions": "Buttons 'That was me' / 'Block' in the Companion App"
         }
       },
       "git": {
@@ -105,6 +108,22 @@
           "sabotage_window_seconds": "Within",
           "anomaly_outbound": "Watch outbound connections (new destinations)"
         }
+      },
+      "canary": {
+        "title": "Decoys",
+        "description": "Bastion creates a decoy token (user 'api-backup', read-only, local only) and a decoy webhook. Any use is rejected immediately and raises an alarm. Token and URL are shown in the panel under Anomalies; plant them where an intruder would look (notes, NAS share).",
+        "data": {
+          "canary_enabled": "Enable decoys",
+          "canary_in_git": "Place decoy as .env in the git repository (detects repository leaks)"
+        }
+      },
+      "report": {
+        "title": "Weekly report",
+        "data": {
+          "report_enabled": "Send weekly report",
+          "report_weekday": "Weekday",
+          "report_time": "Time"
+        }
       }
     },
     "error": {
@@ -143,6 +162,7 @@
         "http": "HTTP configuration",
         "exposure": "Webhooks, voice assistants, MQTT",
         "updates": "Updates and advisories",
+        "firmware": "Firmware vulnerabilities (ESPHome, Tasmota, WLED, Z2M)",
         "supply_chain": "Custom integrations",
         "config": "Configuration and backups",
         "supervisor": "Add-ons (Supervisor)"
@@ -164,6 +184,17 @@
         "zigbee2mqtt": "Zigbee2MQTT",
         "addons": "Add-on options (Supervisor)",
         "extra": "Additional paths"
+      }
+    },
+    "weekday": {
+      "options": {
+        "0": "Monday",
+        "1": "Tuesday",
+        "2": "Wednesday",
+        "3": "Thursday",
+        "4": "Friday",
+        "5": "Saturday",
+        "6": "Sunday"
       }
     }
   },
@@ -201,6 +232,9 @@
       },
       "anomaly": {
         "name": "Anomaly {entity}"
+      },
+      "canary": {
+        "name": "Decoy triggered"
       }
     },
     "button": {
@@ -212,6 +246,9 @@
       },
       "external_scan": {
         "name": "Run external check"
+      },
+      "send_report": {
+        "name": "Send weekly report"
       }
     }
   },
@@ -289,6 +326,28 @@
     "reset_git_host_key": {
       "name": "Reset git server key",
       "description": "Forgets the stored SSH host key after you verified a legitimate change."
+    },
+    "send_report": {
+      "name": "Send weekly report",
+      "description": "Builds the weekly report and sends it now."
+    },
+    "block": {
+      "name": "Block",
+      "description": "Revokes a token, bans an IP and/or deactivates a user.",
+      "fields": {
+        "ip": {
+          "name": "IP",
+          "description": "IP address to ban."
+        },
+        "token_id": {
+          "name": "Token ID",
+          "description": "Token to revoke."
+        },
+        "user_id": {
+          "name": "User ID",
+          "description": "User to deactivate."
+        }
+      }
     }
   }
 }

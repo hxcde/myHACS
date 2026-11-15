@@ -30,7 +30,7 @@ from custom_components.bastion.secret_scan import scan_text
         "-----BEGIN OPENSSH PRIVATE KEY-----",
         "github: ghp_abcdefghijklmnopqrstuvwxyz0123456789AB",
         "network_key: [1, 2, 3, 4]",
-        "    key: 'aGVsbG8gd29ybGQgdGhpcyBpcyBhIHRlc3Qga2V5IQ=='",
+        "    key: 'q5Xn5w0Rk3c2p8m9L1q4T7v0bY2zA6sD8fG1hJ3kL5Q='",
     ],
 )
 def test_scanner_finds(text: str) -> None:
@@ -50,6 +50,8 @@ def test_scanner_finds(text: str) -> None:
         "password: ${wifi_password}",
         "max_tokens: 500",
         "token: ''",
+        "    key: input_number.some_long_identifier_value_here_x",
+        "  key: zigbee2mqtt-mueller-licht-tint-remote-404049",
     ],
 )
 def test_scanner_ignores(text: str) -> None:

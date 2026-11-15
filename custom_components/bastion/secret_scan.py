@@ -102,7 +102,8 @@ _TOKEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("url_credentials", re.compile(r"\b[a-z][a-z0-9+.\-]*://[^\s:/@]+:[^\s@/]{3,}@[^\s]+", re.I)),
 )
 
-_BARE_KEY_RE = re.compile(r"^\s*-?\s*key\s*:\s*[\"']?[A-Za-z0-9+/=_\-]{32,}[\"']?\s*(#.*)?$")
+# ESPHome API encryption key: 32 bytes base64 (44 characters ending in "=").
+_BARE_KEY_RE = re.compile(r"^\s*-?\s*key\s*:\s*[\"']?[A-Za-z0-9+/]{43}=[\"']?\s*(#.*)?$")
 
 TEXT_EXTENSIONS = {
     ".yaml",

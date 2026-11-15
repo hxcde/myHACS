@@ -36,8 +36,9 @@ class Notifier:
         rate_limit: float = 0,
         persistent: bool = True,
         data: dict[str, Any] | None = None,
+        actions: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Send a notification."""
+        """Send a notification. Actions are added for Companion App targets."""
         if key and rate_limit:
             now = time.monotonic()
             if now - self._last.get(key, -rate_limit - 1) < rate_limit:
@@ -51,7 +52,13 @@ class Notifier:
                 notification_id=f"{DOMAIN}_{key}" if key else None,
             )
         for target in self._targets:
-            await self._send_target(target, title, message, data)
+            payload_data = dict(data or {})
+            if actions and target.removeprefix("notify.").startswith("mobile_app_"):
+                payload_data["actions"] = actions
+                payload_data["push"] = {"interruption-level": "time-sensitive"}
+                if key:
+                    payload_data["tag"] = f"{DOMAIN}_{key}"
+            await self._send_target(target, title, message, payload_data or None)
 
     async def _send_target(self, target: str, title: str, message: str, data: dict[str, Any] | None) -> None:
         target = target.strip()

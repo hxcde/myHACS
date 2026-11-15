@@ -62,6 +62,20 @@ def async_register_services(hass: HomeAssistant) -> None:
         await _require_admin(hass, call)
         await _bastion(hass).async_accept_integrity(call.data.get("domain"))
 
+    async def send_report(call: ServiceCall) -> ServiceResponse:
+        await _require_admin(hass, call)
+        return await _bastion(hass).async_send_report()
+
+    async def block(call: ServiceCall) -> ServiceResponse:
+        await _require_admin(hass, call)
+        result = await _bastion(hass).responder.async_block(
+            ip=call.data.get("ip"),
+            token_id=call.data.get("token_id"),
+            user_id=call.data.get("user_id"),
+            actor_id=call.context.user_id,
+        )
+        return {"result": result}
+
     async def reset_host_key(call: ServiceCall) -> None:
         await _require_admin(hass, call)
         await _bastion(hass).git.async_reset_host_key()
@@ -104,3 +118,17 @@ def async_register_services(hass: HomeAssistant) -> None:
         schema=probatio.Schema({probatio.Optional("domain"): cv.string}),
     )
     hass.services.async_register(DOMAIN, "reset_git_host_key", reset_host_key)
+    hass.services.async_register(DOMAIN, "send_report", send_report, supports_response=SupportsResponse.OPTIONAL)
+    hass.services.async_register(
+        DOMAIN,
+        "block",
+        block,
+        schema=probatio.Schema(
+            {
+                probatio.Optional("ip"): cv.string,
+                probatio.Optional("token_id"): cv.string,
+                probatio.Optional("user_id"): cv.string,
+            }
+        ),
+        supports_response=SupportsResponse.OPTIONAL,
+    )

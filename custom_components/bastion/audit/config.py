@@ -150,7 +150,9 @@ async def async_check(ctx: AuditContext) -> list[Finding]:
         mode = (await hass.async_add_executor_job(os.stat, secrets_path)).st_mode
         if mode & (stat.S_IROTH | stat.S_IWOTH):
             out.append(
-                make_finding("secrets_world_readable", Severity.LOW, Category.CONFIG, "secrets", mode=oct(mode & 0o777))
+                make_finding(
+                    "secrets_world_readable", Severity.LOW, Category.CONFIG, "secrets", mode=format(mode & 0o777, "o")
+                )
             )
     except OSError:
         pass

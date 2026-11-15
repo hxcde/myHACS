@@ -266,6 +266,18 @@ FINDING_TEXTS: dict[str, dict[str, tuple[str, str, str]]] = {
             "Install updates in time.",
         ),
     },
+    "firmware_advisory": {
+        "de": (
+            "Sicherheitslücke in {firmware}-Firmware ({count} Geräte)",
+            "{summary} ({ghsa}{cve}, Schweregrad {level}). Betroffen: {devices}. Behoben in: {patched}.",
+            "Firmware der Geräte auf {patched} oder neuer aktualisieren. Details: {url}",
+        ),
+        "en": (
+            "Vulnerability in {firmware} firmware ({count} devices)",
+            "{summary} ({ghsa}{cve}, severity {level}). Affected: {devices}. Fixed in: {patched}.",
+            "Update the device firmware to {patched} or newer. Details: {url}",
+        ),
+    },
     "mqtt_unencrypted": {
         "de": (
             "MQTT ohne TLS: {broker}",
@@ -692,6 +704,26 @@ EVENT_TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "de": ("Neues Verbindungsziel", "Home Assistant verbindet sich erstmals mit {target}."),
         "en": ("New outbound destination", "Home Assistant connects to {target} for the first time."),
     },
+    "canary": {
+        "de": (
+            "⚠ Köder ausgelöst – möglicher Einbruch",
+            "Der Köder ({via}) wurde von {ip} benutzt ({agent}). Diese Zugangsdaten nutzt niemand legitim: Jemand hat sie gefunden.",
+        ),
+        "en": (
+            "⚠ Decoy triggered – possible intrusion",
+            "The decoy ({via}) was used from {ip} ({agent}). Nobody uses these credentials legitimately: someone found them.",
+        ),
+    },
+    "token_new_ip": {
+        "de": (
+            "Token von neuer IP: {name}",
+            "Der Long-Lived-Token „{name}“ von {user} wird erstmals von {ip}{geo} benutzt.",
+        ),
+        "en": (
+            "Token used from new IP: {name}",
+            "Long-lived token '{name}' of {user} is used from {ip}{geo} for the first time.",
+        ),
+    },
     "anomaly": {
         "de": ("Anomalie: {name}", "{name}: {detail}"),
         "en": ("Anomaly: {name}", "{name}: {detail}"),
@@ -857,3 +889,78 @@ def event_text(key: str, language: str, data: dict[str, Any]) -> tuple[str, str]
 def misc(key: str, language: str, **data: Any) -> str:
     """Small text snippets."""
     return fmt(MISC[lang(language)].get(key, key), data)
+
+
+ACTION_TEXTS = {
+    "de": {
+        "ok": "War ich",
+        "block": "Sperren",
+        "expired": "Die Aktion ist abgelaufen oder wurde schon ausgeführt.",
+        "confirmed": "Bestätigt: {what}",
+        "token_revoked": "Token „{name}“ widerrufen",
+        "own_token": "Eigener Token wird nicht widerrufen",
+        "ip_banned": "IP {ip} gesperrt",
+        "ban_invalid": "Ungültige IP {ip}",
+        "ban_protected": "IP {ip} ist geschützt (Loopback oder Reverse-Proxy) und wird nicht gesperrt",
+        "ban_unavailable": "IP {ip} nicht gesperrt: IP-Sperre ist in der HTTP-Konfiguration deaktiviert",
+        "user_deactivated": "Benutzer „{user}“ deaktiviert",
+        "user_protected": "Benutzer „{user}“ ist geschützt (Besitzer oder du selbst)",
+        "nothing": "Nichts zu tun",
+    },
+    "en": {
+        "ok": "That was me",
+        "block": "Block",
+        "expired": "The action expired or was already executed.",
+        "confirmed": "Confirmed: {what}",
+        "token_revoked": "Token '{name}' revoked",
+        "own_token": "Your own token is not revoked",
+        "ip_banned": "IP {ip} banned",
+        "ban_invalid": "Invalid IP {ip}",
+        "ban_protected": "IP {ip} is protected (loopback or reverse proxy) and is not banned",
+        "ban_unavailable": "IP {ip} not banned: IP banning is disabled in the HTTP configuration",
+        "user_deactivated": "User '{user}' deactivated",
+        "user_protected": "User '{user}' is protected (owner or yourself)",
+        "nothing": "Nothing to do",
+    },
+}
+
+REPORT_TEXTS = {
+    "de": {
+        "title": "Bastion Wochenbericht (KW {week})",
+        "score": "Sicherheitswert: **{score}**",
+        "score_trend": "Sicherheitswert: **{score}** (Vorwoche {previous}, {diff})",
+        "open": "Offene Befunde: {critical} kritisch, {high} hoch, {medium} mittel, {low} niedrig",
+        "new_findings": "Neu in den letzten 7 Tagen ({count}):",
+        "resolved_findings": "Behoben ({count}):",
+        "logins": "Anmeldungen: {ok} erfolgreich, {failed} fehlgeschlagen, {new_ip} neue IPs, {banned} gesperrt",
+        "canary_hit": "⚠ Köder {count}× ausgelöst",
+        "canary_quiet": "Köder: nicht ausgelöst",
+        "anomalies": "Anomalien und Sicherheitsereignisse: {count}",
+        "git": "Git: {commits} Commits, Status {status}, letzter Push {last}",
+        "ports": "Offene Ports von außen: {ports}",
+    },
+    "en": {
+        "title": "Bastion weekly report (week {week})",
+        "score": "Security score: **{score}**",
+        "score_trend": "Security score: **{score}** (last week {previous}, {diff})",
+        "open": "Open findings: {critical} critical, {high} high, {medium} medium, {low} low",
+        "new_findings": "New in the last 7 days ({count}):",
+        "resolved_findings": "Resolved ({count}):",
+        "logins": "Logins: {ok} successful, {failed} failed, {new_ip} new IPs, {banned} blocked",
+        "canary_hit": "⚠ Decoy triggered {count} times",
+        "canary_quiet": "Decoy: not triggered",
+        "anomalies": "Anomalies and security events: {count}",
+        "git": "Git: {commits} commits, status {status}, last push {last}",
+        "ports": "Ports open from outside: {ports}",
+    },
+}
+
+
+def action_text(key: str, language: str, **data: Any) -> str:
+    """Texts of notification actions and their results."""
+    return fmt(ACTION_TEXTS[lang(language)].get(key, key), data)
+
+
+def report_text(key: str, language: str, **data: Any) -> str:
+    """Texts of the weekly report."""
+    return fmt(REPORT_TEXTS[lang(language)].get(key, key), data)

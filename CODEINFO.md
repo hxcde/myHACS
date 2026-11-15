@@ -21,6 +21,10 @@ custom_components/bastion/
   secret_scan.py         Mustererkennung für Zugangsdaten (ohne HA-Abhängigkeit)
   crypto.py              scrypt + AES-256-GCM für Secrets im Repo
   probe.py               Client der externen Prüfung + Port-Bewertung
+  guard.py               Token-Wächter: umhüllt hass.auth.async_validate_access_token (LLAT-Nutzung + IP, Köder-Abweisung)
+  canary.py              Köder: Benutzer „api-backup“ (nur lesen, nur lokal), Token, Webhook, .env fürs Git-Repo
+  responder.py           Aktions-Buttons in Benachrichtigungen (Nonce, 48 h), Sperren: Token/IP/Benutzer
+  report.py              Wochenbericht aus Score-Verlauf, Befunden, Login-Log, Köder, Git, Probe
   services.py            Service-Aktionen (nur Admins)
   websocket.py           Websocket-API für das Panel (require_admin)
   panel.py               Registrierung des Seitenleisten-Panels
@@ -30,6 +34,7 @@ custom_components/bastion/
     access.py            Benutzer, MFA, Admins, Tokens, trusted_networks
     exposure.py          HTTP, Webhooks, Sprachassistenten, Alarm-Codes, MQTT-TLS
     updates.py           HA-Version, GitHub-Advisories, Companion-Apps, ESPHome, Updates
+    firmware.py          Geräte-Firmware (Device-Registry sw_version) gegen Advisories von ESPHome/Tasmota/WLED/Z2M
     supply_chain.py      Integrität custom_components/www, Repo-Check, ungenutzte Integrationen, externe Ressourcen
     config.py            Klartext-Secrets, Shell-Templates, Debug-Konsole, Backups
     supervisor.py        Add-on-Rechte (nur mit Supervisor)
