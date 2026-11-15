@@ -964,3 +964,98 @@ def action_text(key: str, language: str, **data: Any) -> str:
 def report_text(key: str, language: str, **data: Any) -> str:
     """Texts of the weekly report."""
     return fmt(REPORT_TEXTS[lang(language)].get(key, key), data)
+
+
+ALARM_MODES = {
+    "de": {"home": "Zuhause", "night": "Nacht", "away": "Abwesend", None: "Aus"},
+    "en": {"home": "Home", "night": "Night", "away": "Away", None: "Off"},
+}
+
+ALARM_TEXTS = {
+    "de": {
+        "arming": ("Alarmanlage wird scharf", "{mode} in {delay} s{by}."),
+        "armed": ("Alarmanlage scharf: {mode}", "Scharf geschaltet{by}.{bypassed}"),
+        "rearmed": ("Alarmanlage wieder scharf", "Nach dem Alarm wieder scharf: {mode}."),
+        "disarmed": ("Alarmanlage aus", "Unscharf geschaltet{by}."),
+        "pending": (
+            "Vorwarnung: {name}",
+            "{name}{room} ausgelöst. Alarm in {delay} s, wenn nicht unscharf geschaltet wird.",
+        ),
+        "triggered": ("🚨 ALARM: {name}", "Ausgelöst durch {name}{room} ({reason}). Modus: {mode}."),
+        "arm_failed": ("Scharfschalten fehlgeschlagen", "Offen: {sensors}."),
+        "wrong_code": ("Falscher Alarm-Code", "Ein falscher Code wurde eingegeben{by}."),
+        "sensor_unavailable": ("Sensor nicht erreichbar", "{name} ist bei scharfer Anlage nicht erreichbar."),
+        "bypassed": " Überbrückt: {sensors}.",
+        "by": " von {user}",
+        "reasons": {
+            "sensor": "Sensor",
+            "entry_timeout": "Eingangsverzögerung abgelaufen",
+            "manual": "manuell",
+            "sabotage": "Sabotage",
+            "tamper": "Manipulation",
+            "canary": "Köder",
+        },
+        "errors": {
+            "open_sensors": "Nicht scharf geschaltet, offen: {detail}",
+            "wrong_code": "Falscher Code",
+            "locked": "Zu viele falsche Codes, gesperrt für {detail} s",
+            "invalid_mode": "Unbekannter Modus",
+            "code_too_short": "Der Code muss mindestens 4 Zeichen haben",
+        },
+    },
+    "en": {
+        "arming": ("Alarm arming", "{mode} in {delay} s{by}."),
+        "armed": ("Alarm armed: {mode}", "Armed{by}.{bypassed}"),
+        "rearmed": ("Alarm re-armed", "Armed again after the alarm: {mode}."),
+        "disarmed": ("Alarm disarmed", "Disarmed{by}."),
+        "pending": ("Warning: {name}", "{name}{room} opened. Alarm in {delay} s unless disarmed."),
+        "triggered": ("🚨 ALARM: {name}", "Triggered by {name}{room} ({reason}). Mode: {mode}."),
+        "arm_failed": ("Arming failed", "Open: {sensors}."),
+        "wrong_code": ("Wrong alarm code", "A wrong code was entered{by}."),
+        "sensor_unavailable": ("Sensor unavailable", "{name} is unavailable while armed."),
+        "bypassed": " Bypassed: {sensors}.",
+        "by": " by {user}",
+        "reasons": {
+            "sensor": "sensor",
+            "entry_timeout": "entry delay expired",
+            "manual": "manual",
+            "sabotage": "sabotage",
+            "tamper": "tampering",
+            "canary": "decoy",
+        },
+        "errors": {
+            "open_sensors": "Not armed, open: {detail}",
+            "wrong_code": "Wrong code",
+            "locked": "Too many wrong codes, locked for {detail} s",
+            "invalid_mode": "Unknown mode",
+            "code_too_short": "The code needs at least 4 characters",
+        },
+    },
+}
+
+
+def alarm_text(kind: str, language: str, entry: dict[str, Any]) -> tuple[str, str] | None:
+    """Notification for an alarm event."""
+    texts = ALARM_TEXTS[lang(language)]
+    if kind not in texts:
+        return None
+    modes = ALARM_MODES[lang(language)]
+    data = {
+        "mode": modes.get(entry.get("target") or entry.get("mode"), entry.get("mode") or ""),
+        "delay": entry.get("delay", ""),
+        "name": entry.get("name") or entry.get("sensor") or texts["reasons"].get(entry.get("reason") or "", "—"),
+        "room": f" ({entry['room']})" if entry.get("room") else "",
+        "reason": texts["reasons"].get(entry.get("reason") or "", entry.get("reason") or ""),
+        "by": fmt(texts["by"], {"user": entry["user"]}) if entry.get("user") else "",
+        "sensors": ", ".join(entry.get("sensors") or []),
+        "bypassed": fmt(texts["bypassed"], {"sensors": ", ".join(entry["bypassed"])}) if entry.get("bypassed") else "",
+    }
+    title, message = texts[kind]
+    return fmt(title, data), fmt(message, data)
+
+
+def alarm_error_text(reason: str, language: str, detail: Any = None) -> str:
+    """Error message for a failed alarm command."""
+    if isinstance(detail, list):
+        detail = ", ".join(str(d) for d in detail)
+    return fmt(ALARM_TEXTS[lang(language)]["errors"].get(reason, reason), {"detail": detail or ""})

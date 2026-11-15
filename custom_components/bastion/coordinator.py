@@ -16,6 +16,8 @@ from homeassistant.helpers.event import async_call_later, async_track_time_chang
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from .alarm.engine import AlarmEngine
+from .alarm.relay import AlarmRelay
 from .anomaly.engine import AnomalyEngine
 from .audit import AuditContext, async_run_audit
 from .audit.supply_chain import accept_integrity
@@ -48,7 +50,7 @@ from .notifier import Notifier
 from .probe import async_run_probe, probe_findings
 from .report import build_report
 from .responder import Responder
-from .texts import event_text, finding_text
+from .texts import alarm_text, event_text, finding_text
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +81,9 @@ class Bastion:
         self.logins.responder = self.responder
         self.logins.ignored_user_ids = lambda: {self.canary.user_id} if self.canary.user_id else set()
         self.git.decoy = self.canary.decoy_text
+        self.alarm = AlarmEngine(hass, self)
+        self.relay = AlarmRelay(hass, self.alarm)
+        self.alarm.on_event = self._on_alarm_event
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_DATA)
         self.data: dict[str, Any] = {}
         self.findings: list[Finding] = []
@@ -109,6 +114,8 @@ class Bastion:
         self.guard.install()
         self.responder.setup()
         await self.anomaly.async_setup()
+        await self.alarm.async_setup()
+        self.relay.setup()
         await self.canary.async_setup()
         await self.logins.async_setup()
         await self.git.async_setup()
@@ -163,6 +170,8 @@ class Bastion:
         self.guard.uninstall()
         self.responder.unload()
         self.canary.unload()
+        self.relay.unload()
+        await self.alarm.async_unload()
         await self.git.async_unload()
         await self.logins.async_unload()
         await self.anomaly.async_unload()
@@ -317,6 +326,32 @@ class Bastion:
             current = self._cache.get("integrity_current")
         accept_integrity(self.data["baseline"], current, domain)
         await self.async_run_audit(notify=False)
+
+    @callback
+    def _on_alarm_event(self, kind: str, entry: dict[str, Any]) -> None:
+        self.hass.async_create_task(self._async_alarm_event(kind, entry), eager_start=True)
+
+    async def _async_alarm_event(self, kind: str, entry: dict[str, Any]) -> None:
+        actions = self.alarm.config.get("actions") or {}
+        notify_kind = "armed" if kind in ("arming", "rearmed") else kind
+        if notify_kind in (actions.get("notify_events") or []):
+            if (texts := alarm_text(kind, self.hass.config.language, entry)) is not None:
+                data = None
+                if kind == "triggered" and actions.get("critical_push", True):
+                    data = {
+                        "push": {"sound": {"name": "default", "critical": 1, "volume": 1.0}},
+                        "ttl": 0,
+                        "priority": "high",
+                        "channel": "alarm_stream",
+                    }
+                await self.notifier.async_send(
+                    texts[0],
+                    texts[1],
+                    key=f"alarm_{kind}",
+                    data=data,
+                    persistent=kind in ("triggered", "pending", "arm_failed"),
+                )
+        await self.relay.async_send_event(kind, entry)
 
     def _record_history(self) -> None:
         """One score entry per day (last audit of the day wins), 120 days."""

@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import Any
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import (
+    area_registry as ar,
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 import probatio
 
+from .alarm.engine import MODES, NOTIFY_EVENTS, SENSOR_TYPES, SUPPORTED_DOMAINS, AlarmError
 from .const import ALL_AREAS
+from .texts import alarm_error_text
 
 
 def _bastion(hass: HomeAssistant):
@@ -297,6 +306,217 @@ async def ws_block(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"result": result})
 
 
+# ------------------------------------------------------------------ alarm
+_ROOM = probatio.Schema(
+    {
+        probatio.Optional("id"): probatio.All(str, probatio.Length(max=32)),
+        probatio.Required("name"): probatio.All(str, probatio.Length(min=1, max=40)),
+        probatio.Optional("icon", default="mdi:door"): probatio.All(str, probatio.Length(max=60)),
+        probatio.Optional("sensors", default=[]): [cv.entity_id],
+    }
+)
+_SENSOR = probatio.Schema(
+    {
+        probatio.Optional("modes", default=list(MODES)): [probatio.In(MODES)],
+        probatio.Optional("type", default="delayed"): probatio.In(SENSOR_TYPES),
+        probatio.Optional("bypass", default=False): bool,
+        probatio.Optional("exit_delay", default=None): probatio.Any(
+            None, probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=900))
+        ),
+        probatio.Optional("entry_delay", default=None): probatio.Any(
+            None, probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=900))
+        ),
+    }
+)
+_DELAY = probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=900))
+_ALARM_CONFIG = probatio.Schema(
+    {
+        probatio.Optional("rooms"): [_ROOM],
+        probatio.Optional("sensors"): {cv.entity_id: _SENSOR},
+        probatio.Optional("modes"): {
+            probatio.In(MODES): probatio.Schema({probatio.Required("exit"): _DELAY, probatio.Required("entry"): _DELAY})
+        },
+        probatio.Optional("trigger_time"): probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=3600)),
+        probatio.Optional("rearm"): bool,
+        probatio.Optional("require_code_arm"): bool,
+        probatio.Optional("sabotage_triggers"): bool,
+        probatio.Optional("actions"): probatio.Schema(
+            {
+                probatio.Optional("sirens"): [cv.entity_id],
+                probatio.Optional("lights"): [cv.entity_id],
+                probatio.Optional("warning"): [cv.entity_id],
+                probatio.Optional("notify_events"): [probatio.In(NOTIFY_EVENTS)],
+                probatio.Optional("critical_push"): bool,
+            }
+        ),
+        probatio.Optional("worker"): probatio.Schema(
+            {
+                probatio.Optional("url"): probatio.All(str, probatio.Match(r"^(https://\S+)?$")),
+                probatio.Optional("interval"): probatio.All(probatio.Coerce(int), probatio.Range(min=30, max=3600)),
+                probatio.Optional("enabled"): bool,
+            }
+        ),
+    }
+)
+
+
+def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    area_reg = ar.async_get(hass)
+    candidates = []
+    for state in hass.states.async_all(SUPPORTED_DOMAINS):
+        if state.domain == "switch":
+            continue
+        area_id = None
+        if (entry := ent_reg.async_get(state.entity_id)) is not None:
+            area_id = entry.area_id
+            if area_id is None and entry.device_id and (device := dev_reg.async_get(entry.device_id)) is not None:
+                area_id = device.area_id
+        area = area_reg.async_get_area(area_id) if area_id else None
+        candidates.append(
+            {
+                "entity_id": state.entity_id,
+                "name": state.attributes.get("friendly_name") or state.entity_id,
+                "device_class": state.attributes.get("device_class"),
+                "area": area.name if area else None,
+                "area_icon": area.icon if area else None,
+            }
+        )
+    candidates.sort(key=lambda c: (c["area"] or "~", c["name"]))
+    actors = [
+        {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id}
+        for s in hass.states.async_all(("siren", "switch", "light", "script", "scene", "input_boolean", "media_player"))
+    ]
+    actors.sort(key=lambda a: a["name"].lower())
+    relay = bastion.relay
+    return {
+        "config": bastion.alarm.public_config(),
+        "status": bastion.alarm.status(),
+        "log": bastion.alarm.log[-60:][::-1],
+        "candidates": candidates,
+        "actors": actors,
+        "relay": {"enabled": relay.enabled, "last_ok": relay.last_ok, "last_error": relay.last_error},
+    }
+
+
+def _alarm_error(connection, msg, err: AlarmError) -> None:
+    connection.send_error(
+        msg["id"], err.reason, alarm_error_text(err.reason, connection.hass.config.language, err.detail)
+    )
+
+
+@websocket_api.websocket_command({probatio.Required("type"): "bastion/alarm/get"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_get(hass, connection, msg) -> None:
+    """Configuration, state and sensor candidates."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    connection.send_result(msg["id"], _alarm_payload(hass, bastion))
+
+
+@websocket_api.websocket_command({probatio.Required("type"): "bastion/alarm/save", probatio.Required("config"): dict})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_save(hass, connection, msg) -> None:
+    """Save rooms, sensors, modes, actions and worker settings."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    try:
+        config = _ALARM_CONFIG(msg["config"])
+    except probatio.Invalid as err:
+        connection.send_error(msg["id"], "invalid", str(err))
+        return
+    for room in config.get("rooms", []):
+        room.setdefault("id", f"r_{secrets.token_hex(3)}")
+    await bastion.alarm.async_update_config(config)
+    bastion.relay.setup()
+    connection.send_result(msg["id"], _alarm_payload(hass, bastion))
+
+
+@websocket_api.websocket_command(
+    {
+        probatio.Required("type"): "bastion/alarm/arm",
+        probatio.Required("mode"): probatio.In(MODES),
+        probatio.Optional("code"): str,
+        probatio.Optional("force", default=False): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_arm(hass, connection, msg) -> None:
+    """Arm from the panel."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    try:
+        await bastion.alarm.async_arm(
+            msg["mode"], msg.get("code") or None, user=connection.user.name, force=msg["force"]
+        )
+    except AlarmError as err:
+        _alarm_error(connection, msg, err)
+        return
+    connection.send_result(msg["id"], _alarm_payload(hass, bastion))
+
+
+@websocket_api.websocket_command({probatio.Required("type"): "bastion/alarm/disarm", probatio.Optional("code"): str})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_disarm(hass, connection, msg) -> None:
+    """Disarm from the panel."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    try:
+        await bastion.alarm.async_disarm(msg.get("code") or None, user=connection.user.name)
+    except AlarmError as err:
+        _alarm_error(connection, msg, err)
+        return
+    connection.send_result(msg["id"], _alarm_payload(hass, bastion))
+
+
+@websocket_api.websocket_command(
+    {
+        probatio.Required("type"): "bastion/alarm/code",
+        probatio.Optional("delete"): str,
+        probatio.Optional("name"): probatio.All(str, probatio.Length(max=40)),
+        probatio.Optional("code"): probatio.All(str, probatio.Length(min=4, max=32)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_code(hass, connection, msg) -> None:
+    """Add or delete a code."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    try:
+        if msg.get("delete"):
+            bastion.alarm.delete_code(msg["delete"])
+        elif msg.get("code"):
+            await bastion.alarm.async_set_code(msg.get("name") or "Code", msg["code"])
+    except AlarmError as err:
+        _alarm_error(connection, msg, err)
+        return
+    connection.send_result(msg["id"], _alarm_payload(hass, bastion))
+
+
+@websocket_api.websocket_command(
+    {probatio.Required("type"): "bastion/alarm/worker", probatio.Required("action"): probatio.In(("test", "secret"))}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_worker(hass, connection, msg) -> None:
+    """Test the worker or create a new shared secret."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    result: dict[str, Any] = {}
+    if msg["action"] == "secret":
+        bastion.alarm.regenerate_worker_secret()
+        bastion.relay.setup()
+    else:
+        result = await bastion.relay.async_test()
+    connection.send_result(msg["id"], {"result": result, **_alarm_payload(hass, bastion)})
+
+
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register all commands."""
     for command in (
@@ -313,5 +533,11 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_probe,
         ws_report,
         ws_block,
+        ws_alarm_get,
+        ws_alarm_save,
+        ws_alarm_arm,
+        ws_alarm_disarm,
+        ws_alarm_code,
+        ws_alarm_worker,
     ):
         websocket_api.async_register_command(hass, command)

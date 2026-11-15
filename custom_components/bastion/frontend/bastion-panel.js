@@ -3,7 +3,79 @@
 
 const I18N = {
   de: {
-    tabs: { overview: "Übersicht", logins: "Anmeldungen", git: "Git", anomaly: "Anomalien & Köder", external: "Extern" },
+    alarm: {
+      tab: "Alarmanlage",
+      states: { disarmed: "Aus", arming: "Wird scharf", armed_home: "Scharf · Zuhause", armed_night: "Scharf · Nacht", armed_away: "Scharf · Abwesend", pending: "Vorwarnung", triggered: "ALARM" },
+      modes: { off: "Aus", home: "Zuhause", night: "Nacht", away: "Abwesend" },
+      mode_hint: { off: "Unscharf", home: "Außenhaut, Bewohner da", night: "Erdgeschoss, schlafen", away: "Alles überwacht" },
+      arming_in: "Scharf in {n} s",
+      alarm_in: "Alarm in {n} s",
+      triggered_by: "Ausgelöst durch",
+      since: "seit",
+      by: "von",
+      settings: "Einstellungen",
+      back: "Zurück",
+      save: "Speichern",
+      saved: "Gespeichert",
+      rooms: "Räume",
+      no_rooms: "Noch keine Räume. Lege in den Einstellungen Räume an und ordne Sensoren zu.",
+      open: "offen",
+      closed: "zu",
+      unavailable: "nicht erreichbar",
+      bypassed: "überbrückt",
+      log: "Protokoll",
+      no_log: "Noch keine Ereignisse.",
+      code: "Code",
+      enter_code: "Code eingeben",
+      cancel: "Abbrechen",
+      ok: "OK",
+      open_title: "Offene Sensoren",
+      open_text: "Diese Sensoren sind offen. Trotzdem scharf schalten? Sie werden überbrückt, bis sie wieder schließen.",
+      force: "Trotzdem scharf schalten",
+      sections: { rooms: "Räume & Sensoren", modes: "Modi & Zeiten", actions: "Aktionen", codes: "Codes", worker: "Cloud-Worker" },
+      import_areas: "Räume aus HA-Bereichen übernehmen",
+      add_room: "Raum hinzufügen",
+      room_name: "Name",
+      room_icon: "Icon (mdi:…)",
+      delete: "Löschen",
+      add_sensor: "Sensor hinzufügen …",
+      type: { instant: "Sofort", delayed: "Verzögert", always: "Immer (24 h)" },
+      type_hint: { instant: "Löst sofort aus", delayed: "Startet die Eingangsverzögerung", always: "Auch wenn die Anlage aus ist (Rauch, Wasser, Sabotage)" },
+      may_be_open: "Darf beim Scharfschalten offen sein",
+      sensor_exit: "Aktiv nach",
+      sensor_entry: "Alarm nach",
+      sensor_exit_hint: "Aktivierungsverzögerung: Sekunden nach dem Scharfschalten, bis der Sensor überwacht wird (leer = Modus). Darf beim Scharfschalten offen sein, z. B. die Haustür.",
+      sensor_entry_hint: "Auslöseverzögerung: Sekunden vom Auslösen bis zum Alarm (leer = Modus). Bei „Immer“ eine Bestätigungszeit.",
+      mode_default: "Modus",
+      exit: "Ausgangsverzögerung (s)",
+      entry: "Eingangsverzögerung (s)",
+      trigger_time: "Sirenendauer (s)",
+      rearm: "Nach dem Alarm wieder scharf",
+      require_code_arm: "Code auch zum Scharfschalten",
+      sabotage_triggers: "Sabotage, Manipulation und Köder lösen Alarm aus (wenn scharf)",
+      sirens: "Sirenen (bei Alarm an)",
+      lights: "Lichter (bei Alarm an)",
+      warning: "Warnsignal während der Verzögerungen",
+      add_entity: "Entität hinzufügen …",
+      notify_events: "Benachrichtigen bei",
+      events: { triggered: "Alarm", pending: "Vorwarnung", armed: "Scharf geschaltet", disarmed: "Unscharf geschaltet", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code", sensor_unavailable: "Sensor nicht erreichbar" },
+      critical_push: "Alarm als kritische Push-Nachricht (durchbricht Stumm)",
+      codes_help: "Codes werden nur als Hash gespeichert. Ohne Code lässt sich die Anlage ohne Eingabe bedienen.",
+      code_name: "Name (z. B. Yann)",
+      add_code: "Code hinzufügen",
+      no_codes: "Keine Codes. Jeder Admin kann ohne Code unscharf schalten.",
+      worker_help: "Der Worker meldet sich bei dir über Telegram, ntfy oder Webhook, auch wenn Home Assistant selbst ausfällt (Strom, Internet, Sabotage), und leitet Alarme unabhängig weiter.",
+      worker_enabled: "Cloud-Worker aktiv",
+      worker_url: "Worker-URL",
+      interval: "Lebenszeichen alle (s)",
+      secret: "Gemeinsames Geheimnis (ALARM_SECRET)",
+      regenerate: "Neu erzeugen",
+      test: "Testen",
+      test_ok: "Worker erreicht. Kanäle: {channels}",
+      last_ok: "Zuletzt erreicht",
+      steps: ["Worker aus extras/cloudflare-worker deployen (wrangler deploy)", "KV anlegen: wrangler kv namespace create BASTION_KV, ID in wrangler.toml eintragen", "Geheimnis setzen: wrangler secret put ALARM_SECRET (Wert unten)", "Kanal setzen: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID oder NTFY_URL", "URL hier eintragen, speichern, testen"],
+    },
+    tabs: { alarm: "Alarmanlage", overview: "Übersicht", logins: "Anmeldungen", git: "Git", anomaly: "Anomalien & Köder", external: "Extern" },
     score: "Sicherheitswert",
     score_label: { good: "Gut", warning: "Ausbaufähig", serious: "Riskant", critical: "Kritisch" },
     trend: "Verlauf der letzten 30 Tage",
@@ -114,7 +186,79 @@ const I18N = {
     rel: { now: "gerade eben", m: "vor {n} Min.", h: "vor {n} Std.", d1: "vor 1 Tag", d: "vor {n} Tagen" },
   },
   en: {
-    tabs: { overview: "Overview", logins: "Logins", git: "Git", anomaly: "Anomalies & decoys", external: "External" },
+    alarm: {
+      tab: "Alarm",
+      states: { disarmed: "Off", arming: "Arming", armed_home: "Armed · Home", armed_night: "Armed · Night", armed_away: "Armed · Away", pending: "Entry warning", triggered: "ALARM" },
+      modes: { off: "Off", home: "Home", night: "Night", away: "Away" },
+      mode_hint: { off: "Disarmed", home: "Perimeter, people home", night: "Ground floor, sleeping", away: "Everything watched" },
+      arming_in: "Armed in {n} s",
+      alarm_in: "Alarm in {n} s",
+      triggered_by: "Triggered by",
+      since: "since",
+      by: "by",
+      settings: "Settings",
+      back: "Back",
+      save: "Save",
+      saved: "Saved",
+      rooms: "Rooms",
+      no_rooms: "No rooms yet. Create rooms in the settings and assign sensors.",
+      open: "open",
+      closed: "closed",
+      unavailable: "unavailable",
+      bypassed: "bypassed",
+      log: "Log",
+      no_log: "No events yet.",
+      code: "Code",
+      enter_code: "Enter code",
+      cancel: "Cancel",
+      ok: "OK",
+      open_title: "Open sensors",
+      open_text: "These sensors are open. Arm anyway? They are bypassed until they close again.",
+      force: "Arm anyway",
+      sections: { rooms: "Rooms & sensors", modes: "Modes & timing", actions: "Actions", codes: "Codes", worker: "Cloud worker" },
+      import_areas: "Create rooms from HA areas",
+      add_room: "Add room",
+      room_name: "Name",
+      room_icon: "Icon (mdi:…)",
+      delete: "Delete",
+      add_sensor: "Add sensor …",
+      type: { instant: "Instant", delayed: "Delayed", always: "Always (24 h)" },
+      type_hint: { instant: "Triggers immediately", delayed: "Starts the entry delay", always: "Also when disarmed (smoke, water, tamper)" },
+      may_be_open: "May be open when arming",
+      sensor_exit: "Active after",
+      sensor_entry: "Alarm after",
+      sensor_exit_hint: "Activation delay: seconds after arming until the sensor is watched (empty = mode). May be open while arming, e.g. the front door.",
+      sensor_entry_hint: "Trigger delay: seconds from opening to the alarm (empty = mode). For 'always' sensors a confirmation time.",
+      mode_default: "mode",
+      exit: "Exit delay (s)",
+      entry: "Entry delay (s)",
+      trigger_time: "Siren duration (s)",
+      rearm: "Re-arm after an alarm",
+      require_code_arm: "Code required for arming",
+      sabotage_triggers: "Sabotage, tampering and decoys trigger the alarm (when armed)",
+      sirens: "Sirens (on during alarm)",
+      lights: "Lights (on during alarm)",
+      warning: "Warning signal during delays",
+      add_entity: "Add entity …",
+      notify_events: "Notify on",
+      events: { triggered: "Alarm", pending: "Entry warning", armed: "Armed", disarmed: "Disarmed", arm_failed: "Arming failed", wrong_code: "Wrong code", sensor_unavailable: "Sensor unavailable" },
+      critical_push: "Alarm as critical push notification (breaks through silent mode)",
+      codes_help: "Codes are stored as hashes only. Without codes the system works without input.",
+      code_name: "Name (e.g. Alex)",
+      add_code: "Add code",
+      no_codes: "No codes. Every admin can disarm without a code.",
+      worker_help: "The worker reaches you via Telegram, ntfy or webhook even when Home Assistant itself fails (power, internet, sabotage), and relays alarms independently.",
+      worker_enabled: "Cloud worker enabled",
+      worker_url: "Worker URL",
+      interval: "Heartbeat every (s)",
+      secret: "Shared secret (ALARM_SECRET)",
+      regenerate: "Regenerate",
+      test: "Test",
+      test_ok: "Worker reached. Channels: {channels}",
+      last_ok: "Last reached",
+      steps: ["Deploy the worker from extras/cloudflare-worker (wrangler deploy)", "Create KV: wrangler kv namespace create BASTION_KV and put the id into wrangler.toml", "Set the secret: wrangler secret put ALARM_SECRET (value below)", "Set a channel: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID or NTFY_URL", "Enter the URL here, save, test"],
+    },
+    tabs: { alarm: "Alarm", overview: "Overview", logins: "Logins", git: "Git", anomaly: "Anomalies & decoys", external: "External" },
     score: "Security score",
     score_label: { good: "Good", warning: "Fair", serious: "At risk", critical: "Critical" },
     trend: "Last 30 days",
@@ -240,6 +384,7 @@ const CATEGORY_ICON = {
   config: "mdi:cog-outline", git: "mdi:source-branch", anomaly: "mdi:chart-bell-curve",
 };
 const TAB_ICON = {
+  alarm: "mdi:shield-home",
   overview: "mdi:shield-check-outline", logins: "mdi:account-lock-outline", git: "mdi:source-branch",
   anomaly: "mdi:radar", external: "mdi:web-check",
 };
@@ -284,7 +429,9 @@ class BastionPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._tab = "overview";
+    this._tab = "alarm";
+    this._alarmView = "status";
+    this._section = "rooms";
     this._filter = "all";
     this._showDismissed = false;
     this._onlyChanged = true;
@@ -296,7 +443,41 @@ class BastionPanel extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    if (first) this._load();
+    if (first) {
+      this._load();
+      return;
+    }
+    // Live view of the alarm: re-render when the alarm or one of its sensors changes.
+    if (this._tab === "alarm" && this._alarmView === "status" && this._alarm && !this._modal) {
+      const sig = this._alarmSignature();
+      if (sig !== this._alarmSig) {
+        const alarmChanged = sig.split("|")[0] !== (this._alarmSig || "").split("|")[0];
+        this._alarmSig = sig;
+        if (alarmChanged) this._refreshAlarm();
+        else this._render();
+      }
+    }
+  }
+
+  _alarmEntity() {
+    return Object.values(this._hass.states).find(
+      (st) => st.entity_id.startsWith("alarm_control_panel.") && "target_mode" in (st.attributes || {})
+    );
+  }
+
+  _alarmSignature() {
+    const entity = this._alarmEntity();
+    const sensors = (this._alarm?.config.rooms || []).flatMap((r) => r.sensors);
+    return [entity ? `${entity.state}:${entity.last_changed}` : "", ...sensors.map((e) => this._hass.states[e]?.state)].join("|");
+  }
+
+  async _refreshAlarm() {
+    try {
+      this._alarm = await this._ws("bastion/alarm/get");
+    } catch (err) {
+      this._notify(`${this.t.error}: ${err.message || err}`);
+    }
+    this._render();
   }
 
   set narrow(value) {
@@ -326,6 +507,10 @@ class BastionPanel extends HTMLElement {
   async _load() {
     try {
       this._data = await this._ws("bastion/overview");
+      if (this._tab === "alarm") {
+        this._alarm = await this._ws("bastion/alarm/get");
+        this._alarmSig = this._alarmSignature();
+      }
       if (this._tab === "logins") this._logins = await this._ws("bastion/logins");
       if (this._tab === "git" && this._data.git.status !== "disabled") {
         this._git = await this._ws("bastion/git/history", { refresh: !this._git });
@@ -378,6 +563,7 @@ class BastionPanel extends HTMLElement {
           </button>`).join("")}
       </nav>
       <main class="content">${this._data ? this._renderTab() : `<div class="loading">${icon("mdi:shield-sync-outline")}</div>`}</main>
+      ${this._modal ? this._renderModal() : ""}
       ${this._toast ? `<div class="toast">${esc(this._toast)}</div>` : ""}
       <div class="tip" hidden></div>
     `;
@@ -389,6 +575,29 @@ class BastionPanel extends HTMLElement {
     const content = this.shadowRoot.querySelector(".content");
     if (content) content.scrollTop = scroll;
     this._bind();
+    this._bindAlarm();
+    this._tickCountdown();
+  }
+
+  _tickCountdown() {
+    clearInterval(this._countdown);
+    const until = this._alarm?.status?.until;
+    const st = this._alarm?.status?.state;
+    if (this._tab !== "alarm" || !until || !["arming", "pending", "triggered"].includes(st)) return;
+    const el = this.shadowRoot.querySelector(".countdown");
+    const bar = this.shadowRoot.querySelector(".countdown-bar > div");
+    const total = Math.max(1, (new Date(until) - new Date(this._alarm.status.since)) / 1000);
+    const update = () => {
+      const left = Math.max(0, Math.round((new Date(until) - Date.now()) / 1000));
+      if (el && st !== "triggered") el.textContent = (st === "arming" ? this.t.alarm.arming_in : this.t.alarm.alarm_in).replace("{n}", left);
+      if (bar) bar.style.width = `${Math.max(0, Math.min(100, (left / total) * 100))}%`;
+      if (left <= 0) {
+        clearInterval(this._countdown);
+        setTimeout(() => this._refreshAlarm(), 800);
+      }
+    };
+    update();
+    this._countdown = setInterval(update, 1000);
   }
 
   _scoreState(score) {
@@ -411,6 +620,7 @@ class BastionPanel extends HTMLElement {
 
   _renderTab() {
     switch (this._tab) {
+      case "alarm": return this._renderAlarm();
       case "logins": return this._renderLogins();
       case "git": return this._renderGit();
       case "anomaly": return this._renderAnomaly();
@@ -805,12 +1015,485 @@ class BastionPanel extends HTMLElement {
     `;
   }
 
+
+  // ------------------------------------------------------------------- alarm
+  _alarmColor(state) {
+    if (state === "triggered") return SEV.critical.color;
+    if (state === "pending" || state === "arming") return SEV.medium.color;
+    if (state && state.startsWith("armed_")) return "var(--primary-color)";
+    return GOOD;
+  }
+
+  _sensorState(entityId) {
+    const st = this._hass.states[entityId];
+    if (!st || ["unavailable", "unknown"].includes(st.state)) return "unavailable";
+    return ["on", "open", "opening", "unlocked", "detected", "wet", "home"].includes(st.state) ? "open" : "closed";
+  }
+
+  _renderAlarm() {
+    if (!this._alarm) return `<div class="loading">${icon("mdi:shield-home")}</div>`;
+    return this._alarmView === "settings" ? this._renderAlarmSettings() : this._renderAlarmStatus();
+  }
+
+  _renderAlarmStatus() {
+    const a = this.t.alarm;
+    const { status, config, log } = this._alarm;
+    const st = status.state;
+    const color = this._alarmColor(st);
+    const stateIcon = {
+      disarmed: "mdi:shield-off-outline", arming: "mdi:shield-sync-outline", armed_home: "mdi:home-lock",
+      armed_night: "mdi:weather-night", armed_away: "mdi:shield-lock", pending: "mdi:timer-sand", triggered: "mdi:alarm-light",
+    }[st] || "mdi:shield";
+    const activeMode = st === "disarmed" ? "off" : status.target || status.mode;
+    const lastBy = [...log].find((e) => e.user);
+    const trig = status.triggered_by;
+    const modes = [
+      ["off", "mdi:shield-off-outline"], ["home", "mdi:home-lock"], ["night", "mdi:weather-night"], ["away", "mdi:shield-lock"],
+    ];
+    const rooms = config.rooms || [];
+    return `
+      <div class="alarm-top">
+        <div class="grow"></div>
+        <button class="btn ghost" data-action="alarm-settings">${icon("mdi:cog-outline")}${esc(a.settings)}</button>
+      </div>
+      <section class="card alarm-hero ${st === "triggered" ? "pulse" : ""}" style="--state:${color}">
+        <div class="alarm-badge">${icon(stateIcon)}</div>
+        <div class="alarm-main">
+          <div class="alarm-state">${esc(a.states[st] || st)}</div>
+          <div class="muted">${esc(a.since)} ${esc(this.rel(status.since))}${lastBy ? ` · ${esc(a.by)} ${esc(lastBy.user)}` : ""}</div>
+          ${["arming", "pending", "triggered"].includes(st) && status.until ? `
+            <div class="countdown-wrap"><div class="countdown">${st === "triggered" ? "" : "…"}</div>
+            <div class="countdown-bar"><div></div></div></div>` : ""}
+          ${trig && (st === "pending" || st === "triggered") ? `
+            <div class="trigger-info">${icon("mdi:map-marker-alert-outline")}<span>${esc(a.triggered_by)}: <b>${esc(trig.name || trig.reason)}</b>${trig.room ? ` · ${esc(trig.room)}` : ""}</span></div>` : ""}
+          ${status.locked ? `<div class="banner">${icon("mdi:lock-clock")}<div>${esc(this.t.alarm.code)}: ${esc(status.locked)} s</div></div>` : ""}
+        </div>
+      </section>
+      <div class="mode-grid">
+        ${modes.map(([key, ic]) => `
+          <button class="mode ${activeMode === key ? "active" : ""}" data-mode="${key}" style="--mc:${key === "off" ? GOOD : st === "triggered" ? SEV.critical.color : "var(--primary-color)"}" ${this._busy ? "disabled" : ""}>
+            ${icon(ic)}<span class="mode-name">${esc(a.modes[key])}</span><span class="mode-hint">${esc(a.mode_hint[key])}</span>
+          </button>`).join("")}
+      </div>
+      <h2>${icon("mdi:floor-plan")}${esc(a.rooms)}</h2>
+      ${rooms.length === 0 ? `<div class="empty">${icon("mdi:floor-plan")}<div>${esc(a.no_rooms)}</div></div>` : `
+      <div class="room-grid">
+        ${rooms.map((room) => {
+          const states = room.sensors.map((e) => this._sensorState(e));
+          const openCount = states.filter((x) => x === "open").length;
+          const unavailable = states.filter((x) => x === "unavailable").length;
+          return `
+            <section class="card room ${openCount ? "has-open" : ""}">
+              <div class="room-head">
+                <span class="room-icon">${icon(room.icon || "mdi:door")}</span>
+                <b>${esc(room.name)}</b>
+                <span class="grow"></span>
+                ${openCount ? `<span class="chip tiny" style="--c:${SEV.medium.color}">${esc(openCount)} ${esc(a.open)}</span>` : `<span class="chip tiny" style="--c:${GOOD}">${esc(a.closed)}</span>`}
+                ${unavailable ? `<span class="chip tiny" style="--c:#8a8f98">${esc(unavailable)} ${esc(a.unavailable)}</span>` : ""}
+              </div>
+              ${room.sensors.map((e) => {
+                const cfg = { modes: ["home", "night", "away"], type: "delayed", bypass: false, ...(config.sensors[e] || {}) };
+                const sst = this._sensorState(e);
+                const dot = sst === "open" ? SEV.medium.color : sst === "unavailable" ? "#8a8f98" : GOOD;
+                const name = this._hass.states[e]?.attributes?.friendly_name || e;
+                const bypassed = status.bypassed.includes(e);
+                return `
+                  <div class="sensor">
+                    <span class="dot" style="background:${dot}"></span>
+                    <span class="sensor-name" data-tip="${esc(e)}">${esc(name)}</span>
+                    ${bypassed ? `<span class="chip tiny" style="--c:${SEV.medium.color}">${esc(a.bypassed)}</span>` : ""}
+                    <span class="grow"></span>
+                    ${cfg.type === "always"
+                      ? `<span class="mini always" data-tip="${esc(a.type.always)}">24h</span>`
+                      : ["home", "night", "away"].map((m) => `<span class="mini ${cfg.modes.includes(m) ? "on" : ""}" data-tip="${esc(a.modes[m])}">${esc(a.modes[m][0])}</span>`).join("")}
+                    ${cfg.exit_delay != null || cfg.entry_delay != null ? `<span class="chip tiny" data-tip="${esc(a.sensor_exit)} ${esc(cfg.exit_delay ?? a.mode_default)} s · ${esc(a.sensor_entry)} ${esc(cfg.entry_delay ?? a.mode_default)} s">${icon("mdi:timer-cog-outline")}</span>` : ""}
+                    <span class="type-icon" data-tip="${esc(a.type[cfg.type])}">${icon(cfg.type === "instant" ? "mdi:flash" : cfg.type === "always" ? "mdi:hours-24" : "mdi:timer-outline")}</span>
+                  </div>`;
+              }).join("")}
+            </section>`;
+        }).join("")}
+      </div>`}
+      <h2>${icon("mdi:timeline-clock-outline")}${esc(a.log)}</h2>
+      <div class="list card timeline">
+        ${log.length === 0 ? `<div class="row muted">${esc(a.no_log)}</div>` : log.slice(0, 40).map((e) => {
+          const ic = { triggered: ["mdi:alarm-light", SEV.critical.color], pending: ["mdi:timer-sand", SEV.medium.color], armed: ["mdi:shield-lock", "var(--primary-color)"],
+            arming: ["mdi:shield-sync-outline", "var(--primary-color)"], rearmed: ["mdi:shield-refresh", "var(--primary-color)"], disarmed: ["mdi:shield-off-outline", GOOD],
+            arm_failed: ["mdi:shield-alert-outline", SEV.high.color], wrong_code: ["mdi:form-textbox-password", SEV.high.color],
+            sensor_unavailable: ["mdi:lan-disconnect", "#8a8f98"] }[e.type] || ["mdi:circle-small", "#8a8f98"];
+          const label = a.events[e.type] || a.states[e.type] || e.type;
+          const detail = [e.target ? a.modes[e.target] : "", e.name, e.room, e.user ? `${a.by} ${e.user}` : "", (e.sensors || []).join(", ")].filter(Boolean).join(" · ");
+          return `<div class="row">${icon(ic[0], ic[1])}<div class="row-main"><div><b>${esc(label)}</b> ${detail ? `· ${esc(detail)}` : ""}</div>
+            <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))}</div></div></div>`;
+        }).join("")}
+      </div>`;
+  }
+
+  _renderModal() {
+    const a = this.t.alarm;
+    const m = this._modal;
+    if (m.type === "open") {
+      return `<div class="overlay"><div class="modal">
+        <h3 class="card-title">${icon("mdi:door-open", SEV.medium.color)}${esc(a.open_title)}</h3>
+        <p class="muted">${esc(a.open_text)}</p>
+        <ul class="open-list">${m.sensors.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        <div class="actionbar tight"><span class="grow"></span>
+          <button class="btn" data-modal="cancel">${esc(a.cancel)}</button>
+          <button class="btn primary" data-modal="force">${esc(a.force)}</button></div>
+      </div></div>`;
+    }
+    const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"];
+    return `<div class="overlay"><div class="modal keypad-modal">
+      <h3 class="card-title">${icon("mdi:dialpad")}${esc(a.enter_code)}</h3>
+      <div class="code-display">${m.code ? "●".repeat(m.code.length) : `<span class="muted">${esc(a.code)}</span>`}</div>
+      ${this._alarm.status.numeric_codes
+        ? `<div class="keypad">${keys.map((k) => `<button class="key" data-key="${k}">${k === "clear" ? icon("mdi:close") : k === "back" ? icon("mdi:backspace-outline") : k}</button>`).join("")}</div>`
+        : `<input class="input" type="password" id="code-input" autocomplete="off" value="${esc(m.code)}">`}
+      <div class="actionbar tight"><span class="grow"></span>
+        <button class="btn" data-modal="cancel">${esc(a.cancel)}</button>
+        <button class="btn primary" data-modal="ok">${esc(a.ok)}</button></div>
+    </div></div>`;
+  }
+
+  async _alarmCommand(kind, mode, code, force = false) {
+    const payload = kind === "disarm" ? {} : { mode, force };
+    if (code) payload.code = code;
+    try {
+      this._alarm = await this._ws(kind === "disarm" ? "bastion/alarm/disarm" : "bastion/alarm/arm", payload);
+      this._modal = null;
+    } catch (err) {
+      if (err.code === "open_sensors") {
+        const sensors = String(err.message).split(": ").slice(1).join(": ").split(", ");
+        this._modal = { type: "open", sensors, mode, code };
+      } else {
+        this._notify(err.message || err.code);
+        if (this._modal) this._modal.code = "";
+      }
+    }
+    this._render();
+  }
+
+  _modeClicked(key) {
+    const status = this._alarm.status;
+    const kind = key === "off" ? "disarm" : "arm";
+    const needsCode = status.has_codes && (kind === "disarm" || status.require_code_arm || ["triggered", "pending"].includes(status.state));
+    if (needsCode) {
+      this._modal = { type: "code", kind, mode: key, code: "" };
+      this._render();
+      return;
+    }
+    this._action(() => this._alarmCommand(kind, key, null));
+  }
+
+  // -------------------------------------------------------- alarm settings
+  _renderAlarmSettings() {
+    const a = this.t.alarm;
+    const d = this._draft;
+    const sections = Object.keys(a.sections);
+    let body = "";
+    if (this._section === "rooms") body = this._settingsRooms(d);
+    else if (this._section === "modes") body = this._settingsModes(d);
+    else if (this._section === "actions") body = this._settingsActions(d);
+    else if (this._section === "codes") body = this._settingsCodes();
+    else body = this._settingsWorker(d);
+    const saveable = this._section !== "codes";
+    return `
+      <div class="alarm-top">
+        <button class="btn ghost" data-action="alarm-back">${icon("mdi:arrow-left")}${esc(a.back)}</button>
+        <div class="grow"></div>
+        ${saveable ? `<button class="btn primary" data-action="alarm-save" ${this._busy ? "disabled" : ""}>${icon("mdi:content-save-outline")}${esc(a.save)}</button>` : ""}
+      </div>
+      <div class="filters">${sections.map((key) => `<button class="chip ${this._section === key ? "on" : ""}" data-section="${key}">${esc(a.sections[key])}</button>`).join("")}</div>
+      ${body}`;
+  }
+
+  _candidateOptions(exclude) {
+    const groups = {};
+    for (const c of this._alarm.candidates) {
+      if (exclude.has(c.entity_id)) continue;
+      (groups[c.area || "—"] ||= []).push(c);
+    }
+    return Object.entries(groups).map(([area, items]) => `<optgroup label="${esc(area)}">${items.map((c) => `<option value="${esc(c.entity_id)}">${esc(c.name)}${c.device_class ? ` (${esc(c.device_class)})` : ""}</option>`).join("")}</optgroup>`).join("");
+  }
+
+  _settingsRooms(d) {
+    const a = this.t.alarm;
+    const used = new Set(d.rooms.flatMap((r) => r.sensors));
+    return `
+      <div class="actionbar">
+        <button class="btn" data-action="room-add">${icon("mdi:plus")}${esc(a.add_room)}</button>
+        <button class="btn ghost" data-action="room-import">${icon("mdi:import")}${esc(a.import_areas)}</button>
+      </div>
+      ${d.rooms.length === 0 ? `<div class="empty">${icon("mdi:floor-plan")}<div>${esc(a.no_rooms)}</div></div>` : ""}
+      ${d.rooms.map((room, ri) => `
+        <section class="card edit-room">
+          <div class="room-edit-head">
+            <span class="room-icon">${icon(room.icon || "mdi:door")}</span>
+            <input class="input grow" data-room-name="${ri}" value="${esc(room.name)}" placeholder="${esc(a.room_name)}">
+            <input class="input icon-input" data-room-icon="${ri}" value="${esc(room.icon || "")}" placeholder="${esc(a.room_icon)}">
+            <button class="btn small ghost danger" data-room-delete="${ri}">${icon("mdi:delete-outline")}${esc(a.delete)}</button>
+          </div>
+          ${room.sensors.map((e) => {
+            const cfg = { modes: ["home", "night", "away"], type: "delayed", bypass: false, ...(d.sensors[e] || {}) };
+            const name = this._hass.states[e]?.attributes?.friendly_name || e;
+            return `
+              <div class="sensor-edit">
+                <div class="sensor-edit-name"><span class="dot" style="background:${{ open: SEV.medium.color, unavailable: "#8a8f98" }[this._sensorState(e)] || GOOD}"></span><span>${esc(name)}</span><span class="muted small mono">${esc(e)}</span></div>
+                <div class="sensor-edit-controls">
+                  <div class="seg">${["home", "night", "away"].map((m) => `<button class="seg-btn ${cfg.modes.includes(m) ? "on" : ""}" data-sensor-mode="${esc(e)}" data-mode-key="${m}" ${cfg.type === "always" ? "disabled" : ""}>${esc(a.modes[m])}</button>`).join("")}</div>
+                  <select class="input small-select" data-sensor-type="${esc(e)}" title="${esc(a.type_hint[cfg.type])}">
+                    ${["delayed", "instant", "always"].map((tp) => `<option value="${tp}" ${cfg.type === tp ? "selected" : ""}>${esc(a.type[tp])}</option>`).join("")}
+                  </select>
+                  ${cfg.type === "always" ? "" : `<label class="delay" title="${esc(a.sensor_exit_hint)}">${icon("mdi:timer-play-outline")}<span>${esc(a.sensor_exit)}</span><input class="input tiny-input" type="number" min="0" max="900" placeholder="${esc(a.mode_default)}" data-sensor-delay="${esc(e)}" data-delay-kind="exit_delay" value="${cfg.exit_delay ?? ""}"><span class="muted">s</span></label>`}
+                  ${cfg.type === "instant" ? "" : `<label class="delay" title="${esc(a.sensor_entry_hint)}">${icon("mdi:timer-alert-outline")}<span>${esc(a.sensor_entry)}</span><input class="input tiny-input" type="number" min="0" max="900" placeholder="${esc(a.mode_default)}" data-sensor-delay="${esc(e)}" data-delay-kind="entry_delay" value="${cfg.entry_delay ?? ""}"><span class="muted">s</span></label>`}
+                  ${cfg.type === "always" ? "" : `<label class="switch"><input type="checkbox" data-sensor-bypass="${esc(e)}" ${cfg.bypass ? "checked" : ""}><span>${esc(a.may_be_open)}</span></label>`}
+                  <button class="btn small ghost" data-sensor-remove="${esc(e)}" data-room="${ri}">${icon("mdi:close")}</button>
+                </div>
+              </div>`;
+          }).join("")}
+          <select class="input add-sensor" data-room-add-sensor="${ri}"><option value="">${esc(a.add_sensor)}</option>${this._candidateOptions(used)}</select>
+        </section>`).join("")}`;
+  }
+
+  _settingsModes(d) {
+    const a = this.t.alarm;
+    return `
+      <section class="card">
+        <div class="mode-table">
+          <div></div><div class="muted small">${esc(a.exit)}</div><div class="muted small">${esc(a.entry)}</div>
+          ${["home", "night", "away"].map((m) => `
+            <div><b>${esc(a.modes[m])}</b><div class="muted small">${esc(a.mode_hint[m])}</div></div>
+            <input class="input" type="number" min="0" max="900" data-delay="${m}" data-kind="exit" value="${esc(d.modes[m]?.exit ?? 0)}">
+            <input class="input" type="number" min="0" max="900" data-delay="${m}" data-kind="entry" value="${esc(d.modes[m]?.entry ?? 0)}">`).join("")}
+        </div>
+      </section>
+      <section class="card">
+        <label class="field"><span>${esc(a.trigger_time)}</span><input class="input" type="number" min="0" max="3600" data-field="trigger_time" value="${esc(d.trigger_time)}"></label>
+        <label class="switch block"><input type="checkbox" data-flag="rearm" ${d.rearm ? "checked" : ""}><span>${esc(a.rearm)}</span></label>
+        <label class="switch block"><input type="checkbox" data-flag="require_code_arm" ${d.require_code_arm ? "checked" : ""}><span>${esc(a.require_code_arm)}</span></label>
+        <label class="switch block"><input type="checkbox" data-flag="sabotage_triggers" ${d.sabotage_triggers ? "checked" : ""}><span>${esc(a.sabotage_triggers)}</span></label>
+      </section>`;
+  }
+
+  _entityList(d, key, label) {
+    const a = this.t.alarm;
+    const chosen = d.actions[key] || [];
+    const nameOf = (e) => this._alarm.actors.find((x) => x.entity_id === e)?.name || e;
+    return `
+      <div class="field-block">
+        <div class="label">${esc(label)}</div>
+        <div class="area-chips">${chosen.map((e) => `<span class="chip">${esc(nameOf(e))}<button class="chip-x" data-action-remove="${key}" data-entity="${esc(e)}">${icon("mdi:close")}</button></span>`).join("")}</div>
+        <select class="input add-sensor" data-action-add="${key}"><option value="">${esc(a.add_entity)}</option>
+          ${this._alarm.actors.filter((x) => !chosen.includes(x.entity_id)).map((x) => `<option value="${esc(x.entity_id)}">${esc(x.name)} (${esc(x.entity_id)})</option>`).join("")}</select>
+      </div>`;
+  }
+
+  _settingsActions(d) {
+    const a = this.t.alarm;
+    return `
+      <section class="card">
+        ${this._entityList(d, "sirens", a.sirens)}
+        ${this._entityList(d, "lights", a.lights)}
+        ${this._entityList(d, "warning", a.warning)}
+      </section>
+      <section class="card">
+        <div class="label">${esc(a.notify_events)}</div>
+        <div class="area-chips">${Object.keys(a.events).map((ev) => `<label class="chip check"><input type="checkbox" data-notify-event="${ev}" ${d.actions.notify_events.includes(ev) ? "checked" : ""}><span>${esc(a.events[ev])}</span></label>`).join("")}</div>
+        <label class="switch block"><input type="checkbox" data-critical ${d.actions.critical_push ? "checked" : ""}><span>${esc(a.critical_push)}</span></label>
+      </section>`;
+  }
+
+  _settingsCodes() {
+    const a = this.t.alarm;
+    const codes = this._alarm.config.codes;
+    return `
+      <section class="card">
+        <div class="muted small">${esc(a.codes_help)}</div>
+        <div class="list">${codes.length === 0 ? `<div class="row muted">${esc(a.no_codes)}</div>` : codes.map((c) => `
+          <div class="row">${icon("mdi:account-key-outline")}<div class="row-main"><b>${esc(c.name)}</b></div>
+          <button class="btn small ghost danger" data-code-delete="${esc(c.id)}">${icon("mdi:delete-outline")}${esc(a.delete)}</button></div>`).join("")}</div>
+        <div class="actionbar">
+          <input class="input" id="code-name" placeholder="${esc(a.code_name)}">
+          <input class="input" id="code-value" type="password" inputmode="numeric" autocomplete="new-password" placeholder="${esc(a.code)}">
+          <button class="btn primary" data-action="code-add">${icon("mdi:plus")}${esc(a.add_code)}</button>
+        </div>
+      </section>`;
+  }
+
+  _settingsWorker(d) {
+    const a = this.t.alarm;
+    const relay = this._alarm.relay;
+    const secret = this._alarm.config.worker.secret || "";
+    return `
+      <section class="card">
+        <div class="muted small">${esc(a.worker_help)}</div>
+        <ol class="steps">${a.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+        <label class="switch block"><input type="checkbox" data-worker="enabled" ${d.worker.enabled ? "checked" : ""}><span>${esc(a.worker_enabled)}</span></label>
+        <label class="field"><span>${esc(a.worker_url)}</span><input class="input" data-worker="url" placeholder="https://bastion-probe.<account>.workers.dev" value="${esc(d.worker.url || "")}"></label>
+        <label class="field"><span>${esc(a.interval)}</span><input class="input" type="number" min="30" max="3600" data-worker="interval" value="${esc(d.worker.interval)}"></label>
+        <div class="label">${esc(a.secret)}</div>
+        <div class="secret"><code>${esc(this._reveal ? secret : `${secret.slice(0, 6)}••••••••••••`)}</code>
+          <button class="btn small ghost" data-action="reveal">${icon(this._reveal ? "mdi:eye-off-outline" : "mdi:eye-outline")}${esc(this._reveal ? this.t.hide : this.t.show)}</button>
+          <button class="btn small" data-copy="${esc(secret)}">${icon("mdi:content-copy")}${esc(this.t.copy)}</button>
+          <button class="btn small ghost" data-action="worker-secret">${icon("mdi:refresh")}${esc(a.regenerate)}</button></div>
+        <div class="actionbar tight">
+          <button class="btn" data-action="worker-test">${icon("mdi:lan-connect")}${esc(a.test)}</button>
+          <span class="muted small">${esc(a.last_ok)}: ${esc(this.rel(relay.last_ok))}</span>
+          ${relay.last_error ? `<span class="chip tiny" style="--c:${SEV.high.color}">${esc(relay.last_error)}</span>` : ""}
+        </div>
+      </section>`;
+  }
+
+  _openSettings() {
+    const cfg = this._alarm.config;
+    this._draft = JSON.parse(JSON.stringify({
+      rooms: cfg.rooms, sensors: cfg.sensors, modes: cfg.modes, trigger_time: cfg.trigger_time, rearm: cfg.rearm,
+      require_code_arm: cfg.require_code_arm, sabotage_triggers: cfg.sabotage_triggers, actions: cfg.actions,
+      worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled },
+    }));
+    this._alarmView = "settings";
+    this._render();
+  }
+
+  _importAreas() {
+    const d = this._draft;
+    const security = new Set(["door", "window", "opening", "garage_door", "motion", "occupancy", "presence", "smoke", "gas", "moisture", "tamper", "vibration", "safety", "lock"]);
+    const used = new Set(d.rooms.flatMap((r) => r.sensors));
+    const byArea = {};
+    for (const c of this._alarm.candidates) {
+      if (!c.area || used.has(c.entity_id)) continue;
+      if (!(security.has(c.device_class) || c.entity_id.startsWith("lock."))) continue;
+      (byArea[c.area] ||= { icon: c.area_icon, sensors: [] }).sensors.push(c);
+    }
+    for (const [area, info] of Object.entries(byArea)) {
+      let room = d.rooms.find((r) => r.name === area);
+      if (!room) {
+        room = { name: area, icon: info.icon || "mdi:door", sensors: [] };
+        d.rooms.push(room);
+      }
+      for (const c of info.sensors) {
+        room.sensors.push(c.entity_id);
+        const always = ["smoke", "gas", "moisture", "tamper", "safety"].includes(c.device_class);
+        const motion = ["motion", "occupancy", "presence"].includes(c.device_class);
+        d.sensors[c.entity_id] = {
+          type: always ? "always" : motion ? "instant" : "delayed",
+          modes: motion ? ["away"] : ["home", "night", "away"],
+          bypass: c.device_class === "window",
+        };
+      }
+    }
+  }
+
+  _bindAlarm() {
+    const root = this.shadowRoot;
+    const on = (sel, fn, type = "click") => root.querySelectorAll(sel).forEach((el) => el.addEventListener(type, (ev) => fn(el, ev)));
+    on("[data-mode]", (el) => this._modeClicked(el.dataset.mode));
+    on('[data-action="alarm-settings"]', () => this._openSettings());
+    on('[data-action="alarm-back"]', () => { this._alarmView = "status"; this._refreshAlarm(); });
+    on("[data-section]", (el) => { this._section = el.dataset.section; this._render(); });
+    // keypad
+    on("[data-key]", (el) => {
+      const k = el.dataset.key;
+      if (k === "clear") this._modal.code = "";
+      else if (k === "back") this._modal.code = this._modal.code.slice(0, -1);
+      else if (this._modal.code.length < 32) this._modal.code += k;
+      this._render();
+    });
+    on("#code-input", (el) => { this._modal.code = el.value; }, "input");
+    on('[data-modal="cancel"]', () => { this._modal = null; this._render(); });
+    on('[data-modal="ok"]', () => {
+      const m = this._modal;
+      this._action(() => this._alarmCommand(m.kind, m.mode, m.code));
+    });
+    on('[data-modal="force"]', () => {
+      const m = this._modal;
+      this._action(() => this._alarmCommand("arm", m.mode, m.code, true));
+    });
+    if (this._modal && this._modal.type === "code") {
+      const input = root.getElementById("code-input");
+      if (input) input.focus();
+    }
+    const d = this._draft;
+    if (!d || this._alarmView !== "settings") return;
+    // rooms
+    on('[data-action="room-add"]', () => { d.rooms.push({ name: `${this.t.alarm.rooms} ${d.rooms.length + 1}`, icon: "mdi:door", sensors: [] }); this._render(); });
+    on('[data-action="room-import"]', () => { this._importAreas(); this._render(); });
+    on("[data-room-name]", (el) => { d.rooms[+el.dataset.roomName].name = el.value; }, "input");
+    on("[data-room-icon]", (el) => { d.rooms[+el.dataset.roomIcon].icon = el.value.trim(); }, "change");
+    on("[data-room-delete]", (el) => {
+      const room = d.rooms.splice(+el.dataset.roomDelete, 1)[0];
+      room.sensors.forEach((e) => delete d.sensors[e]);
+      this._render();
+    });
+    on("[data-room-add-sensor]", (el) => {
+      if (!el.value) return;
+      d.rooms[+el.dataset.roomAddSensor].sensors.push(el.value);
+      d.sensors[el.value] ||= { modes: ["home", "night", "away"], type: "delayed", bypass: false };
+      this._render();
+    }, "change");
+    on("[data-sensor-remove]", (el) => {
+      const room = d.rooms[+el.dataset.room];
+      room.sensors = room.sensors.filter((e) => e !== el.dataset.sensorRemove);
+      delete d.sensors[el.dataset.sensorRemove];
+      this._render();
+    });
+    const sensorCfg = (e) => (d.sensors[e] ||= { modes: ["home", "night", "away"], type: "delayed", bypass: false });
+    on("[data-sensor-mode]", (el) => {
+      const cfg = sensorCfg(el.dataset.sensorMode);
+      const m = el.dataset.modeKey;
+      cfg.modes = cfg.modes.includes(m) ? cfg.modes.filter((x) => x !== m) : [...cfg.modes, m];
+      this._render();
+    });
+    on("[data-sensor-type]", (el) => { sensorCfg(el.dataset.sensorType).type = el.value; this._render(); }, "change");
+    on("[data-sensor-bypass]", (el) => { sensorCfg(el.dataset.sensorBypass).bypass = el.checked; }, "change");
+    on("[data-sensor-delay]", (el) => {
+      const value = el.value.trim();
+      sensorCfg(el.dataset.sensorDelay)[el.dataset.delayKind] = value === "" ? null : Math.max(0, Math.min(900, Number(value) || 0));
+    }, "input");
+    // modes
+    on("[data-delay]", (el) => { (d.modes[el.dataset.delay] ||= {})[el.dataset.kind] = Number(el.value) || 0; }, "input");
+    on('[data-field="trigger_time"]', (el) => { d.trigger_time = Number(el.value) || 0; }, "input");
+    on("[data-flag]", (el) => { d[el.dataset.flag] = el.checked; }, "change");
+    // actions
+    on("[data-action-add]", (el) => { if (el.value) { (d.actions[el.dataset.actionAdd] ||= []).push(el.value); this._render(); } }, "change");
+    on("[data-action-remove]", (el) => { const k = el.dataset.actionRemove; d.actions[k] = d.actions[k].filter((x) => x !== el.dataset.entity); this._render(); });
+    on("[data-notify-event]", (el) => {
+      const ev = el.dataset.notifyEvent;
+      d.actions.notify_events = el.checked ? [...new Set([...d.actions.notify_events, ev])] : d.actions.notify_events.filter((x) => x !== ev);
+    }, "change");
+    on("[data-critical]", (el) => { d.actions.critical_push = el.checked; }, "change");
+    // worker
+    on('[data-worker="enabled"]', (el) => { d.worker.enabled = el.checked; }, "change");
+    on('[data-worker="url"]', (el) => { d.worker.url = el.value.trim(); }, "input");
+    on('[data-worker="interval"]', (el) => { d.worker.interval = Number(el.value) || 120; }, "input");
+    on('[data-action="worker-secret"]', () => this._action(async () => { this._alarm = await this._ws("bastion/alarm/worker", { action: "secret" }); }));
+    on('[data-action="worker-test"]', () => this._action(async () => {
+      const result = await this._ws("bastion/alarm/worker", { action: "test" });
+      this._alarm = result;
+      this._notify(result.result.ok ? this.t.alarm.test_ok.replace("{channels}", (result.result.channels || []).join(", ") || "—") : `${this.t.error}: ${result.result.error}`);
+    }));
+    // codes
+    on('[data-action="code-add"]', () => this._action(async () => {
+      const name = root.getElementById("code-name").value;
+      const code = root.getElementById("code-value").value;
+      this._alarm = await this._ws("bastion/alarm/code", { name, code });
+      this._notify(this.t.alarm.saved);
+    }));
+    on("[data-code-delete]", (el) => this._action(async () => { this._alarm = await this._ws("bastion/alarm/code", { delete: el.dataset.codeDelete }); }));
+    // save
+    on('[data-action="alarm-save"]', () => this._action(async () => {
+      this._alarm = await this._ws("bastion/alarm/save", { config: d });
+      this._notify(this.t.alarm.saved);
+    }));
+  }
+
   // ------------------------------------------------------------------ events
   _bind() {
     const root = this.shadowRoot;
     const on = (sel, fn, type = "click") => root.querySelectorAll(sel).forEach((el) => el.addEventListener(type, (ev) => fn(el, ev)));
     on("[data-tab]", (el) => {
       this._tab = el.dataset.tab;
+      this._alarmView = "status";
+      this._modal = null;
       this._commit = null;
       this._files = null;
       this._diff = null;
@@ -1079,6 +1762,75 @@ const STYLE = `
   .port > div { flex:1; min-width:0; }
   .port.open { border-color: ${SEV.critical.color}; background: color-mix(in srgb, ${SEV.critical.color} 10%, transparent); }
 
+  .alarm-top { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .alarm-hero { display:flex; gap:22px; align-items:center; padding:22px; border-color: color-mix(in srgb, var(--state) 45%, var(--line));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--state) 14%, var(--surface)), var(--surface) 60%); }
+  .alarm-badge { width:88px; height:88px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+    background: color-mix(in srgb, var(--state) 20%, transparent); color: var(--state); box-shadow: 0 0 0 6px color-mix(in srgb, var(--state) 8%, transparent); }
+  .alarm-badge ha-icon { --mdc-icon-size: 46px; }
+  .alarm-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .alarm-state { font-size:28px; font-weight:600; letter-spacing:-.01em; }
+  .pulse .alarm-badge { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--state) 15%, transparent); } 50% { box-shadow: 0 0 0 18px color-mix(in srgb, var(--state) 4%, transparent); } }
+  .countdown-wrap { display:flex; flex-direction:column; gap:6px; max-width:360px; }
+  .countdown { font-size:15px; font-weight:500; }
+  .countdown-bar { height:6px; border-radius:999px; background: color-mix(in srgb, var(--state) 18%, transparent); overflow:hidden; }
+  .countdown-bar > div { height:100%; width:100%; border-radius:999px; background: var(--state); transition: width 1s linear; }
+  .trigger-info { display:flex; align-items:center; gap:6px; font-size:14px; }
+  .mode-grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; margin:16px 0 4px; }
+  .mode { display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:16px; border-radius: var(--radius); border:1px solid var(--line);
+    background: var(--surface); color: var(--primary-text-color); font: inherit; cursor:pointer; text-align:left; transition: transform .1s, border-color .15s, background .15s; }
+  .mode:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--mc) 50%, var(--line)); }
+  .mode ha-icon { --mdc-icon-size: 28px; color: var(--mc); margin-bottom:6px; }
+  .mode.active { border-color: var(--mc); background: color-mix(in srgb, var(--mc) 14%, var(--surface)); box-shadow: 0 0 0 1px var(--mc) inset; }
+  .mode-name { font-size:16px; font-weight:600; }
+  .mode-hint { font-size:12px; color: var(--muted); }
+  .mode:disabled { opacity:.6; cursor:default; }
+  @media (max-width: 700px) { .mode-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } .alarm-hero { flex-direction:column; text-align:center; } .countdown-wrap { margin: 0 auto; width:100%; } .trigger-info { justify-content:center; } }
+  .room-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
+  .room-grid .card + .card { margin-top:0; }
+  .room.has-open { border-color: color-mix(in srgb, ${SEV.medium.color} 55%, var(--line)); }
+  .room-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .room-icon { width:34px; height:34px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; flex:none;
+    background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-color); }
+  .sensor { display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--line); font-size:14px; }
+  .sensor-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .dot { width:10px; height:10px; border-radius:50%; flex:none; }
+  .mini { width:20px; height:20px; border-radius:6px; font-size:11px; font-weight:600; display:inline-flex; align-items:center; justify-content:center;
+    color: var(--muted); border:1px solid var(--line); }
+  .mini.on { color: var(--text-primary-color, #fff); background: var(--primary-color); border-color: transparent; }
+  .mini.always { width:auto; padding:0 6px; color:#fff; background: ${SEV.critical.color}; border-color: transparent; }
+  .type-icon { color: var(--muted); display:inline-flex; }
+  .type-icon ha-icon { --mdc-icon-size: 16px; }
+  .overlay { position:fixed; inset:0; z-index:20; background: rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+  .modal { width:min(420px, 100%); background: var(--surface); border-radius:16px; padding:20px; border:1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .code-display { font-size:28px; letter-spacing:.3em; text-align:center; padding:14px; border-radius:12px; border:1px solid var(--line); margin-bottom:14px; min-height:36px; }
+  .keypad { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; }
+  .key { height:58px; border-radius:14px; border:1px solid var(--line); background: var(--secondary-background-color, rgba(127,127,127,.08));
+    color: var(--primary-text-color); font: inherit; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .key:active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
+  .open-list { margin:8px 0 0 18px; padding:0; line-height:1.7; }
+  .edit-room .room-edit-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .icon-input { width:170px; min-width:0; }
+  .sensor-edit { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+  .sensor-edit-name { display:flex; align-items:center; gap:8px; min-width:200px; flex:1; flex-wrap:wrap; }
+  .sensor-edit-controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .seg-btn { padding:6px 10px; border:none; background:none; color: var(--muted); font: inherit; font-size:12px; cursor:pointer; }
+  .seg-btn + .seg-btn { border-left:1px solid var(--line); }
+  .seg-btn.on { background: var(--primary-color); color: var(--text-primary-color, #fff); }
+  .seg-btn:disabled { opacity:.4; cursor:default; }
+  .small-select { min-width:0; padding:6px 8px; font-size:13px; }
+  .add-sensor { width:100%; margin-top:10px; box-sizing:border-box; }
+  .mode-table { display:grid; grid-template-columns: 1fr 160px 160px; gap:12px 16px; align-items:center; }
+  @media (max-width: 600px) { .mode-table { grid-template-columns: 1fr 90px 90px; } }
+  .field { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:8px 0; font-size:14px; }
+  .field .input { max-width:320px; flex:1; }
+  .switch.block { display:flex; margin:10px 0; color: var(--primary-text-color); }
+  .field-block { margin-bottom:16px; }
+  .chip-x { background:none; border:none; padding:0; margin-left:2px; color: var(--muted); cursor:pointer; display:inline-flex; }
+  .chip-x ha-icon { --mdc-icon-size: 14px; }
+  .steps { margin:10px 0 6px 18px; padding:0; font-size:13px; line-height:1.7; color: var(--muted); }
   .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:10; max-width:min(560px, calc(100vw - 32px));
     background: var(--primary-text-color); color: var(--primary-background-color); padding:10px 16px; border-radius:10px; font-size:14px;
     box-shadow: 0 6px 24px rgba(0,0,0,.3); }

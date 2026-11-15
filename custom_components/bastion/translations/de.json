@@ -250,6 +250,11 @@
       "send_report": {
         "name": "Wochenbericht senden"
       }
+    },
+    "alarm_control_panel": {
+      "alarm": {
+        "name": "Alarmanlage"
+      }
     }
   },
   "issues": {
