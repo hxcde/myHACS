@@ -207,6 +207,7 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
   2. Zero Trust → Access → Applications → Self-hosted, Domain wie oben, Policy mit den erlaubten E-Mail-Adressen.
   3. Den „Application Audience (AUD) Tag“ der Anwendung kopieren.
   4. Im Worker die Variablen `DASHBOARD_HOST` (die Domain), `ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) und `ACCESS_AUD` setzen.
+- Als App installierbar (PWA): im Browser „Zum Startbildschirm“ (iPhone: Teilen → Zum Home-Bildschirm, Android/Chrome/Edge: Installieren). Der Service Worker speichert nichts auf dem Gerät, ohne Netz erscheint nur ein Offline-Hinweis. Nach Ablauf der Access-Sitzung öffnet die App den Access-Login und kehrt danach zurück.
 - Der Worker prüft das Access-Token selbst (Signatur, Audience, Aussteller, Ablauf). Über die workers.dev-Adresse ist das Dashboard nicht erreichbar. HA spricht weiter über die workers.dev-Adresse, sie liegt nicht hinter Access.
 
 **Angriffserkennung am Worker:**

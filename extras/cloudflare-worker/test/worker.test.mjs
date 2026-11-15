@@ -440,3 +440,27 @@ test("outside check finds an open login and reports changes once", async () => {
   assert.deepEqual(ids, ["reachable", "api_open", "http_plain"]);
   for (const k of Object.keys(routes)) delete routes[k];
 });
+
+test("installable app: manifest, service worker and icons", async () => {
+  const env = makeEnv();
+  const get = (path) => worker.fetch(new Request(`https://w.example${path}`), env);
+  const manifest = await (await get("/manifest.webmanifest")).json();
+  assert.equal(manifest.start_url, "/");
+  assert.equal(manifest.display, "standalone");
+  assert.deepEqual(manifest.icons.map((i) => i.sizes).sort(), ["192x192", "512x512", "512x512"]);
+  assert.ok(manifest.icons.some((i) => i.purpose === "maskable"));
+  const sw = await get("/sw.js");
+  assert.match(sw.headers.get("content-type"), /javascript/);
+  const swText = await sw.text();
+  assert.ok(swText.includes('addEventListener("fetch"') && !swText.includes("caches."), "offline page only, no cache");
+  for (const path of ["/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"]) {
+    const r = await get(path);
+    const head = new Uint8Array(await r.arrayBuffer()).slice(0, 4);
+    assert.deepEqual([...head], [0x89, 0x50, 0x4e, 0x47], `${path} is a PNG`);
+  }
+  assert.match(await (await get("/favicon.svg")).text(), /^<svg/);
+  const token = await incidentToken(env, "abcdef12");
+  const page = await worker.fetch(new Request(`https://w.example/i/abcdef12?t=${token}`), env);
+  assert.match(page.headers.get("content-security-policy"), /worker-src 'self'; manifest-src 'self'/);
+  assert.ok((await page.text()).includes('rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials"'));
+});

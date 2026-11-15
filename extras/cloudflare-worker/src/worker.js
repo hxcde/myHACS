@@ -7,7 +7,8 @@
 //   POST /pushover/<token>  Pushover callback when an emergency alarm is acknowledged.
 //   POST /backfill          Signed resend of Home Assistant's alarm and login log (deduplicated).
 //   GET  /i/<incident>?t=   Incident page (events + camera images), token from the alarm push.
-//   GET  /                  Read-only dashboard, only behind Cloudflare Access.
+//   GET  /                  Read-only dashboard, only behind Cloudflare Access (installable PWA:
+//                           /manifest.webmanifest, /sw.js, icons).
 //   cron (every minute)     Offline detection with last known state, receipt polling, retention,
 //                           outside check of Home Assistant's public address (every 6 hours).
 //
@@ -32,6 +33,7 @@ import { connect } from "cloudflare:sockets";
 import APP_HTML from "./app.html";
 import { accessConfigured, verifyAccess } from "./access.js";
 import { EMERGENCY_EXPIRE, notify, pushoverCancel, pushoverEnabled, pushoverReceipt } from "./notify.js";
+import { pwaAsset } from "./pwa.js";
 import * as store from "./store.js";
 
 const DEFAULT_PORTS = [
@@ -708,7 +710,7 @@ function page(env) {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`,
+      "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`,
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
@@ -786,6 +788,9 @@ async function apiSummary(env, url, user) {
 
 async function handleGet(request, env, url, ctx) {
   const path = url.pathname;
+  // Manifest, service worker and icons hold no data (behind Access on the dashboard host anyway).
+  const asset = pwaAsset(path);
+  if (asset) return asset;
   const known = path === "/" || path.startsWith("/i/") || path.startsWith("/api/");
   if (known && (await isBlocked(env, request))) return tooMany();
   if (path.startsWith("/i/")) return validIncident(path.slice(3)) ? page(env) : json({ error: "not found" }, 404);

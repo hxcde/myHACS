@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1c1f" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bastion">
+<meta name="application-name" content="Bastion">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Bastion</title>
 <style>
 /* Bastion – im Controller-Design von Argus: flach, klare Kanten, hoher Kontrast, ein Akzent (Blau). */
@@ -91,7 +101,10 @@ svg.icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: no
 .shell { margin-left: 216px; min-height: 100vh; min-height: 100dvh; min-width: 0; }
 body.bare .sidebar { display: none; }
 body.bare .shell { margin-left: 0; }
-.header { position: sticky; top: 0; z-index: 20; height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 24px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.header { position: sticky; top: 0; z-index: 20; height: calc(56px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 16px;
+  padding: env(safe-area-inset-top) max(24px, env(safe-area-inset-right)) 0 24px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.sidebar { padding-top: max(12px, env(safe-area-inset-top)); }
+@media (display-mode: standalone) { body { -webkit-user-select: none; user-select: none; } td, .msg, .pname, .mono { -webkit-user-select: text; user-select: text; } }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 15px; flex: 1; }
 .crumbs a, .crumbs .root { color: var(--text-2); font-weight: 500; white-space: nowrap; }
 .crumbs .sep { color: var(--text-3); }
@@ -281,7 +294,8 @@ td .name { font-weight: 600; }
   .side-link .badge { position: absolute; top: 6px; left: calc(50% + 6px); right: auto; margin: 0; }
   .shell { margin-left: 0; padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
   body.bare .shell { padding-bottom: 0; }
-  .header { padding: 0 12px 0 16px; gap: 10px; }
+  .header { padding: env(safe-area-inset-top) 12px 0 16px; gap: 10px; }
+  .sidebar { padding-top: 0; }
   .updated { display: none; }
   main { padding: 12px 12px 28px; }
   .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
@@ -408,7 +422,12 @@ td .name { font-weight: 600; }
   const isArmed = (state) => Boolean(state && (state.startsWith("armed_") || state === "pending" || state === "triggered"));
 
   async function api(path) {
-    const r = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
+    let r;
+    try {
+      r = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
+    } catch {
+      throw new Error("Keine Verbindung. Die Daten werden geladen, sobald das Gerät wieder online ist.");
+    }
     if (!r.ok) throw new Error(r.status === 404 ? "Nicht gefunden oder keine Berechtigung." : `Fehler ${r.status}`);
     return r.json();
   }
@@ -1083,6 +1102,10 @@ td .name { font-weight: 600; }
   } else {
     loadDashboard();
     setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
+    // Back in the foreground (installed app), show fresh data right away.
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && view.data && Date.now() / 1000 - view.data.now > 20) loadDashboard(); });
+    window.addEventListener("online", () => loadDashboard());
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => { /* not available, e.g. private mode */ });
     let resizeTimer = null;
     window.addEventListener("hashchange", () => { if (view.data) renderDashboard(); });
     window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (view.data) renderDashboard(); }, 150); });

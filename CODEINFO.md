@@ -61,8 +61,10 @@ extras/cloudflare-worker/     Worker: Port-Prüfung, Totmannschalter, Protokoll 
   src/notify.js        Kanäle Pushover/Telegram/ntfy/Webhook, Pushover-Receipts (Quittierung, Abbruch)
   src/access.js        Prüfung des Cloudflare-Access-JWT (RS256, Audience, Aussteller, Ablauf)
   src/app.html         Dashboard und Vorfallseite (ein Text-Modul, CSP mit Nonce)
+  src/pwa.js           Web-App-Manifest, Service Worker (nur Offline-Hinweis, kein Cache), Icons (base64)
   test/                node:test mit D1-Nachbildung über node:sqlite
 extras/sounds/build.py        Erzeugt die Alarmtöne synthetisch (ffmpeg)
+extras/pwa/icons.cjs          Rendert die App-Icons (Playwright); danach mit PIL auf 128 Farben verkleinert und in src/pwa.js eingebettet
 extras/brand/                 Quelle des Logos: icon.svg, render.js (Playwright) und build.py (Zuschnitt und Größen)
 tests/                        pytest (reine Logik, HA-Integration, SSH Ende-zu-Ende)
 hacs.json                     Marketplace-Metadaten
