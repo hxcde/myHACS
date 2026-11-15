@@ -985,6 +985,7 @@ ALARM_TEXTS = {
         "arm_failed": ("Scharfschalten fehlgeschlagen", "Offen: {sensors}."),
         "wrong_code": ("Falscher Alarm-Code", "Ein falscher Code wurde eingegeben{by}."),
         "sensor_unavailable": ("Sensor nicht erreichbar", "{name} ist bei scharfer Anlage nicht erreichbar."),
+        "acknowledged": ("Alarm quittiert", "Bestätigt über Pushover{by}."),
         "bypassed": " Überbrückt: {sensors}.",
         "by": " von {user}",
         "reasons": {
@@ -1013,6 +1014,7 @@ ALARM_TEXTS = {
         "arm_failed": ("Arming failed", "Open: {sensors}."),
         "wrong_code": ("Wrong alarm code", "A wrong code was entered{by}."),
         "sensor_unavailable": ("Sensor unavailable", "{name} is unavailable while armed."),
+        "acknowledged": ("Alarm acknowledged", "Confirmed via Pushover{by}."),
         "bypassed": " Bypassed: {sensors}.",
         "by": " by {user}",
         "reasons": {

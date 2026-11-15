@@ -40,7 +40,8 @@ custom_components/bastion/
     supervisor.py        Add-on-Rechte (nur mit Supervisor)
   alarm/
     engine.py            Zustandsmaschine (disarmed/arming/armed_*/pending/triggered), Räume, Sensoren, Codes (scrypt), Aktionen
-    relay.py             Signiertes Lebenszeichen + Alarm-Weiterleitung an den Cloudflare Worker (HMAC-SHA256)
+    relay.py             Worker-Anbindung (HMAC-SHA256): Lebenszeichen mit Kontext, Ereignisse, Kamerabilder, Quittierungen
+    sounds.py            Töne auf Medienplayern: Schleifen (Alarm/Countdown), Einmal-Töne, Lautstärke sichern/wiederherstellen
   alarm_control_panel.py Alarm-Entität (Aus/Zuhause/Nacht/Abwesend/Panik)
   gitsync/
     remote.py            URL-Parsing, SSH-Vendor mit Hostkey-Pinning, Schlüsselerzeugung
@@ -50,10 +51,18 @@ custom_components/bastion/
   anomaly/
     stats.py             Welford-Statistik, Sensor-Modell, Stunden-Histogramm (ohne HA-Abhängigkeit)
     engine.py            Sampling, Login-/Aktions-Anomalien, Sabotage, Outbound
-  frontend/bastion-panel.js   Panel (Tabs: Übersicht, Anmeldungen, Git, Anomalien, Extern)
+  frontend/bastion-panel.js   Panel (Tabs: Alarmanlage, Übersicht, Anmeldungen, Git, Anomalien, Extern)
+  frontend/sounds/*.mp3  Mitgelieferte Alarmtöne (aus extras/sounds/build.py), ausgeliefert unter /bastion_static/sounds/
   brand/                 Icon und Logo (hell/dunkel), lädt HA ab 2026 direkt aus der Integration
   strings.json, translations/{en,de}.json, services.yaml, manifest.json
-extras/cloudflare-worker/     Worker für die externe Port-Prüfung
+extras/cloudflare-worker/     Worker: Port-Prüfung, Totmannschalter, Protokoll in D1, Pushover, Vorfallseite, Dashboard
+  src/worker.js        Routen, Signaturprüfung, Lebenszeichen, Alarm-Ereignisse, Funkstille-Analyse, Cron
+  src/store.js         D1: events, snapshots, receipts, state (Schema legt der Worker selbst an), Aufbewahrung
+  src/notify.js        Kanäle Pushover/Telegram/ntfy/Webhook, Pushover-Receipts (Quittierung, Abbruch)
+  src/access.js        Prüfung des Cloudflare-Access-JWT (RS256, Audience, Aussteller, Ablauf)
+  src/app.html         Dashboard und Vorfallseite (ein Text-Modul, CSP mit Nonce)
+  test/                node:test mit D1-Nachbildung über node:sqlite
+extras/sounds/build.py        Erzeugt die Alarmtöne synthetisch (ffmpeg)
 extras/brand/                 Quelle des Logos: icon.svg, render.js (Playwright) und build.py (Zuschnitt und Größen)
 tests/                        pytest (reine Logik, HA-Integration, SSH Ende-zu-Ende)
 hacs.json                     Marketplace-Metadaten
@@ -86,7 +95,7 @@ Restore: repo.decode_entry ─► Pfadprüfung ─► YAML schreiben (Backup + c
 - `custom_components/bastion/__init__.py`: `async_setup` (Services, Websocket, Close-Hook), `async_setup_entry`
 - `coordinator.py`: `Bastion.async_run_audit`, `register_close_listener`
 - `gitsync/manager.py`: `async_commit`, `async_restore`, `apply_pending_restore`, `async_test_connection`
-- `extras/cloudflare-worker/src/worker.js`: Endpoint `POST /probe`
+- `extras/cloudflare-worker/src/worker.js`: `POST /probe`, `/heartbeat`, `/alert`, `/snapshot`, `/pushover/<token>`, `GET /i/<vorfall>`, `/`, `/api/*`, `scheduled()`
 
 ## Alarmanlage
 
@@ -97,6 +106,19 @@ Sensor aktiv ─► „immer“: sofort bzw. nach eigener Bestätigungszeit Alar
              ─► nicht im Modus / noch nicht aktiv (eigene Aktivierungsverzögerung) / überbrückt: ignoriert
              ─► sofort: triggered │ verzögert: pending (Auslöseverzögerung Sensor oder Modus) ─► triggered
 triggered ─► Sirenen/Lichter an, Benachrichtigung, Worker-Alarm ─► nach Sirenendauer wieder scharf oder aus
+```
+
+Vorwarnung und Alarm erzeugen eine Vorfall-ID (`engine.incident`), die bis zum Unscharf- oder erneuten Scharfschalten an allen Protokolleinträgen hängt.
+
+```
+engine._record ─► EVENT bastion_alarm, Coordinator (Benachrichtigung, Tag + Vorfall-Link) ─► relay.async_send_event ─► POST /alert
+               └► sounds.on_event(kind, state) ─► Schleife (arming/pending/triggered) oder Einmal-Ton (armed/disarmed)
+pending/triggered ─► relay.start_snapshots ─► camera.async_get_image ─► POST /snapshot
+relay (alle 15 s Tick, Intervall bzw. während Alarm) ─► POST /heartbeat {Zustand, offen, nicht erreichbar, Start/Boot, acks_seen}
+                                                    ◄─ {acks} ─► engine.record_ack ─► Protokoll „acknowledged“
+HA-Stopp ─► relay.async_stop ─► Lebenszeichen mit stopping=true (Worker wartet länger, meldet „geplant“)
+
+Worker-Cron (jede Minute): Funkstille-Analyse (letzter Stand + Ereignisse aus D1), offene Pushover-Receipts prüfen, Aufbewahrung
 ```
 
 Sensoren mit eigener Aktivierungsverzögerung werden per Timer freigegeben. Ist ein solcher Sensor danach noch offen, startet die Vorwarnung. Zustand, Scharfschaltzeitpunkt und laufende Verzögerungen werden gespeichert und nach einem Neustart fortgesetzt. Ein Neustart während der Vorwarnung führt zum Alarm.

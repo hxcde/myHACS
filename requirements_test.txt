@@ -1,3 +1,4 @@
 pytest-homeassistant-custom-component
 dulwich==1.2.21
 paramiko==5.1.0
+PyTurboJPEG

@@ -34,6 +34,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN, EVENT_SECURITY, STORAGE_VERSION
+from .sounds import AlarmSounds, default_sounds
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +56,16 @@ SUPPORTED_DOMAINS = ("binary_sensor", "lock", "cover", "input_boolean", "switch"
 MAX_WRONG_CODES = 5
 LOCKOUT_SECONDS = 300
 LOG_SIZE = 300
-NOTIFY_EVENTS = ("triggered", "pending", "armed", "disarmed", "arm_failed", "wrong_code", "sensor_unavailable")
+NOTIFY_EVENTS = (
+    "triggered",
+    "pending",
+    "armed",
+    "disarmed",
+    "arm_failed",
+    "wrong_code",
+    "sensor_unavailable",
+    "acknowledged",
+)
 
 
 def default_config() -> dict[str, Any]:
@@ -76,11 +86,19 @@ def default_config() -> dict[str, Any]:
             "sirens": [],
             "lights": [],
             "warning": [],
-            "notify_events": ["triggered", "pending", "armed", "disarmed", "arm_failed", "wrong_code"],
+            "notify_events": ["triggered", "pending", "armed", "disarmed", "arm_failed", "wrong_code", "acknowledged"],
             "critical_push": True,
         },
+        "sounds": default_sounds(),
         "codes": [],
-        "worker": {"url": "", "secret": secrets.token_urlsafe(32), "interval": 120, "enabled": False},
+        "worker": {
+            "url": "",
+            "secret": secrets.token_urlsafe(32),
+            "interval": 120,
+            "enabled": False,
+            "cameras": [],
+            "snapshots": 3,
+        },
     }
 
 
@@ -131,6 +149,9 @@ class AlarmEngine:
         self.triggered_by: dict[str, Any] | None = None
         self.bypassed: list[str] = []
         self.armed_at: str | None = None
+        # One id per alarm incident (entry delay and/or alarm until disarm or re-arm).
+        self.incident: str | None = None
+        self.sounds = AlarmSounds(hass, lambda: self.config.get("sounds"))
         self._activation_timers: list[CALLBACK_TYPE] = []
         self._not_live: set[str] = set()
         self.log: list[dict[str, Any]] = []
@@ -162,6 +183,7 @@ class AlarmEngine:
         self.triggered_by = saved.get("triggered_by")
         self.bypassed = list(saved.get("bypassed") or [])
         self.armed_at = saved.get("armed_at")
+        self.incident = saved.get("incident")
         self.log = list(data.get("log") or [])[-LOG_SIZE:]
         self._listen()
         self._resume()
@@ -175,6 +197,7 @@ class AlarmEngine:
             if unsub is not None:
                 unsub()
         self._timer = self._siren_timer = self._unsub_sensors = self._unsub_security = None
+        await self.sounds.async_unload()
         await self._store.async_save(self._data())
 
     def _data(self) -> dict[str, Any]:
@@ -189,6 +212,7 @@ class AlarmEngine:
                 "triggered_by": self.triggered_by,
                 "bypassed": self.bypassed,
                 "armed_at": self.armed_at,
+                "incident": self.incident,
             },
             "log": self.log[-LOG_SIZE:],
         }
@@ -332,13 +356,41 @@ class AlarmEngine:
 
     def _record(self, kind: str, **data: Any) -> dict[str, Any]:
         entry = {"time": dt_util.utcnow().isoformat(), "type": kind, "state": self.state, "mode": self.mode, **data}
+        if self.incident and "incident" not in data:
+            entry["incident"] = self.incident
         self.log.append(entry)
         del self.log[:-LOG_SIZE]
         self.hass.bus.async_fire(EVENT_ALARM, entry)
         if self.on_event is not None:
             self.on_event(kind, entry)
+        self.sounds.on_event(kind, self.state)
         self._save()
         return entry
+
+    def _new_incident(self) -> None:
+        if self.incident is None:
+            self.incident = secrets.token_hex(6)
+
+    def _end_incident(self) -> None:
+        if self.incident is not None:
+            self.incident = None
+            self._save()
+
+    def record_ack(self, by: str, incident: str | None, kind: str | None = None) -> None:
+        """A Pushover alarm was acknowledged (reported by the worker)."""
+        self._record("acknowledged", user=by, channel="pushover", incident=incident, ack=kind)
+
+    def context(self) -> dict[str, list[str]]:
+        """Open and unavailable sensors (for the worker's offline report)."""
+        open_now: list[str] = []
+        unavailable: list[str] = []
+        for entity_id in self.all_sensors():
+            active = is_active(self.hass.states.get(entity_id))
+            if active is None:
+                unavailable.append(self._name(entity_id))
+            elif active:
+                open_now.append(self._name(entity_id))
+        return {"open": open_now[:10], "unavailable": unavailable[:10]}
 
     def _set_state(self, state: str, *, mode: str | None = None, until: float | None = None) -> None:
         self.state = state
@@ -384,6 +436,7 @@ class AlarmEngine:
         else:
             self._set_state(ARMED[mode], mode=mode)
             self._record("armed", target=mode, user=who, bypassed=[self._name(s) for s in self.bypassed])
+        self._end_incident()
         self._schedule_activation()
 
     @callback
@@ -453,6 +506,7 @@ class AlarmEngine:
         self.armed_at = None
         self._set_state(DISARMED)
         self._record("disarmed", user=who, previous=was)
+        self._end_incident()
 
     async def async_trigger(self, reason: str, *, sensor: str | None = None, user: str | None = None) -> None:
         """Raise the alarm."""
@@ -469,6 +523,7 @@ class AlarmEngine:
             "time": dt_util.utcnow().isoformat(),
         }
         trigger_time = int(self.config.get("trigger_time") or 0)
+        self._new_incident()
         self._set_state(TRIGGERED, mode=self.mode, until=trigger_time or None)
         self._sirens(True)
         if trigger_time:
@@ -485,9 +540,11 @@ class AlarmEngine:
             # Alarm of a 24 h sensor while disarmed: back to disarmed after the sirens.
             self._set_state(DISARMED)
             self._record("reset")
+            self._end_incident()
         elif self.config.get("rearm", True):
             self._set_state(ARMED[self.mode], mode=self.mode)
             self._record("rearmed", target=self.mode)
+            self._end_incident()
         else:
             self.until = None
             self._save()
@@ -558,6 +615,7 @@ class AlarmEngine:
             "room": room["name"] if room else None,
             "time": dt_util.utcnow().isoformat(),
         }
+        self._new_incident()
         self._set_state(PENDING, mode=self.mode, until=delay)
         self._timer = async_call_later(self.hass, delay, self._entry_done)
         self._warning(True)
@@ -622,9 +680,11 @@ class AlarmEngine:
         self._switch(list(actions.get("sirens") or []), on)
         if on:
             self._switch(list(actions.get("lights") or []), True)
-        elif self._siren_timer is not None:
-            self._siren_timer()
-            self._siren_timer = None
+        else:
+            self.sounds.sirens_off()
+            if self._siren_timer is not None:
+                self._siren_timer()
+                self._siren_timer = None
 
     def _warning(self, on: bool) -> None:
         self._switch(list(self.config["actions"].get("warning") or []), on)
@@ -644,6 +704,7 @@ class AlarmEngine:
             "numeric_codes": self.numeric_codes,
             "require_code_arm": self.config["require_code_arm"],
             "locked": max(0, int(self._locked_until - time.monotonic())),
+            "incident": self.incident,
         }
 
     def public_config(self) -> dict[str, Any]:

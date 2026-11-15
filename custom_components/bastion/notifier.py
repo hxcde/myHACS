@@ -37,8 +37,9 @@ class Notifier:
         persistent: bool = True,
         data: dict[str, Any] | None = None,
         actions: list[dict[str, Any]] | None = None,
+        mobile: dict[str, Any] | None = None,
     ) -> None:
-        """Send a notification. Actions are added for Companion App targets."""
+        """Send a notification. Actions and `mobile` data are added for Companion App targets."""
         if key and rate_limit:
             now = time.monotonic()
             if now - self._last.get(key, -rate_limit - 1) < rate_limit:
@@ -53,12 +54,24 @@ class Notifier:
             )
         for target in self._targets:
             payload_data = dict(data or {})
-            if actions and target.removeprefix("notify.").startswith("mobile_app_"):
-                payload_data["actions"] = actions
-                payload_data["push"] = {"interruption-level": "time-sensitive"}
-                if key:
-                    payload_data["tag"] = f"{DOMAIN}_{key}"
+            if self._is_mobile(target):
+                if actions:
+                    payload_data["actions"] = actions
+                    payload_data.setdefault("push", {"interruption-level": "time-sensitive"})
+                    if key:
+                        payload_data["tag"] = f"{DOMAIN}_{key}"
+                payload_data.update(mobile or {})
             await self._send_target(target, title, message, payload_data or None)
+
+    @staticmethod
+    def _is_mobile(target: str) -> bool:
+        return target.strip().removeprefix("notify.").startswith("mobile_app_")
+
+    async def async_clear(self, tag: str) -> None:
+        """Remove a tagged notification from Companion App devices."""
+        for target in self._targets:
+            if self._is_mobile(target):
+                await self._send_target(target, "", "clear_notification", {"tag": tag})
 
     async def _send_target(self, target: str, title: str, message: str, data: dict[str, Any] | None) -> None:
         target = target.strip()

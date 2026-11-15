@@ -17,6 +17,7 @@ from homeassistant.helpers import (
 import probatio
 
 from .alarm.engine import MODES, NOTIFY_EVENTS, SENSOR_TYPES, SUPPORTED_DOMAINS, AlarmError
+from .alarm.sounds import BUILTIN, SOUND_KEYS, async_media_files
 from .const import ALL_AREAS
 from .texts import alarm_error_text
 
@@ -329,6 +330,15 @@ _SENSOR = probatio.Schema(
     }
 )
 _DELAY = probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=900))
+_CAMERA = probatio.All(cv.entity_id, probatio.Match(r"^camera\."))
+_PLAYER = probatio.All(cv.entity_id, probatio.Match(r"^media_player\."))
+_VOLUME = probatio.All(probatio.Coerce(float), probatio.Range(min=0.05, max=1.0))
+# "" = off, a built-in sound, a media source (e.g. "My media") or an http(s) URL.
+_SOUND = probatio.Any(
+    "",
+    probatio.In([f"bastion:{name}" for name in BUILTIN]),
+    probatio.All(str, probatio.Length(max=500), probatio.Match(r"^(media-source://|https?://)\S+$")),
+)
 _ALARM_CONFIG = probatio.Schema(
     {
         probatio.Optional("rooms"): [_ROOM],
@@ -354,6 +364,16 @@ _ALARM_CONFIG = probatio.Schema(
                 probatio.Optional("url"): probatio.All(str, probatio.Match(r"^(https://\S+)?$")),
                 probatio.Optional("interval"): probatio.All(probatio.Coerce(int), probatio.Range(min=30, max=3600)),
                 probatio.Optional("enabled"): bool,
+                probatio.Optional("cameras"): [_CAMERA],
+                probatio.Optional("snapshots"): probatio.All(probatio.Coerce(int), probatio.Range(min=0, max=5)),
+            }
+        ),
+        probatio.Optional("sounds"): probatio.Schema(
+            {
+                probatio.Optional("players"): [_PLAYER],
+                probatio.Optional("volume"): _VOLUME,
+                probatio.Optional("notice_volume"): _VOLUME,
+                **{probatio.Optional(key): _SOUND for key in SOUND_KEYS},
             }
         ),
     }
@@ -389,6 +409,20 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         for s in hass.states.async_all(("siren", "switch", "light", "script", "scene", "input_boolean", "media_player"))
     ]
     actors.sort(key=lambda a: a["name"].lower())
+    cameras = sorted(
+        (
+            {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id}
+            for s in hass.states.async_all("camera")
+        ),
+        key=lambda c: c["name"].lower(),
+    )
+    players = sorted(
+        (
+            {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id}
+            for s in hass.states.async_all("media_player")
+        ),
+        key=lambda c: c["name"].lower(),
+    )
     relay = bastion.relay
     return {
         "config": bastion.alarm.public_config(),
@@ -396,6 +430,9 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         "log": bastion.alarm.log[-60:][::-1],
         "candidates": candidates,
         "actors": actors,
+        "cameras": cameras,
+        "players": players,
+        "sounds_builtin": list(BUILTIN),
         "relay": {"enabled": relay.enabled, "last_ok": relay.last_ok, "last_error": relay.last_error},
     }
 
@@ -517,6 +554,43 @@ async def ws_alarm_worker(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"result": result, **_alarm_payload(hass, bastion)})
 
 
+@websocket_api.websocket_command({probatio.Required("type"): "bastion/alarm/media"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_media(hass, connection, msg) -> None:
+    """Audio files from "My media" for the sound picker."""
+    if _guard(connection, msg) is None:
+        return
+    connection.send_result(msg["id"], {"files": await async_media_files(hass)})
+
+
+@websocket_api.websocket_command(
+    {
+        probatio.Required("type"): "bastion/alarm/sound",
+        probatio.Required("action"): probatio.In(("play", "stop")),
+        probatio.Optional("sound", default=""): _SOUND,
+        probatio.Optional("players"): [_PLAYER],
+        probatio.Optional("volume"): _VOLUME,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_sound(hass, connection, msg) -> None:
+    """Test a sound on the configured (or given) media players."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    sounds = bastion.alarm.sounds
+    if msg["action"] == "stop":
+        await sounds.async_stop_test()
+        connection.send_result(msg["id"], {"ok": True})
+        return
+    if not msg["sound"]:
+        connection.send_error(msg["id"], "no_sound", "Kein Ton gewählt")
+        return
+    ok = await sounds.async_test(msg["sound"], msg.get("players"), msg.get("volume"))
+    connection.send_result(msg["id"], {"ok": ok})
+
+
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register all commands."""
     for command in (
@@ -539,5 +613,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_alarm_disarm,
         ws_alarm_code,
         ws_alarm_worker,
+        ws_alarm_media,
+        ws_alarm_sound,
     ):
         websocket_api.async_register_command(hass, command)

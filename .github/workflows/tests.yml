@@ -26,3 +26,14 @@ jobs:
           ruff format --check .
       - name: Test
         run: pytest -q
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test
+        working-directory: extras/cloudflare-worker
+        run: node --no-warnings --import ./test/register.mjs --test test/worker.test.mjs

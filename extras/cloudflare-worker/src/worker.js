@@ -1,22 +1,33 @@
 // Bastion Cloudflare worker.
 //
-//   POST /probe      Port check of the caller's own public IP (never other hosts).
-//   POST /heartbeat  Signed heartbeat of the alarm system (dead man's switch).
-//   POST /alert      Signed alarm event, relayed to Telegram / ntfy / webhook.
-//   cron             Alerts when heartbeats stop while the alarm is armed.
+//   POST /probe             Port check of the caller's own public IP (never other hosts).
+//   POST /heartbeat         Signed heartbeat of the alarm system (dead man's switch).
+//   POST /alert             Signed alarm event: logged in D1, pushed if requested.
+//   POST /snapshot          Signed camera image of an incident (stored in D1).
+//   POST /pushover/<token>  Pushover callback when an emergency alarm is acknowledged.
+//   GET  /i/<incident>?t=   Incident page (events + camera images), token from the alarm push.
+//   GET  /                  Read-only dashboard, only behind Cloudflare Access.
+//   cron (every minute)     Offline detection with last known state, receipt polling, retention.
 //
-// Secrets / variables (wrangler secret put …):
+// Secrets / variables:
 //   PROBE_TOKEN          optional bearer token for /probe
-//   ALARM_SECRET         shared secret for /heartbeat and /alert (shown in Bastion)
+//   ALARM_SECRET         shared secret with Home Assistant (shown in Bastion)
 //   PUSHOVER_TOKEN       + PUSHOVER_USER         optional channel (alarm = emergency priority)
 //   TELEGRAM_BOT_TOKEN   + TELEGRAM_CHAT_ID      optional channel
 //   NTFY_URL             (+ NTFY_TOKEN)           optional channel, e.g. https://ntfy.sh/my-topic
 //   WEBHOOK_URL                                   optional channel, receives JSON
-//   OFFLINE_MINUTES      default 10
+//   ACCESS_TEAM_DOMAIN   + ACCESS_AUD            Cloudflare Access for the dashboard
+//   DASHBOARD_HOST       optional, serve the dashboard only on this host name
+//   OFFLINE_MINUTES      default 10, PLANNED_MINUTES default 20 (after a planned restart)
 //   ALERT_WHEN_DISARMED  "1" to also report outages while disarmed
-// KV binding: BASTION_KV
+//   LOG_DAYS             default 365, SNAPSHOT_DAYS default 30
+// D1 binding: DB
 
 import { connect } from "cloudflare:sockets";
+import APP_HTML from "./app.html";
+import { accessConfigured, verifyAccess } from "./access.js";
+import { EMERGENCY_EXPIRE, notify, pushoverCancel, pushoverEnabled, pushoverReceipt } from "./notify.js";
+import * as store from "./store.js";
 
 const DEFAULT_PORTS = [
   21, 22, 23, 80, 139, 443, 445, 1880, 1883, 2375, 2376, 3000, 3389, 5000,
@@ -25,12 +36,34 @@ const DEFAULT_PORTS = [
 const MAX_PORTS = 40;
 const TIMEOUT_MS = 3000;
 const REPLAY_WINDOW = 300;
+const MAX_BODY = 64 * 1024;
+const MAX_SNAPSHOT = 1_500_000; // base64 characters, D1 allows 2 MB per value
 const MODES = { home: "Zuhause", night: "Nacht", away: "Abwesend" };
+const LABELS = {
+  triggered: "Alarm",
+  pending: "Vorwarnung",
+  arming: "Wird scharf",
+  armed: "Scharf",
+  rearmed: "Wieder scharf",
+  disarmed: "Unscharf",
+  reset: "Zurückgesetzt",
+  arm_failed: "Scharfschalten fehlgeschlagen",
+  wrong_code: "Falscher Code",
+  sensor_unavailable: "Sensor nicht erreichbar",
+  acknowledged: "Quittiert",
+  offline: "Funkstille",
+  online: "Wieder erreichbar",
+  restart: "Neustart",
+};
+// Events pushed by older Bastion versions that do not send a push flag.
+const LEGACY_PUSH = new Set(["triggered", "pending", "disarmed", "armed", "sensor_unavailable"]);
+
+const nowS = () => Math.floor(Date.now() / 1000);
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" },
   });
 }
 
@@ -56,76 +89,63 @@ async function hmacHex(secret, message) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Link token for an incident page; Bastion computes the same value.
+export async function incidentToken(env, incident) {
+  return (await hmacHex(env.ALARM_SECRET, `incident.${incident}`)).slice(0, 32);
+}
+
+async function callbackToken(env) {
+  return (await hmacHex(env.ALARM_SECRET, "pushover-callback")).slice(0, 32);
+}
+
 // Returns the parsed body or a Response with the error.
-async function verified(request, env) {
+async function verified(request, env, maxBody = MAX_BODY) {
   if (!env.ALARM_SECRET) return json({ error: "ALARM_SECRET not set" }, 500);
+  if (Number(request.headers.get("content-length") || 0) > maxBody) return json({ error: "too large" }, 413);
   const ts = request.headers.get("x-bastion-timestamp") || "";
   const sig = request.headers.get("x-bastion-signature") || "";
   const body = await request.text();
+  if (body.length > maxBody) return json({ error: "too large" }, 413);
   if (Math.abs(Date.now() / 1000 - Number(ts)) > REPLAY_WINDOW) return json({ error: "stale" }, 401);
   const expected = await hmacHex(env.ALARM_SECRET, `${ts}.${body}`);
   if (!timingSafeEqual(sig, expected)) return json({ error: "unauthorized" }, 401);
   try {
-    return JSON.parse(body);
+    const data = JSON.parse(body);
+    return data && typeof data === "object" ? data : json({ error: "invalid json" }, 400);
   } catch {
     return json({ error: "invalid json" }, 400);
   }
 }
 
-// Pushover priorities: 2 = emergency (repeats until acknowledged), 1 = high, 0 = normal.
-const PUSHOVER_PRIORITY = { urgent: 2, high: 1, default: 0 };
+const list = (v, n = 20) => (Array.isArray(v) ? v.slice(0, n).map((x) => String(x).slice(0, 80)) : []);
+const validIncident = (v) => typeof v === "string" && /^[a-f0-9]{8,32}$/.test(v);
 
-async function notify(env, title, message, priority = "default") {
-  const sent = [];
-  const tasks = [];
-  if (env.PUSHOVER_TOKEN && env.PUSHOVER_USER) {
-    const level = PUSHOVER_PRIORITY[priority] ?? 0;
-    const form = new URLSearchParams({
-      token: env.PUSHOVER_TOKEN,
-      user: env.PUSHOVER_USER,
-      title: title.slice(0, 250),
-      message: message.slice(0, 1024) || title,
-      priority: String(level),
-    });
-    if (level === 2) {
-      form.set("retry", "60");
-      form.set("expire", "1800");
-      form.set("sound", env.PUSHOVER_SOUND || "siren");
-    }
-    if (env.PUSHOVER_DEVICE) form.set("device", env.PUSHOVER_DEVICE);
-    tasks.push(
-      fetch("https://api.pushover.net/1/messages.json", { method: "POST", body: form }).then(
-        (r) => r.ok && sent.push("pushover"),
-      ),
-    );
+function formatTime(ts, tz) {
+  try {
+    return new Date(ts * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: tz || "Europe/Berlin" });
+  } catch {
+    return new Date(ts * 1000).toISOString().slice(11, 16);
   }
-  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
-    tasks.push(
-      fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: `${title}\n${message}` }),
-      }).then((r) => r.ok && sent.push("telegram")),
-    );
-  }
-  if (env.NTFY_URL) {
-    const headers = { Title: encodeURIComponent(title), Priority: priority === "urgent" ? "5" : "3", Tags: "rotating_light" };
-    if (env.NTFY_TOKEN) headers.Authorization = `Bearer ${env.NTFY_TOKEN}`;
-    tasks.push(fetch(env.NTFY_URL, { method: "POST", headers, body: message }).then((r) => r.ok && sent.push("ntfy")));
-  }
-  if (env.WEBHOOK_URL) {
-    tasks.push(
-      fetch(env.WEBHOOK_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, message, priority }),
-      }).then((r) => r.ok && sent.push("webhook")),
-    );
-  }
-  await Promise.allSettled(tasks);
-  return sent;
 }
 
+function stateText(record) {
+  const mode = MODES[record.mode] || "";
+  switch (record.state) {
+    case "triggered":
+      return `ALARM (${mode})`;
+    case "pending":
+      return `Vorwarnung (${mode})`;
+    case "arming":
+      return `wird scharf (${mode})`;
+    case "disarmed":
+    case undefined:
+      return "aus";
+    default:
+      return `scharf (${mode})`;
+  }
+}
+
+// ------------------------------------------------------------------ probe
 async function probe(ip, port) {
   const started = Date.now();
   let socket;
@@ -166,77 +186,371 @@ async function handleProbe(request, env) {
   return json({ ip, results, checked_at: new Date().toISOString() });
 }
 
+// ------------------------------------------------------------ alarm events
 function eventText(data) {
   const mode = MODES[data.mode] || data.mode || "";
   const where = [data.sensor, data.room].filter(Boolean).join(" · ");
+  const by = data.user ? ` von ${data.user}` : "";
   switch (data.event) {
     case "triggered":
       return [`🚨 ALARM ${data.instance || ""}`.trim(), `${where || data.reason || "Alarm"} (Modus ${mode})`, "urgent"];
     case "pending":
       return ["⏳ Vorwarnung", `${where} – Alarm folgt, falls nicht unscharf geschaltet wird.`, "high"];
     case "disarmed":
-      return ["✅ Alarmanlage aus", data.user ? `Unscharf geschaltet von ${data.user}` : "Unscharf geschaltet", "default"];
+      return ["✅ Alarmanlage aus", `Unscharf geschaltet${by}.`, "default"];
     case "armed":
-      return ["🛡 Alarmanlage scharf", `Modus ${mode}`, "default"];
+    case "arming":
+    case "rearmed":
+      return ["🛡 Alarmanlage scharf", `Modus ${mode}${by}`, "default"];
     case "sensor_unavailable":
       return ["⚠️ Sensor nicht erreichbar", where, "high"];
+    case "wrong_code":
+      return ["🔑 Falscher Alarm-Code", `Ein falscher Code wurde eingegeben${by}.`, "high"];
+    case "arm_failed":
+      return ["Scharfschalten fehlgeschlagen", `Offen: ${list(data.sensors).join(", ")}`, "default"];
     case "test":
       return ["🧪 Bastion Test", "Die Verbindung zwischen Home Assistant und dem Worker funktioniert.", "default"];
     default:
-      return [`Bastion: ${data.event}`, where, "default"];
+      return [`Bastion: ${LABELS[data.event] || data.event}`, where, "default"];
   }
 }
 
-async function handleHeartbeat(request, env) {
+async function cancelOpen(env, kind) {
+  for (const r of await store.openReceipts(env, kind)) {
+    await pushoverCancel(env, r.receipt);
+    await store.markCancelled(env, r.receipt);
+  }
+}
+
+async function handleHeartbeat(request, env, url) {
   const data = await verified(request, env);
   if (data instanceof Response) return data;
-  const previous = JSON.parse((await env.BASTION_KV.get("hb")) || "null");
-  const record = { ...data, received: Date.now() };
-  await env.BASTION_KV.put("hb", JSON.stringify(record));
-  if (previous && previous.offline_alerted) {
-    await notify(env, "✅ Home Assistant wieder erreichbar", `Alarmanlage: ${data.state}`);
+  const prev = await store.getState(env, "hb");
+  const seen = list(data.acks_seen);
+  const record = {
+    ts: Number(data.ts) || nowS(),
+    state: String(data.state || ""),
+    mode: data.mode || null,
+    armed: Boolean(data.armed),
+    incident: validIncident(data.incident) ? data.incident : null,
+    interval: Number(data.interval) || 120,
+    instance: String(data.instance || "").slice(0, 80),
+    tz: String(data.tz || "").slice(0, 60),
+    open: list(data.open),
+    unavailable: list(data.unavailable),
+    started: Number(data.started) || null,
+    boot: Number(data.boot) || null,
+    version: String(data.version || "").slice(0, 20),
+    stopping: Boolean(data.stopping),
+    received: Date.now(),
+    origin: url.origin,
+    offline: false,
+    offline_notified: false,
+  };
+  if (prev && prev.offline) {
+    const minutes = Math.round((Date.now() - prev.received) / 60000);
+    const cause = recoveryCause(prev, record);
+    await store.addEvent(env, { event: "online", state: record.state, mode: record.mode, detail: { minutes, cause } });
+    if (prev.offline_notified) {
+      await cancelOpen(env, "offline");
+      await notify(env, {
+        title: "✅ Home Assistant wieder erreichbar",
+        message: `Nach ${minutes} Min. Funkstille. ${cause}\nAlarmanlage: ${stateText(record)}.`,
+      });
+    }
+  } else if (prev && !prev.stopping && restarted(prev, record)) {
+    await store.addEvent(env, { event: "restart", state: record.state, mode: record.mode, detail: { cause: recoveryCause(prev, record) } });
   }
+  await store.setState(env, "hb", record);
+  if (seen.length) await store.markSeen(env, seen);
+  return json({ ok: true, acks: await store.unseenAcks(env) });
+}
+
+function restarted(prev, cur) {
+  return Boolean((prev.started && cur.started && prev.started !== cur.started) || (prev.boot && cur.boot && Math.abs(cur.boot - prev.boot) > 300));
+}
+
+function recoveryCause(prev, cur) {
+  if (prev.boot && cur.boot && Math.abs(cur.boot - prev.boot) > 300) {
+    return "Der Rechner wurde neu gestartet – vermutlich Stromausfall oder Neustart des Hosts.";
+  }
+  if (prev.started && cur.started && prev.started !== cur.started) {
+    return prev.stopping ? "Home Assistant wurde geplant neu gestartet." : "Home Assistant wurde neu gestartet (Absturz oder Neustart).";
+  }
+  return "Home Assistant lief durch – Internet oder Netzwerk war unterbrochen.";
+}
+
+async function handleAlert(request, env, url) {
+  const data = await verified(request, env);
+  if (data instanceof Response) return data;
+  const incident = validIncident(data.incident) ? data.incident : null;
+  if (data.event !== "test") {
+    await store.addEvent(env, {
+      ts: data.ts,
+      event: data.event,
+      state: data.state,
+      mode: data.mode,
+      incident,
+      sensor: data.sensor,
+      room: data.room,
+      user: data.user,
+      detail: data.detail && typeof data.detail === "object" ? data.detail : null,
+    });
+    // An alert is also a sign of life and the freshest state for the offline report.
+    const hb = await store.getState(env, "hb");
+    if (hb && !hb.offline) {
+      Object.assign(hb, { state: String(data.state || hb.state), mode: data.mode ?? hb.mode, armed: Boolean(data.armed), incident, received: Date.now() });
+      await store.setState(env, "hb", hb);
+    }
+  }
+  if (data.event === "disarmed") await cancelOpen(env, "alarm");
+  const view = incident ? `${url.origin}/i/${incident}?t=${await incidentToken(env, incident)}` : null;
+  const push = data.event === "test" || (typeof data.push === "boolean" ? data.push : LEGACY_PUSH.has(data.event));
+  let channels = [];
+  if (push) {
+    const [title, message, priority] = eventText(data);
+    const callback = pushoverEnabled(env) ? `${url.origin}/pushover/${await callbackToken(env)}` : null;
+    const res = await notify(env, { title, message, priority, url: view, urlTitle: "Ereignis und Kamerabilder", callback });
+    channels = res.sent;
+    if (res.receipt && priority === "urgent") {
+      await store.addReceipt(env, { receipt: res.receipt, kind: "alarm", incident, expires: nowS() + EMERGENCY_EXPIRE });
+    }
+  }
+  return json({ ok: true, channels, view });
+}
+
+async function handleSnapshot(request, env) {
+  const data = await verified(request, env, MAX_SNAPSHOT + 4096);
+  if (data instanceof Response) return data;
+  if (!validIncident(data.incident)) return json({ error: "invalid incident" }, 400);
+  const type = String(data.type || "image/jpeg");
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) return json({ error: "invalid type" }, 400);
+  if (typeof data.data !== "string" || !data.data || data.data.length > MAX_SNAPSHOT || !/^[A-Za-z0-9+/=]+$/.test(data.data)) {
+    return json({ error: "invalid image" }, 400);
+  }
+  const id = await store.addSnapshot(env, { ts: data.ts, incident: data.incident, camera: data.camera, type, data: data.data });
+  return json({ ok: true, id });
+}
+
+// ------------------------------------------------------ acknowledgements
+async function checkReceipt(env, rec) {
+  const info = await pushoverReceipt(env, rec.receipt);
+  if (!info) return;
+  if (Number(info.acknowledged) === 1) {
+    const by = String(info.acknowledged_by_device || "").trim() || "Pushover";
+    const at = Number(info.acknowledged_at) || nowS();
+    await store.markAcked(env, rec.receipt, at, by);
+    await store.addEvent(env, { ts: at, event: "acknowledged", incident: rec.incident, user: by, detail: { kind: rec.kind, receipt: rec.receipt } });
+    await notify(env, { title: "✋ Alarm quittiert", message: `Quittiert von ${by}. Die Wiederholung ist für alle beendet.` });
+  } else if (Number(info.expired) === 1) {
+    await store.markCancelled(env, rec.receipt);
+  }
+}
+
+async function handlePushoverCallback(request, env, token) {
+  if (!env.ALARM_SECRET || !pushoverEnabled(env)) return json({ error: "not found" }, 404);
+  if (!timingSafeEqual(token, await callbackToken(env))) return json({ error: "unauthorized" }, 401);
+  let receipt = "";
+  try {
+    receipt = String((await request.formData()).get("receipt") || "");
+  } catch {
+    return json({ error: "invalid" }, 400);
+  }
+  if (!/^[A-Za-z0-9]{10,40}$/.test(receipt)) return json({ error: "invalid" }, 400);
+  const rec = await store.getReceipt(env, receipt);
+  // The callback itself is not trusted: the receipt is confirmed with Pushover.
+  if (rec && !rec.acked_at) await checkReceipt(env, rec);
   return json({ ok: true });
 }
 
-async function handleAlert(request, env) {
-  const data = await verified(request, env);
-  if (data instanceof Response) return data;
-  const [title, message, priority] = eventText(data);
-  const channels = await notify(env, title, message, priority);
-  return json({ ok: true, channels });
+// ---------------------------------------------------------- offline check
+function offlineReport(record, events, silent) {
+  const active = ["pending", "triggered"].includes(record.state);
+  const recentUnavailable = events.some((e) => e.event === "sensor_unavailable") || record.unavailable.length > 0;
+  let verdict;
+  let priority = record.armed || active ? "urgent" : "high";
+  if (active) verdict = "Funkstille während eines laufenden Alarms – Sabotage wahrscheinlich.";
+  else if (record.stopping) {
+    verdict = "Home Assistant wurde geplant beendet (Neustart oder Update) und ist nicht zurückgekehrt.";
+  } else if (recentUnavailable) verdict = "Kurz vorher fielen Sensoren aus – Funkstörung, Stromausfall oder Sabotage möglich.";
+  else verdict = "Möglich: Strom- oder Internetausfall, Absturz oder Sabotage.";
+  if (!record.armed && !active) priority = "high";
+  const lines = [`Seit ${Math.round(silent)} Min. kein Lebenszeichen von ${record.instance || "Home Assistant"}.`, verdict, "", `Letzter Stand: ${stateText(record)}`];
+  if (events.length) {
+    lines.push("Zuletzt:");
+    for (const e of [...events].reverse()) {
+      const where = [e.sensor, e.room].filter(Boolean).join(", ");
+      lines.push(`• ${formatTime(e.ts, record.tz)} ${LABELS[e.event] || e.event}${where ? ` – ${where}` : ""}${e.user && e.event !== "acknowledged" ? ` (${e.user})` : ""}`);
+    }
+  }
+  if (record.open.length) lines.push(`Offen: ${record.open.join(", ")}`);
+  if (record.unavailable.length) lines.push(`Nicht erreichbar: ${record.unavailable.join(", ")}`);
+  return { title: active ? "🚨 Funkstille während Alarm" : "⚠️ Home Assistant nicht erreichbar", message: lines.join("\n"), priority, verdict };
 }
 
 async function checkHeartbeat(env) {
-  const record = JSON.parse((await env.BASTION_KV.get("hb")) || "null");
-  if (!record) return;
-  const minutes = Math.max(Number(env.OFFLINE_MINUTES || 10), Math.ceil((3 * (record.interval || 120)) / 60));
-  const silentFor = (Date.now() - record.received) / 60000;
-  const relevant = record.armed || env.ALERT_WHEN_DISARMED === "1";
-  if (silentFor > minutes && relevant && !record.offline_alerted) {
-    const mode = MODES[record.mode] || record.mode || "aus";
-    await notify(
-      env,
-      "⚠️ Home Assistant nicht erreichbar",
-      `Seit ${Math.round(silentFor)} Min. kein Lebenszeichen von ${record.instance || "Home Assistant"}. ` +
-        `Alarmanlage war ${record.armed ? `scharf (${mode})` : "aus"}. Möglich: Stromausfall, Internetausfall oder Sabotage.`,
-      "urgent",
-    );
-    record.offline_alerted = true;
-    await env.BASTION_KV.put("hb", JSON.stringify(record));
+  const record = await store.getState(env, "hb");
+  if (!record || record.offline) return;
+  let minutes = Math.max(Number(env.OFFLINE_MINUTES || 10), Math.ceil((3 * (record.interval || 120)) / 60));
+  if (record.stopping) minutes = Math.max(minutes, Number(env.PLANNED_MINUTES || 20));
+  const silent = (Date.now() - record.received) / 60000;
+  if (silent <= minutes) return;
+  const active = ["pending", "triggered"].includes(record.state);
+  const relevant = record.armed || active || env.ALERT_WHEN_DISARMED === "1";
+  const events = await store.recentEvents(env, Math.floor(record.received / 1000) - 1800, 5);
+  const report = offlineReport({ ...record, open: record.open || [], unavailable: record.unavailable || [] }, events, silent);
+  record.offline = true;
+  if (relevant) {
+    const view = active && record.incident && record.origin
+      ? `${record.origin}/i/${record.incident}?t=${await incidentToken(env, record.incident)}`
+      : null;
+    const callback = pushoverEnabled(env) && record.origin ? `${record.origin}/pushover/${await callbackToken(env)}` : null;
+    const res = await notify(env, { title: report.title, message: report.message, priority: report.priority, url: view, urlTitle: "Ereignis und Kamerabilder", callback });
+    if (res.receipt && report.priority === "urgent") {
+      await store.addReceipt(env, { receipt: res.receipt, kind: "offline", incident: record.incident, expires: nowS() + EMERGENCY_EXPIRE });
+    }
+    record.offline_notified = true;
   }
+  await store.addEvent(env, {
+    event: "offline",
+    state: record.state,
+    mode: record.mode,
+    incident: active ? record.incident : null,
+    detail: { verdict: report.verdict, since: Math.floor(record.received / 1000), notified: record.offline_notified },
+  });
+  await store.setState(env, "hb", record);
+}
+
+async function pollReceipts(env) {
+  if (!pushoverEnabled(env)) return;
+  for (const rec of await store.openReceipts(env, null, 5)) await checkReceipt(env, rec);
+}
+
+async function retention(env) {
+  const last = (await store.getState(env, "cleanup")) || 0;
+  if (Date.now() - last < 3600 * 1000) return;
+  await store.cleanup(env, { logDays: Number(env.LOG_DAYS || 365), snapshotDays: Number(env.SNAPSHOT_DAYS || 30) });
+  await store.setState(env, "cleanup", Date.now());
+}
+
+// ------------------------------------------------------------- web pages
+function page(env) {
+  const nonce = crypto.randomUUID().replace(/-/g, "");
+  return new Response(APP_HTML.replace(/<script>/g, `<script nonce="${nonce}">`), {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`,
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+    },
+  });
+}
+
+function onDashboardHost(env, url) {
+  return !env.DASHBOARD_HOST || url.hostname === env.DASHBOARD_HOST;
+}
+
+// Access identity for dashboard requests, null otherwise.
+async function dashboardUser(request, env, url) {
+  if (!accessConfigured(env) || !onDashboardHost(env, url)) return null;
+  return verifyAccess(request, env);
+}
+
+// Incident data needs either the link token or a dashboard login.
+async function incidentAllowed(request, env, url, incident) {
+  const token = url.searchParams.get("t") || "";
+  if (env.ALARM_SECRET && token && timingSafeEqual(token, await incidentToken(env, incident))) return true;
+  return Boolean(await dashboardUser(request, env, url));
+}
+
+async function apiIncident(request, env, url, incident) {
+  if (!validIncident(incident) || !(await incidentAllowed(request, env, url, incident))) return json({ error: "not found" }, 404);
+  const hb = await store.getState(env, "hb");
+  return json({
+    incident,
+    tz: hb?.tz || "Europe/Berlin",
+    instance: hb?.instance || "",
+    events: await store.incidentEvents(env, incident),
+    snapshots: await store.snapshotList(env, incident),
+  });
+}
+
+async function apiImage(request, env, url, id) {
+  const incident = url.searchParams.get("i") || "";
+  if (!/^\d+$/.test(id) || !validIncident(incident) || !(await incidentAllowed(request, env, url, incident))) {
+    return json({ error: "not found" }, 404);
+  }
+  const row = await store.getSnapshot(env, Number(id));
+  if (!row || row.incident !== incident) return json({ error: "not found" }, 404);
+  return json({ id: row.id, ts: row.ts, camera: row.camera, type: row.type, data: row.data });
+}
+
+async function apiSummary(env, url, user) {
+  const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 365);
+  const since = nowS() - days * 86400;
+  const hb = await store.getState(env, "hb");
+  return json({
+    now: nowS(),
+    days,
+    user: user.email,
+    hb: hb && {
+      state: hb.state, mode: hb.mode, armed: hb.armed, incident: hb.incident, instance: hb.instance, tz: hb.tz,
+      open: hb.open, unavailable: hb.unavailable, received: Math.floor(hb.received / 1000), offline: hb.offline,
+      interval: hb.interval, version: hb.version,
+    },
+    before: await store.lastEventBefore(env, since),
+    events: await store.eventsSince(env, since),
+    receipts: await store.receiptsSince(env, since),
+    snapshots: await store.snapshotCounts(env, since),
+  });
+}
+
+async function handleGet(request, env, url) {
+  const path = url.pathname;
+  if (path.startsWith("/i/")) return validIncident(path.slice(3)) ? page(env) : json({ error: "not found" }, 404);
+  let m = path.match(/^\/api\/incident\/([a-f0-9]{8,32})$/);
+  if (m) return apiIncident(request, env, url, m[1]);
+  m = path.match(/^\/api\/img\/(\d+)$/);
+  if (m) return apiImage(request, env, url, m[1]);
+  if (path === "/" || path === "/api/summary") {
+    const user = await dashboardUser(request, env, url);
+    if (!user) return json({ error: "not found" }, 404);
+    return path === "/" ? page(env) : apiSummary(env, url, user);
+  }
+  return json({ error: "not found" }, 404);
 }
 
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
-    if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
-    if (pathname === "/probe") return handleProbe(request, env);
-    if (pathname === "/heartbeat") return handleHeartbeat(request, env);
-    if (pathname === "/alert") return handleAlert(request, env);
-    return json({ error: "not found" }, 404);
+    const url = new URL(request.url);
+    const path = url.pathname;
+    try {
+      if (request.method === "GET" || request.method === "HEAD") return await handleGet(request, env, url);
+      if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+      if (path === "/probe") return await handleProbe(request, env);
+      if (path === "/heartbeat") return await handleHeartbeat(request, env, url);
+      if (path === "/alert") return await handleAlert(request, env, url);
+      if (path === "/snapshot") return await handleSnapshot(request, env);
+      if (path.startsWith("/pushover/")) return await handlePushoverCallback(request, env, path.slice(10));
+      return json({ error: "not found" }, 404);
+    } catch (err) {
+      console.error("bastion worker", err && err.stack ? err.stack : err);
+      return json({ error: "internal error" }, 500);
+    }
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(checkHeartbeat(env));
+    ctx.waitUntil(
+      (async () => {
+        for (const job of [checkHeartbeat, pollReceipts, retention]) {
+          try {
+            await job(env);
+          } catch (err) {
+            console.error("bastion cron", job.name, err && err.stack ? err.stack : err);
+          }
+        }
+      })(),
+    );
   },
 };

@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 import aiohttp
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, CoreState, Event, HomeAssistant, callback
@@ -14,6 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_time_change, async_track_time_interval
 from homeassistant.helpers.storage import Store
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .alarm.engine import AlarmEngine
@@ -53,6 +55,8 @@ from .responder import Responder
 from .texts import alarm_text, event_text, finding_text
 
 _LOGGER = logging.getLogger(__name__)
+
+ALARM_TAG = f"{DOMAIN}_alarm"
 
 FIRST_AUDIT_DELAY = 120
 _IR_SEVERITY = {
@@ -115,6 +119,7 @@ class Bastion:
         self.responder.setup()
         await self.anomaly.async_setup()
         await self.alarm.async_setup()
+        self.relay.version = str((await async_get_integration(self.hass, DOMAIN)).version or "")
         self.relay.setup()
         await self.canary.async_setup()
         await self.logins.async_setup()
@@ -171,6 +176,7 @@ class Bastion:
         self.responder.unload()
         self.canary.unload()
         self.relay.unload()
+        await self.relay.async_stop()
         await self.alarm.async_unload()
         await self.git.async_unload()
         await self.logins.async_unload()
@@ -334,24 +340,36 @@ class Bastion:
     async def _async_alarm_event(self, kind: str, entry: dict[str, Any]) -> None:
         actions = self.alarm.config.get("actions") or {}
         notify_kind = "armed" if kind in ("arming", "rearmed") else kind
-        if notify_kind in (actions.get("notify_events") or []):
-            if (texts := alarm_text(kind, self.hass.config.language, entry)) is not None:
-                data = None
-                if kind == "triggered" and actions.get("critical_push", True):
-                    data = {
-                        "push": {"sound": {"name": "default", "critical": 1, "volume": 1.0}},
-                        "ttl": 0,
-                        "priority": "high",
-                        "channel": "alarm_stream",
-                    }
-                await self.notifier.async_send(
-                    texts[0],
-                    texts[1],
-                    key=f"alarm_{kind}",
-                    data=data,
-                    persistent=kind in ("triggered", "pending", "arm_failed"),
-                )
-        await self.relay.async_send_event(kind, entry)
+        push = notify_kind in (actions.get("notify_events") or [])
+        if push and (texts := alarm_text(kind, self.hass.config.language, entry)) is not None:
+            data = None
+            mobile: dict[str, Any] = {}
+            if kind in ("triggered", "pending"):
+                # Same tag: the alarm replaces the warning, disarming clears both.
+                mobile["tag"] = ALARM_TAG
+                if url := self.relay.incident_url(entry.get("incident")):
+                    mobile["url"] = mobile["clickAction"] = url
+            if kind == "triggered" and actions.get("critical_push", True):
+                data = {
+                    "push": {"sound": {"name": "default", "critical": 1, "volume": 1.0}},
+                    "ttl": 0,
+                    "priority": "high",
+                    "channel": "alarm_stream",
+                }
+            await self.notifier.async_send(
+                texts[0],
+                texts[1],
+                key=f"alarm_{kind}",
+                data=data,
+                mobile=mobile or None,
+                persistent=kind in ("triggered", "pending", "arm_failed"),
+            )
+        if kind in ("disarmed", "rearmed", "reset", "armed") and entry.get("incident"):
+            # Entwarnung: remove the alarm notifications on phones and in HA.
+            await self.notifier.async_clear(ALARM_TAG)
+            for key in ("alarm_triggered", "alarm_pending"):
+                persistent_notification.async_dismiss(self.hass, f"{DOMAIN}_{key}")
+        await self.relay.async_send_event(kind, entry, push=push)
 
     def _record_history(self) -> None:
         """One score entry per day (last audit of the day wins), 120 days."""

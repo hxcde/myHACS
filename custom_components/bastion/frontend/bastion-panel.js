@@ -42,7 +42,7 @@ const I18N = {
       open_title: "Offene Sensoren",
       open_text: "Diese Sensoren sind offen. Trotzdem scharf schalten? Sie werden überbrückt, bis sie wieder schließen.",
       force: "Trotzdem scharf schalten",
-      sections: { rooms: "Räume & Sensoren", modes: "Modi & Zeiten", actions: "Aktionen", codes: "Codes", worker: "Cloud-Worker" },
+      sections: { rooms: "Räume & Sensoren", modes: "Modi & Zeiten", actions: "Aktionen", sounds: "Töne", codes: "Codes", worker: "Cloud-Worker" },
       import_areas: "Räume aus HA-Bereichen übernehmen",
       add_room: "Raum hinzufügen",
       room_name: "Name",
@@ -73,13 +73,35 @@ const I18N = {
       warning: "Warnsignal während der Verzögerungen",
       add_entity: "Entität hinzufügen …",
       notify_events: "Benachrichtigen bei",
-      events: { triggered: "Alarm", pending: "Vorwarnung", armed: "Scharf geschaltet", disarmed: "Unscharf geschaltet", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code", sensor_unavailable: "Sensor nicht erreichbar" },
+      events: { triggered: "Alarm", pending: "Vorwarnung", armed: "Scharf geschaltet", disarmed: "Unscharf geschaltet", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code", sensor_unavailable: "Sensor nicht erreichbar", acknowledged: "Quittiert (Pushover)" },
+      sounds_help: "Töne auf Lautsprechern. Sirene und Countdown-Piepen laufen, solange der Zustand dauert. Danach wird die vorherige Lautstärke wiederhergestellt. Kurze Töne laufen auf Lautsprechern mit Durchsage-Funktion über die Musik.",
+      players: "Lautsprecher",
+      add_player: "Lautsprecher hinzufügen …",
+      volume: "Lautstärke Sirene",
+      notice_volume: "Lautstärke Hinweistöne",
+      sound_for: { triggered: "Alarm", pending: "Vorwarnung", arming: "Ausgangsverzögerung", armed: "Scharf geschaltet", disarmed: "Unscharf geschaltet" },
+      sound_hint: { triggered: "Wiederholt bis unscharf oder bis die Sirenendauer vorbei ist", pending: "Wiederholt, solange die Eingangsverzögerung läuft", arming: "Wiederholt, bis die Anlage scharf ist", armed: "Einmal", disarmed: "Einmal" },
+      sound_off: "Aus",
+      builtin_group: "Bastion",
+      builtin: { siren: "Sirene", entry: "Piepen schnell", exit: "Piepen langsam", armed: "Gong aufsteigend", disarmed: "Gong absteigend" },
+      my_media: "Meine Medien",
+      upload: "MP3 hochladen",
+      uploaded: "Hochgeladen: {name}",
+      play: "Probehören",
+      stop: "Stopp",
+      no_players: "Wähle zuerst mindestens einen Lautsprecher.",
+      cameras: "Kameras für Beweisbilder",
+      cameras_hint: "Bei Vorwarnung und Alarm gehen Bilder dieser Kameras an den Worker. Sie bleiben dort, auch wenn Home Assistant zerstört oder gestohlen wird.",
+      add_camera: "Kamera hinzufügen …",
+      snapshots: "Bilder pro Kamera und Phase (alle 5 s)",
+      offsite: "Protokoll außer Haus",
+      offsite_hint: "Jedes Alarmereignis wird im Worker gespeichert. Alarm-Pushs enthalten einen Link zum Vorfall mit Kamerabildern. Pushover-Quittierungen erscheinen hier im Protokoll, Unscharfschalten beendet die Notfall-Wiederholung auf allen Handys.",
       critical_push: "Alarm als kritische Push-Nachricht (durchbricht Stumm)",
       codes_help: "Codes werden nur als Hash gespeichert. Ohne Code lässt sich die Anlage ohne Eingabe bedienen.",
       code_name: "Name (z. B. Yann)",
       add_code: "Code hinzufügen",
       no_codes: "Keine Codes. Jeder Admin kann ohne Code unscharf schalten.",
-      worker_help: "Der Worker meldet sich bei dir über Pushover, Telegram, ntfy oder Webhook, auch wenn Home Assistant selbst ausfällt (Strom, Internet, Sabotage), und leitet Alarme unabhängig weiter.",
+      worker_help: "Der Worker meldet sich bei dir über Pushover, Telegram, ntfy oder Webhook, auch wenn Home Assistant selbst ausfällt (Strom, Internet, Sabotage). Er nennt dann den letzten bekannten Stand, leitet Alarme unabhängig weiter und bewahrt Protokoll und Kamerabilder außer Haus auf.",
       worker_enabled: "Cloud-Worker aktiv",
       worker_url: "Worker-URL",
       interval: "Lebenszeichen alle (s)",
@@ -88,7 +110,7 @@ const I18N = {
       test: "Testen",
       test_ok: "Worker erreicht. Kanäle: {channels}",
       last_ok: "Zuletzt erreicht",
-      steps: ["Worker aus extras/cloudflare-worker deployen (wrangler deploy)", "KV anlegen: wrangler kv namespace create BASTION_KV, ID in wrangler.toml eintragen", "Geheimnis setzen: wrangler secret put ALARM_SECRET (Wert unten)", "Kanal setzen: PUSHOVER_TOKEN + PUSHOVER_USER, TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID oder NTFY_URL", "URL hier eintragen, speichern, testen"],
+      steps: ["Datenbank anlegen: wrangler d1 create bastion, database_id in wrangler.toml eintragen", "Worker aus extras/cloudflare-worker deployen (wrangler deploy)", "Geheimnis setzen: wrangler secret put ALARM_SECRET (Wert unten)", "Kanal setzen: PUSHOVER_TOKEN + PUSHOVER_USER, TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID oder NTFY_URL", "URL hier eintragen, speichern, testen"],
     },
     tabs: { alarm: "Alarmanlage", overview: "Übersicht", logins: "Anmeldungen", git: "Git", anomaly: "Anomalien & Köder", external: "Extern" },
     score: "Sicherheitswert",
@@ -240,7 +262,7 @@ const I18N = {
       open_title: "Open sensors",
       open_text: "These sensors are open. Arm anyway? They are bypassed until they close again.",
       force: "Arm anyway",
-      sections: { rooms: "Rooms & sensors", modes: "Modes & timing", actions: "Actions", codes: "Codes", worker: "Cloud worker" },
+      sections: { rooms: "Rooms & sensors", modes: "Modes & timing", actions: "Actions", sounds: "Sounds", codes: "Codes", worker: "Cloud worker" },
       import_areas: "Create rooms from HA areas",
       add_room: "Add room",
       room_name: "Name",
@@ -271,13 +293,35 @@ const I18N = {
       warning: "Warning signal during delays",
       add_entity: "Add entity …",
       notify_events: "Notify on",
-      events: { triggered: "Alarm", pending: "Entry warning", armed: "Armed", disarmed: "Disarmed", arm_failed: "Arming failed", wrong_code: "Wrong code", sensor_unavailable: "Sensor unavailable" },
+      events: { triggered: "Alarm", pending: "Entry warning", armed: "Armed", disarmed: "Disarmed", arm_failed: "Arming failed", wrong_code: "Wrong code", sensor_unavailable: "Sensor unavailable", acknowledged: "Acknowledged (Pushover)" },
+      sounds_help: "Sounds on speakers. Siren and countdown beeps repeat while the state lasts, then the previous volume is restored. Short sounds play over music on speakers that support announcements.",
+      players: "Speakers",
+      add_player: "Add speaker …",
+      volume: "Siren volume",
+      notice_volume: "Notice volume",
+      sound_for: { triggered: "Alarm", pending: "Entry warning", arming: "Exit delay", armed: "Armed", disarmed: "Disarmed" },
+      sound_hint: { triggered: "Repeats until disarmed or the siren time is over", pending: "Repeats during the entry delay", arming: "Repeats until armed", armed: "Once", disarmed: "Once" },
+      sound_off: "Off",
+      builtin_group: "Bastion",
+      builtin: { siren: "Siren", entry: "Fast beeps", exit: "Slow beeps", armed: "Rising chime", disarmed: "Falling chime" },
+      my_media: "My media",
+      upload: "Upload MP3",
+      uploaded: "Uploaded: {name}",
+      play: "Preview",
+      stop: "Stop",
+      no_players: "Choose at least one speaker first.",
+      cameras: "Cameras for evidence images",
+      cameras_hint: "During entry warnings and alarms, images of these cameras go to the worker. They stay there even if Home Assistant is destroyed or stolen.",
+      add_camera: "Add camera …",
+      snapshots: "Images per camera and phase (every 5 s)",
+      offsite: "Off-site log",
+      offsite_hint: "Every alarm event is stored by the worker. Alarm pushes link to the incident with camera images. Pushover acknowledgements show up in the log here, disarming stops the emergency repeat on all phones.",
       critical_push: "Alarm as critical push notification (breaks through silent mode)",
       codes_help: "Codes are stored as hashes only. Without codes the system works without input.",
       code_name: "Name (e.g. Alex)",
       add_code: "Add code",
       no_codes: "No codes. Every admin can disarm without a code.",
-      worker_help: "The worker reaches you via Pushover, Telegram, ntfy or webhook even when Home Assistant itself fails (power, internet, sabotage), and relays alarms independently.",
+      worker_help: "The worker reaches you via Pushover, Telegram, ntfy or webhook even when Home Assistant itself fails (power, internet, sabotage), names the last known state, relays alarms independently and keeps the log and camera images off-site.",
       worker_enabled: "Cloud worker enabled",
       worker_url: "Worker URL",
       interval: "Heartbeat every (s)",
@@ -286,7 +330,7 @@ const I18N = {
       test: "Test",
       test_ok: "Worker reached. Channels: {channels}",
       last_ok: "Last reached",
-      steps: ["Deploy the worker from extras/cloudflare-worker (wrangler deploy)", "Create KV: wrangler kv namespace create BASTION_KV and put the id into wrangler.toml", "Set the secret: wrangler secret put ALARM_SECRET (value below)", "Set a channel: PUSHOVER_TOKEN + PUSHOVER_USER, TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID or NTFY_URL", "Enter the URL here, save, test"],
+      steps: ["Create the database: wrangler d1 create bastion and put the database_id into wrangler.toml", "Deploy the worker from extras/cloudflare-worker (wrangler deploy)", "Set the secret: wrangler secret put ALARM_SECRET (value below)", "Set a channel: PUSHOVER_TOKEN + PUSHOVER_USER, TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID or NTFY_URL", "Enter the URL here, save, test"],
     },
     tabs: { alarm: "Alarm", overview: "Overview", logins: "Logins", git: "Git", anomaly: "Anomalies & decoys", external: "External" },
     score: "Security score",
@@ -1176,7 +1220,7 @@ class BastionPanel extends HTMLElement {
           const ic = { triggered: ["mdi:alarm-light", SEV.critical.color], pending: ["mdi:timer-sand", SEV.medium.color], armed: ["mdi:shield-lock", "var(--primary-color)"],
             arming: ["mdi:shield-sync-outline", "var(--primary-color)"], rearmed: ["mdi:shield-refresh", "var(--primary-color)"], disarmed: ["mdi:shield-off-outline", GOOD],
             arm_failed: ["mdi:shield-alert-outline", SEV.high.color], wrong_code: ["mdi:form-textbox-password", SEV.high.color],
-            sensor_unavailable: ["mdi:lan-disconnect", "#8a8f98"] }[e.type] || ["mdi:circle-small", "#8a8f98"];
+            sensor_unavailable: ["mdi:lan-disconnect", "#8a8f98"], acknowledged: ["mdi:hand-back-right-outline", GOOD] }[e.type] || ["mdi:circle-small", "#8a8f98"];
           const label = a.events[e.type] || a.states[e.type] || e.type;
           const detail = [e.target ? a.modes[e.target] : "", e.name, e.room, e.user ? `${a.by} ${e.user}` : "", (e.sensors || []).join(", ")].filter(Boolean).join(" · ");
           return `<div class="row">${icon(ic[0], ic[1])}<div class="row-main"><div><b>${esc(label)}</b> ${detail ? `· ${esc(detail)}` : ""}</div>
@@ -1250,6 +1294,7 @@ class BastionPanel extends HTMLElement {
     if (this._section === "rooms") body = this._settingsRooms(d);
     else if (this._section === "modes") body = this._settingsModes(d);
     else if (this._section === "actions") body = this._settingsActions(d);
+    else if (this._section === "sounds") body = this._settingsSounds(d);
     else if (this._section === "codes") body = this._settingsCodes();
     else body = this._settingsWorker(d);
     const saveable = this._section !== "codes";
@@ -1417,6 +1462,66 @@ class BastionPanel extends HTMLElement {
           <span class="muted small">${esc(a.last_ok)}: ${esc(this.rel(relay.last_ok))}</span>
           ${relay.last_error ? `<span class="chip tiny" style="--c:${SEV.high.color}">${esc(relay.last_error)}</span>` : ""}
         </div>
+      </section>
+      <section class="card">
+        <h3 class="card-title">${icon("mdi:cloud-lock-outline")}${esc(a.offsite)}</h3>
+        <div class="muted small">${esc(a.offsite_hint)}</div>
+        ${this._pickList(a.cameras, d.worker.cameras, this._alarm.cameras || [], "camera", a.add_camera)}
+        <div class="muted small" style="margin-top:6px">${esc(a.cameras_hint)}</div>
+        <label class="field"><span>${esc(a.snapshots)}</span>
+          <select class="input type-select" data-worker="snapshots">${[0, 1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${Number(d.worker.snapshots) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      </section>`;
+  }
+
+  _pickList(label, chosen, options, kind, addLabel) {
+    const nameOf = (e) => options.find((x) => x.entity_id === e)?.name || e;
+    return `
+      <div class="field-block">
+        <div class="label">${esc(label)}</div>
+        <div class="area-chips">${chosen.map((e) => `<span class="chip">${esc(nameOf(e))}<button class="chip-x" data-${kind}-remove="${esc(e)}" aria-label="${esc(this.t.alarm.remove)}">${icon("mdi:close")}</button></span>`).join("")}</div>
+        <select class="input add-sensor" data-${kind}-add><option value="">${esc(addLabel)}</option>
+          ${options.filter((x) => !chosen.includes(x.entity_id)).map((x) => `<option value="${esc(x.entity_id)}">${esc(x.name)} (${esc(x.entity_id)})</option>`).join("")}</select>
+      </div>`;
+  }
+
+  _settingsSounds(d) {
+    const a = this.t.alarm;
+    const s = d.sounds;
+    const media = this._media || [];
+    const opt = (value, label, cur) => `<option value="${esc(value)}" ${value === cur ? "selected" : ""}>${esc(label)}</option>`;
+    const select = (key) => {
+      const cur = s[key] || "";
+      const known = cur === "" || cur.startsWith("bastion:") || media.some((m) => m.id === cur);
+      return `<select class="input type-select sound-select" data-sound="${key}">
+        ${opt("", a.sound_off, cur)}
+        <optgroup label="${esc(a.builtin_group)}">${(this._alarm.sounds_builtin || []).map((n) => opt(`bastion:${n}`, a.builtin[n] || n, cur)).join("")}</optgroup>
+        ${media.length ? `<optgroup label="${esc(a.my_media)}">${media.map((m) => opt(m.id, m.title.split(" / ").slice(1).join(" / ") || m.title, cur)).join("")}</optgroup>` : ""}
+        ${known ? "" : opt(cur, decodeURIComponent(cur.split("/").pop()), cur)}
+      </select>`;
+    };
+    const slider = (key, label) => `
+      <div class="fld vol">
+        <span class="fld-label">${icon(key === "volume" ? "mdi:volume-high" : "mdi:volume-medium")}${esc(label)}</span>
+        <div class="range-row"><input type="range" min="5" max="100" step="5" data-volume="${key}" value="${Math.round((s[key] || 0) * 100)}"><b data-volume-label="${key}">${Math.round((s[key] || 0) * 100)} %</b></div>
+      </div>`;
+    return `
+      <section class="card">
+        <div class="muted small">${esc(a.sounds_help)}</div>
+        ${this._pickList(a.players, s.players, this._alarm.players || [], "player", a.add_player)}
+        <div class="sensor-fields" style="padding-left:0;margin-top:18px">${slider("volume", a.volume)}${slider("notice_volume", a.notice_volume)}</div>
+      </section>
+      <section class="card sound-list">
+        ${["triggered", "pending", "arming", "armed", "disarmed"].map((key) => `
+          <div class="sound-row">
+            <div class="sound-ident"><div class="sound-title">${esc(a.sound_for[key])}</div><div class="muted small">${esc(a.sound_hint[key])}</div></div>
+            ${select(key)}
+            <button class="icon-btn play" data-sound-play="${key}" title="${esc(a.play)}" aria-label="${esc(a.play)}" ${s[key] ? "" : "disabled"}>${icon("mdi:play")}</button>
+          </div>`).join("")}
+        <div class="actionbar tight">
+          <button class="btn small" data-action="sound-stop">${icon("mdi:stop")}<span>${esc(a.stop)}</span></button>
+          <span class="grow"></span>
+          <label class="btn small upload">${icon("mdi:upload")}<span>${esc(a.upload)}</span><input type="file" accept="audio/*" data-sound-upload></label>
+        </div>
       </section>`;
   }
 
@@ -1425,7 +1530,8 @@ class BastionPanel extends HTMLElement {
     this._draft = JSON.parse(JSON.stringify({
       rooms: cfg.rooms, sensors: cfg.sensors, modes: cfg.modes, trigger_time: cfg.trigger_time, rearm: cfg.rearm,
       require_code_arm: cfg.require_code_arm, sabotage_triggers: cfg.sabotage_triggers, actions: cfg.actions,
-      worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled },
+      worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled, cameras: cfg.worker.cameras || [], snapshots: cfg.worker.snapshots ?? 3 },
+      sounds: { players: [], volume: 0.9, notice_volume: 0.5, triggered: "", pending: "", arming: "", armed: "", disarmed: "", ...(cfg.sounds || {}) },
     }));
     this._alarmView = "settings";
     this._render();
@@ -1466,7 +1572,14 @@ class BastionPanel extends HTMLElement {
     on("[data-mode]", (el) => this._modeClicked(el.dataset.mode));
     on('[data-action="alarm-settings"]', () => this._openSettings());
     on('[data-action="alarm-back"]', () => { this._alarmView = "status"; this._refreshAlarm(); });
-    on("[data-section]", (el) => { this._section = el.dataset.section; this._render(); });
+    on("[data-section]", (el) => {
+      this._section = el.dataset.section;
+      this._render();
+      if (this._section === "sounds" && !this._media) {
+        this._media = [];
+        this._ws("bastion/alarm/media").then((r) => { this._media = r.files || []; this._render(); }).catch(() => {});
+      }
+    });
     // keypad
     on("[data-key]", (el) => {
       const k = el.dataset.key;
@@ -1538,7 +1651,39 @@ class BastionPanel extends HTMLElement {
       d.actions.notify_events = el.checked ? [...new Set([...d.actions.notify_events, ev])] : d.actions.notify_events.filter((x) => x !== ev);
     }, "change");
     on("[data-critical]", (el) => { d.actions.critical_push = el.checked; }, "change");
+    // sounds
+    on("[data-player-add]", (el) => { if (el.value) { d.sounds.players = [...new Set([...d.sounds.players, el.value])]; this._render(); } }, "change");
+    on("[data-player-remove]", (el) => { d.sounds.players = d.sounds.players.filter((x) => x !== el.dataset.playerRemove); this._render(); });
+    on("[data-volume]", (el) => {
+      d.sounds[el.dataset.volume] = Number(el.value) / 100;
+      const label = root.querySelector(`[data-volume-label="${el.dataset.volume}"]`);
+      if (label) label.textContent = `${el.value} %`;
+    }, "input");
+    on("[data-sound]", (el) => { d.sounds[el.dataset.sound] = el.value; }, "change");
+    on("[data-sound-play]", (el) => this._action(async () => {
+      const key = el.dataset.soundPlay;
+      if (!d.sounds.players.length) throw new Error(this.t.alarm.no_players);
+      if (!d.sounds[key]) return;
+      await this._ws("bastion/alarm/sound", { action: "play", sound: d.sounds[key], players: d.sounds.players, volume: key === "triggered" ? d.sounds.volume : d.sounds.notice_volume });
+    }));
+    on('[data-action="sound-stop"]', () => this._action(async () => { await this._ws("bastion/alarm/sound", { action: "stop" }); }));
+    on("[data-sound-upload]", (el) => this._action(async () => {
+      const file = el.files && el.files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append("media_content_id", "media-source://media_source/local/bastion");
+      form.append("file", file);
+      const resp = await this.hass.fetchWithAuth("/api/media_source/local_source/upload", { method: "POST", body: form });
+      if (!resp.ok) throw new Error(`Upload ${resp.status}`);
+      const { media_content_id: id } = await resp.json();
+      this._media = (await this._ws("bastion/alarm/media")).files || [];
+      if (!this._media.some((m) => m.id === id)) this._media.push({ id, title: file.name });
+      this._notify(this.t.alarm.uploaded.replace("{name}", file.name));
+    }), "change");
     // worker
+    on("[data-camera-add]", (el) => { if (el.value) { d.worker.cameras = [...new Set([...d.worker.cameras, el.value])]; this._render(); } }, "change");
+    on("[data-camera-remove]", (el) => { d.worker.cameras = d.worker.cameras.filter((x) => x !== el.dataset.cameraRemove); this._render(); });
+    on('[data-worker="snapshots"]', (el) => { d.worker.snapshots = Number(el.value); }, "change");
     on('[data-worker="enabled"]', (el) => { d.worker.enabled = el.checked; }, "change");
     on('[data-worker="url"]', (el) => { d.worker.url = el.value.trim(); }, "input");
     on('[data-worker="interval"]', (el) => { d.worker.interval = Number(el.value) || 120; }, "input");
@@ -2016,6 +2161,21 @@ const STYLE = `
   .room-edit-head .input { height:40px; font-size:15px; }
   .room-edit-head .input:first-of-type { font-weight:600; }
   .icon-input { width:180px; }
+  .sound-list { padding:6px 20px 16px; }
+  .sound-row { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .sound-ident { flex:1; min-width:0; }
+  .sound-title { font-weight:600; }
+  .sound-select { width:240px; flex:none; }
+  .icon-btn.play { border:1px solid var(--line); background: var(--surface); color: var(--accent); }
+  .icon-btn.play:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+  .icon-btn.play:disabled { opacity:.4; cursor:default; }
+  .upload { position:relative; overflow:hidden; cursor:pointer; }
+  .upload input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .fld.vol { flex:1 1 220px; }
+  .range-row { display:flex; align-items:center; gap:12px; height:36px; }
+  .range-row input[type=range] { flex:1; accent-color: var(--accent); }
+  .range-row b { min-width:48px; text-align:right; font-variant-numeric: tabular-nums; font-weight:600; }
+  @media (max-width: 600px) { .sound-row { flex-wrap:wrap; } .sound-select { width:auto; flex:1; } }
   .sensor-card { background: var(--surface-2); border-radius: var(--radius); padding:14px 16px 16px; margin-top:10px; }
   .sensor-card-head { display:flex; align-items:center; gap:12px; }
   .sensor-card-head .dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--surface) 70%, transparent); }

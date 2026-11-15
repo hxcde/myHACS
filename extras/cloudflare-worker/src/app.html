@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<title>Bastion Alarm</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f1f2f4; --line: #e3e5e9; --line-strong: #cfd3d9;
+  --text: #15171a; --muted: #5d636d; --accent: #2a78d6; --on-accent: #fff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+  --good: #0f8a0f; --warning: #b77900; --serious: #d0602f; --critical: #d03b3b; --idle: #7c828c;
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --radius: 14px; --radius-lg: 18px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111214; --surface: #17181b; --surface-2: #1e2024; --line: #2a2d32; --line-strong: #3a3e45;
+    --text: #eceef1; --muted: #a0a6b0; --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #e25555; --idle: #8a8f98;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111214; --surface: #17181b; --surface-2: #1e2024; --line: #2a2d32; --line-strong: #3a3e45;
+  --text: #eceef1; --muted: #a0a6b0; --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #e25555; --idle: #8a8f98;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+.mono { font-family: var(--mono); font-size: .92em; }
+button { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.bar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid var(--line); }
+.bar-in { display: flex; align-items: center; gap: 12px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand svg { flex: none; }
+.brand b { display: block; font-size: 16px; letter-spacing: -.01em; }
+.brand span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grow { flex: 1; }
+.icon-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.icon-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+h1 { font-size: 26px; letter-spacing: -.02em; margin: 28px 0 4px; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 32px 0 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); }
+.loading, .error { padding: 80px 0; text-align: center; color: var(--muted); }
+
+/* status hero */
+.hero { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; margin-top: 24px; border-left: 4px solid var(--state); }
+.hero-badge { width: 64px; height: 64px; border-radius: 18px; flex: none; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--state) 14%, transparent); color: var(--state); }
+.hero-main { flex: 1; min-width: 220px; }
+.hero-state { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px;
+  background: color-mix(in srgb, var(--c, var(--idle)) 12%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--c, var(--idle)) 30%, transparent); }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); }
+.pulse { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--critical) 25%, transparent); } }
+
+/* filter row */
+.filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 28px; }
+.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.seg button { border: none; background: none; padding: 6px 14px; border-radius: 9px; cursor: pointer; color: var(--muted); font-size: 13px; }
+.seg button.on { background: var(--surface-2); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+
+/* KPI tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; margin-top: 14px; }
+.tile { padding: 16px 18px; }
+.tile-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.tile-value { font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile.alert .tile-value { color: var(--critical); }
+
+/* charts */
+.grid2 { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; }
+@media (max-width: 880px) { .grid2 { grid-template-columns: 1fr; } }
+.chart-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.chart-title { font-weight: 600; font-size: 15px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend b { color: var(--text); font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.link-btn { border: none; background: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 12.5px; }
+.chart { position: relative; margin-top: 14px; }
+.chart svg { display: block; overflow: visible; }
+.chart .grid line { stroke: var(--line); stroke-width: 1; }
+.chart .axis text { fill: var(--muted); font-size: 11px; font-family: var(--font); }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .hit:hover { fill: color-mix(in srgb, var(--text) 5%, transparent); }
+.tip { position: absolute; pointer-events: none; z-index: 4; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px;
+  padding: 8px 10px; font-size: 12.5px; box-shadow: 0 6px 24px rgba(0,0,0,.18); min-width: 150px; transform: translate(-50%, calc(-100% - 10px)); }
+.tip-row { display: flex; align-items: center; gap: 8px; }
+.tip-row i { width: 9px; height: 9px; border-radius: 3px; }
+.tip-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.bars { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.hbar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-val { font-variant-numeric: tabular-nums; color: var(--muted); }
+.hbar-track { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.hbar-fill { height: 100%; border-radius: 4px; background: var(--s1); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; margin-top: 12px; }
+
+/* incidents */
+.incidents { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.incident { display: block; color: inherit; border-left: 4px solid var(--c); transition: border-color .15s, transform .15s; }
+.incident:hover { text-decoration: none; transform: translateY(-1px); border-color: var(--c); }
+.incident-top { display: flex; align-items: center; gap: 8px; }
+.incident-title { font-weight: 600; font-size: 15px; margin-top: 8px; }
+.incident-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+
+/* log */
+.log-ev { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.log-ev i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--idle)); flex: none; }
+
+/* incident page */
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 74px 14px 1fr; gap: 10px; padding: 8px 0; }
+.timeline .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.timeline .d { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: var(--c, var(--idle)); }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.shot { margin: 0; border-radius: var(--radius); overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); cursor: zoom-in; }
+.shot .ph { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+.shot img { display: block; width: 100%; height: auto; }
+.shot figcaption { padding: 8px 10px; font-size: 12px; color: var(--muted); display: flex; gap: 8px; }
+.lightbox { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.86); display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: 100%; border-radius: 10px; }
+footer { padding: 40px 0 28px; text-align: center; }
+@media (max-width: 600px) { h1 { font-size: 22px; } .hero-state { font-size: 23px; } .tile-value { font-size: 24px; } .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<header class="bar"><div class="wrap bar-in">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--accent)" d="M12 1.5 3.5 5v6.2c0 5.2 3.6 10 8.5 11.3 4.9-1.3 8.5-6.1 8.5-11.3V5L12 1.5Z"/><path fill="#fff" d="M12 7.2a2.6 2.6 0 0 0-1.3 4.85V16h2.6v-3.95A2.6 2.6 0 0 0 12 7.2Z"/></svg>
+    <div><b>Bastion</b><span id="instance">Alarmanlage</span></div>
+  </div>
+  <span class="grow"></span>
+  <span id="who" class="muted small hide-sm"></span>
+  <button class="icon-btn" id="theme" title="Darstellung" aria-label="Darstellung wechseln"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2v16a8 8 0 0 1 0-16Z"/></svg></button>
+</div></header>
+<main class="wrap" id="app"><div class="loading">Lädt …</div></main>
+<footer class="muted small">Bastion · nur lesend</footer>
+<script>
+(() => {
+  "use strict";
+  const app = document.getElementById("app");
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const MODES = { home: "Zuhause", night: "Nacht", away: "Abwesend" };
+  const MODE_KEYS = ["home", "night", "away"];
+  const MODE_VAR = { home: "var(--s1)", night: "var(--s2)", away: "var(--s3)" };
+  const LABELS = {
+    triggered: "Alarm", pending: "Vorwarnung", arming: "Wird scharf", armed: "Scharf", rearmed: "Wieder scharf",
+    disarmed: "Unscharf", reset: "Zurückgesetzt", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code",
+    sensor_unavailable: "Sensor nicht erreichbar", acknowledged: "Quittiert", offline: "Funkstille", online: "Wieder erreichbar", restart: "Neustart",
+  };
+  const EV_COLOR = {
+    triggered: "var(--critical)", pending: "var(--warning)", wrong_code: "var(--serious)", arm_failed: "var(--serious)",
+    offline: "var(--serious)", sensor_unavailable: "var(--warning)", disarmed: "var(--good)", online: "var(--good)", acknowledged: "var(--good)",
+    armed: "var(--accent)", arming: "var(--accent)", rearmed: "var(--accent)",
+  };
+  const GROUPS = {
+    alarm: ["triggered", "pending", "acknowledged", "sensor_unavailable"],
+    ops: ["armed", "arming", "rearmed", "disarmed", "reset", "arm_failed", "wrong_code"],
+    system: ["offline", "online", "restart"],
+  };
+  let TZ = "Europe/Berlin";
+
+  // ------------------------------------------------------------- theme
+  const themes = ["auto", "light", "dark"];
+  let theme = "auto";
+  try { theme = localStorage.getItem("bastion-theme") || "auto"; } catch { /* storage blocked */ }
+  const applyTheme = () => {
+    if (theme === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", theme);
+    document.getElementById("theme").title = `Darstellung: ${{ auto: "System", light: "Hell", dark: "Dunkel" }[theme]}`;
+  };
+  applyTheme();
+  document.getElementById("theme").addEventListener("click", () => {
+    theme = themes[(themes.indexOf(theme) + 1) % themes.length];
+    try { localStorage.setItem("bastion-theme", theme); } catch { /* ignore */ }
+    applyTheme();
+  });
+
+  // ------------------------------------------------------------ format
+  const fmt = (ts, opts) => {
+    try { return new Date(ts * 1000).toLocaleString("de-DE", { timeZone: TZ, ...opts }); }
+    catch { return new Date(ts * 1000).toLocaleString("de-DE", opts); }
+  };
+  const dateTime = (ts) => fmt(ts, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const timeOnly = (ts) => fmt(ts, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const dayKey = (ts) => fmt(ts, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const dayShort = (ts) => fmt(ts, { day: "2-digit", month: "2-digit" });
+  const weekday = (ts) => fmt(ts, { weekday: "short", day: "2-digit", month: "2-digit" });
+  const secOfDay = (ts) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(ts * 1000)).map((x) => [x.type, x.value]));
+    return Number(p.hour) * 3600 + Number(p.minute) * 60 + Number(p.second);
+  };
+  const rel = (ts) => {
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 60) return "gerade eben";
+    if (s < 3600) return `vor ${Math.round(s / 60)} Min.`;
+    if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
+    return `vor ${Math.round(s / 86400)} T.`;
+  };
+  const hours = (s) => (s / 3600 >= 10 ? Math.round(s / 3600) : (s / 3600).toFixed(1).replace(".", ",")) + " h";
+  const duration = (s) => {
+    if (s < 60) return `${Math.round(s)} s`;
+    if (s < 3600) return `${Math.round(s / 60)} Min.`;
+    return `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} Min.`;
+  };
+  const where = (e) => [e.sensor, e.room].filter(Boolean).join(" · ");
+  const isArmed = (state) => Boolean(state && (state.startsWith("armed_") || state === "pending" || state === "triggered"));
+
+  async function api(path) {
+    const r = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
+    if (!r.ok) throw new Error(r.status === 404 ? "Nicht gefunden oder keine Berechtigung." : `Fehler ${r.status}`);
+    return r.json();
+  }
+
+  // --------------------------------------------------------- analysis
+  function analyse(d) {
+    const since = d.now - d.days * 86400;
+    const end = d.hb && d.hb.offline ? Math.min(d.now, d.hb.received) : d.now;
+    const perDay = new Map();
+    for (let t = since; t <= d.now + 86400; t += 86400) perDay.set(dayKey(t), { key: dayKey(t), ts: t, home: 0, night: 0, away: 0 });
+    const addSpan = (from, to, st) => {
+      if (!st || !isArmed(st.state) || !MODES[st.mode]) return;
+      let t = Math.max(from, since);
+      while (t < to) {
+        const next = Math.min(to, t - secOfDay(t) + 86400);
+        const bucket = perDay.get(dayKey(t));
+        if (bucket) bucket[st.mode] += next - t;
+        t = next > t ? next : to;
+      }
+    };
+    let cur = d.before ? { state: d.before.state, mode: d.before.mode } : null;
+    let t0 = since;
+    for (const e of d.events) {
+      if (!e.state) continue;
+      addSpan(t0, e.ts, cur);
+      cur = { state: e.state, mode: e.mode };
+      t0 = e.ts;
+    }
+    addSpan(t0, end, cur);
+    const days = [...perDay.values()].filter((x) => x.ts <= d.now).slice(-d.days);
+    const totals = { home: 0, night: 0, away: 0 };
+    for (const x of days) for (const m of MODE_KEYS) totals[m] += x[m];
+
+    const count = (k) => d.events.filter((e) => e.event === k).length;
+    const incidents = new Map();
+    for (const e of d.events) {
+      if (!e.incident) continue;
+      const inc = incidents.get(e.incident) || { id: e.incident, start: e.ts, end: e.ts, events: [] };
+      inc.end = e.ts;
+      inc.events.push(e);
+      incidents.set(e.incident, inc);
+    }
+    const list = [...incidents.values()].map((inc) => {
+      const first = inc.events.find((e) => e.event === "pending" || e.event === "triggered") || inc.events[0];
+      const trig = inc.events.find((e) => e.event === "triggered");
+      const ack = inc.events.find((e) => e.event === "acknowledged");
+      const dis = inc.events.find((e) => e.event === "disarmed");
+      return { ...inc, first, triggered: Boolean(trig), trig, ack, dis, shots: d.snapshots[inc.id] || 0 };
+    }).sort((a, b) => b.start - a.start);
+
+    const ackTimes = d.receipts.filter((r) => r.kind === "alarm" && r.acked_at).map((r) => r.acked_at - r.ts).sort((a, b) => a - b);
+    const median = ackTimes.length ? ackTimes[Math.floor(ackTimes.length / 2)] : null;
+    const outages = d.events.filter((e) => e.event === "online");
+    const outageSec = outages.reduce((s, e) => s + ((e.detail && e.detail.minutes) || 0) * 60, 0);
+    const triggers = new Map();
+    for (const e of d.events) {
+      if ((e.event === "pending" || e.event === "triggered") && e.sensor) {
+        const k = e.sensor + (e.room ? ` · ${e.room}` : "");
+        const cur2 = triggers.get(k) || { name: e.sensor, room: e.room, n: 0 };
+        if (e.event === "pending" || !list.find((i) => i.id === e.incident && i.events.some((x) => x.event === "pending"))) cur2.n += 1;
+        triggers.set(k, cur2);
+      }
+    }
+    return {
+      days, totals, incidents: list,
+      kpi: {
+        alarms: count("triggered"),
+        pending: count("pending"),
+        defused: list.filter((i) => !i.triggered && i.events.some((e) => e.event === "pending")).length,
+        armedShare: (totals.home + totals.night + totals.away) / Math.max(1, end - since),
+        outages: outages.length + (d.hb && d.hb.offline ? 1 : 0),
+        outageSec,
+        wrong: count("wrong_code"),
+        ackMedian: median,
+        acked: ackTimes.length,
+        shots: Object.values(d.snapshots).reduce((s, n) => s + n, 0),
+      },
+      triggers: [...triggers.values()].sort((a, b) => b.n - a.n).slice(0, 8),
+    };
+  }
+
+  // ------------------------------------------------------------- views
+  const STATE_VIEW = {
+    disarmed: ["Aus", "var(--good)"], arming: ["Wird scharf", "var(--accent)"], pending: ["Vorwarnung", "var(--warning)"],
+    triggered: ["ALARM", "var(--critical)"], armed_home: ["Scharf · Zuhause", "var(--accent)"], armed_night: ["Scharf · Nacht", "var(--accent)"],
+    armed_away: ["Scharf · Abwesend", "var(--accent)"],
+  };
+  const shieldIcon = '<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5 3.5 5v6.2c0 5.2 3.6 10 8.5 11.3 4.9-1.3 8.5-6.1 8.5-11.3V5L12 1.5Zm0 2.2 6.5 2.7v4.8c0 4.1-2.7 7.9-6.5 9.1-3.8-1.2-6.5-5-6.5-9.1V6.4L12 3.7Z"/></svg>';
+
+  function heroView(d) {
+    const hb = d.hb;
+    if (!hb) return `<section class="card hero" style="--state:var(--idle)"><div class="hero-badge">${shieldIcon}</div><div class="hero-main"><div class="hero-state">Noch keine Daten</div><div class="hero-meta">Home Assistant hat sich noch nicht gemeldet.</div></div></section>`;
+    const [label, color] = hb.offline ? ["Keine Verbindung", "var(--serious)"] : STATE_VIEW[hb.state] || [hb.state, "var(--idle)"];
+    const lastChange = [...d.events].reverse().find((e) => e.state && e.event !== "acknowledged");
+    const chips = [];
+    if (hb.offline) chips.push(`<span class="chip" style="--c:var(--serious)">Letzter Stand: ${esc((STATE_VIEW[hb.state] || [hb.state])[0])}</span>`);
+    for (const s of hb.open || []) chips.push(`<span class="chip" style="--c:var(--warning)">offen: ${esc(s)}</span>`);
+    for (const s of hb.unavailable || []) chips.push(`<span class="chip" style="--c:var(--idle)">nicht erreichbar: ${esc(s)}</span>`);
+    return `<section class="card hero ${hb.state === "triggered" ? "pulse" : ""}" style="--state:${color}">
+      <div class="hero-badge">${shieldIcon}</div>
+      <div class="hero-main">
+        <div class="hero-state" style="color:${color}">${esc(label)}</div>
+        <div class="hero-meta">
+          ${lastChange ? `<span>seit ${esc(dateTime(lastChange.ts))}</span>` : ""}
+          <span>Lebenszeichen ${esc(rel(hb.received))}</span>
+          ${hb.version ? `<span>Bastion ${esc(hb.version)}</span>` : ""}
+        </div>
+        ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+      </div>
+    </section>`;
+  }
+
+  function tile(label, value, sub, alert) {
+    return `<div class="card tile ${alert ? "alert" : ""}"><div class="tile-label">${esc(label)}</div><div class="tile-value">${esc(value)}</div>${sub ? `<div class="tile-sub">${esc(sub)}</div>` : ""}</div>`;
+  }
+
+  function armedSvg(a, width) {
+    const days = a.days;
+    const W = Math.max(280, Math.round(width)), H = W < 500 ? 190 : 230, L = 34, B = 24, T = 8, R = 4;
+    const max = 24 * 3600;
+    const cw = (W - L - R) / days.length;
+    const bw = Math.max(3, Math.min(26, cw - Math.max(2, cw * 0.28)));
+    const y = (v) => T + (H - T - B) * (1 - v / max);
+    let svg = `<g class="grid">${[0, 6, 12, 18, 24].map((h) => `<line x1="${L}" x2="${W - R}" y1="${y(h * 3600)}" y2="${y(h * 3600)}"/>`).join("")}</g>`;
+    svg += `<g class="axis">${[0, 6, 12, 18, 24].map((h) => `<text x="${L - 8}" y="${y(h * 3600) + 4}" text-anchor="end">${h}h</text>`).join("")}`;
+    const every = Math.ceil(days.length / Math.max(3, Math.floor(W / 90)));
+    days.forEach((dd, i) => {
+      if ((days.length - 1 - i) % every === 0) svg += `<text x="${L + cw * i + cw / 2}" y="${H - 6}" text-anchor="middle">${esc(dayShort(dd.ts))}</text>`;
+    });
+    svg += "</g><g>";
+    days.forEach((dd, i) => {
+      const x = L + cw * i + (cw - bw) / 2;
+      let acc = 0;
+      const segs = MODE_KEYS.filter((m) => dd[m] > 0);
+      segs.forEach((m, j) => {
+        const y0 = y(acc), y1 = y(acc + dd[m]);
+        acc += dd[m];
+        const gap = j > 0 ? 2 : 0;
+        const h = Math.max(0, y0 - y1 - gap);
+        if (h <= 0) return;
+        const top = j === segs.length - 1;
+        const r = top ? Math.min(4, h, bw / 2) : 0;
+        const yt = y0 - gap - h;
+        svg += r
+          ? `<path fill="${MODE_VAR[m]}" d="M${x},${y0 - gap} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + bw - r} Q${x + bw},${yt} ${x + bw},${yt + r} V${y0 - gap} Z"/>`
+          : `<rect fill="${MODE_VAR[m]}" x="${x}" y="${yt}" width="${bw}" height="${h}"/>`;
+      });
+      svg += `<rect class="hit" data-i="${i}" x="${L + cw * i}" y="${T}" width="${cw}" height="${H - T - B}"/>`;
+    });
+    svg += "</g>";
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Scharf-Zeit pro Tag nach Modus">${svg}</svg>`;
+  }
+
+  function armedChart(a, showTable) {
+    const days = a.days;
+    const legend = MODE_KEYS.map((m) => `<span><i style="background:${MODE_VAR[m]}"></i>${MODES[m]}<b>${hours(a.totals[m])}</b></span>`).join("");
+    const table = `<div class="table-wrap"><table><thead><tr><th>Tag</th>${MODE_KEYS.map((m) => `<th class="num">${MODES[m]}</th>`).join("")}<th class="num">Gesamt</th></tr></thead><tbody>
+      ${[...days].reverse().map((dd) => `<tr><td>${esc(weekday(dd.ts))}</td>${MODE_KEYS.map((m) => `<td class="num">${dd[m] ? hours(dd[m]) : "–"}</td>`).join("")}<td class="num">${hours(dd.home + dd.night + dd.away)}</td></tr>`).join("")}
+      </tbody></table></div>`;
+    return `<section class="card">
+      <div class="chart-head"><div class="grow"><div class="chart-title">Scharf-Zeit pro Tag</div><div class="legend">${legend}</div></div>
+        <button class="link-btn" data-toggle-table>${showTable ? "Diagramm" : "Tabelle"}</button></div>
+      ${showTable ? table : `<div class="chart" id="armed-chart"></div>`}
+    </section>`;
+  }
+
+  function bindArmedChart(a) {
+    const box = document.getElementById("armed-chart");
+    if (!box) return;
+    box.innerHTML = armedSvg(a, box.clientWidth);
+    let tip = null;
+    box.addEventListener("mousemove", (ev) => {
+      const hit = ev.target.closest(".hit");
+      if (!hit) { if (tip) { tip.remove(); tip = null; } return; }
+      const dd = a.days[Number(hit.dataset.i)];
+      if (!tip) { tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip); }
+      const total = dd.home + dd.night + dd.away;
+      tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(weekday(dd.ts))}</div>` +
+        MODE_KEYS.map((m) => `<div class="tip-row"><i style="background:${MODE_VAR[m]}"></i>${MODES[m]}<b>${dd[m] ? hours(dd[m]) : "–"}</b></div>`).join("") +
+        `<div class="tip-row muted" style="margin-top:4px">Gesamt<b>${hours(total)}</b></div>`;
+      const rb = box.getBoundingClientRect();
+      const hb = hit.getBoundingClientRect();
+      tip.style.left = `${Math.min(rb.width - 80, Math.max(80, hb.left - rb.left + hb.width / 2))}px`;
+      tip.style.top = `${ev.clientY - rb.top}px`;
+    });
+    box.addEventListener("mouseleave", () => { if (tip) { tip.remove(); tip = null; } });
+  }
+
+  function triggersCard(a) {
+    const max = Math.max(1, ...a.triggers.map((x) => x.n));
+    return `<section class="card"><div class="chart-title">Häufigste Auslöser</div>
+      <div class="muted small">Vorwarnungen und Alarme pro Sensor</div>
+      ${a.triggers.length ? `<div class="bars">${a.triggers.map((x) => `<div class="hbar" title="${esc(x.name)}${x.room ? ` · ${esc(x.room)}` : ""}">
+        <span class="hbar-name">${esc(x.name)}${x.room ? ` <span class="muted">· ${esc(x.room)}</span>` : ""}</span><span class="hbar-val">${x.n}</span>
+        <div class="hbar-track"><div class="hbar-fill" style="width:${(x.n / max) * 100}%"></div></div></div>`).join("")}</div>`
+        : `<div class="muted" style="margin-top:18px">Keine Auslösungen im Zeitraum.</div>`}
+    </section>`;
+  }
+
+  function incidentCard(inc) {
+    const color = inc.triggered ? "var(--critical)" : "var(--warning)";
+    const meta = [];
+    if (inc.ack) meta.push(`quittiert von ${esc(inc.ack.user || "Pushover")}`);
+    if (inc.dis) meta.push(`unscharf${inc.dis.user ? ` von ${esc(inc.dis.user)}` : ""} nach ${esc(duration(inc.dis.ts - inc.start))}`);
+    if (inc.shots) meta.push(`${inc.shots} Bild${inc.shots === 1 ? "" : "er"}`);
+    return `<a class="card incident" style="--c:${color}" href="/i/${esc(inc.id)}">
+      <div class="incident-top"><span class="chip" style="--c:${color}">${inc.triggered ? "Alarm" : "Vorwarnung entschärft"}</span><span class="grow"></span><span class="muted small">${esc(dateTime(inc.start))}</span></div>
+      <div class="incident-title">${esc(where(inc.first) || LABELS[inc.first.event] || "Vorfall")}</div>
+      <div class="incident-meta">${meta.map((m) => `<span>${m}</span>`).join("") || "<span>offen</span>"}</div>
+    </a>`;
+  }
+
+  function logView(d, filter) {
+    const all = [...d.events].reverse().filter((e) => filter === "all" || (GROUPS[filter] || []).includes(e.event));
+    const evs = all.slice(0, view.logLimit);
+    const btn = (k, l) => `<button class="${filter === k ? "on" : ""}" data-log="${k}">${l}</button>`;
+    return `<div class="filters" style="margin-top:0"><div class="seg">${btn("all", "Alle")}${btn("alarm", "Alarm")}${btn("ops", "Bedienung")}${btn("system", "System")}</div></div>
+      <div class="card" style="margin-top:12px;padding:6px 10px"><div class="table-wrap" style="margin:0"><table>
+        <thead><tr><th>Zeit</th><th>Ereignis</th><th>Details</th></tr></thead><tbody>
+        ${evs.length ? evs.map((e) => {
+          const det = [e.mode && MODES[e.mode] && !["acknowledged", "online", "offline", "restart"].includes(e.event) ? MODES[e.mode] : "", where(e), e.user,
+            e.detail && e.detail.minutes ? `${e.detail.minutes} Min.` : "", e.detail && (e.detail.cause || e.detail.verdict) || "",
+            e.detail && e.detail.sensors ? `offen: ${e.detail.sensors.join(", ")}` : ""].filter(Boolean).join(" · ");
+          return `<tr><td class="muted" style="white-space:nowrap">${esc(dateTime(e.ts))}</td>
+            <td><span class="log-ev" style="--c:${EV_COLOR[e.event] || "var(--idle)"}"><i></i>${esc(LABELS[e.event] || e.event)}</span></td>
+            <td>${esc(det)}${e.incident ? ` <a href="/i/${esc(e.incident)}">Vorfall</a>` : ""}</td></tr>`;
+        }).join("") : `<tr><td colspan="3" class="muted">Keine Ereignisse.</td></tr>`}
+        </tbody></table></div>
+        ${all.length > evs.length ? `<div style="padding:10px;text-align:center"><button class="link-btn" data-more>Weitere ${Math.min(50, all.length - evs.length)} von ${all.length - evs.length} anzeigen</button></div>` : ""}</div>`;
+  }
+
+  // ---------------------------------------------------------- dashboard
+  const view = { days: 30, table: false, log: "all", logLimit: 25, data: null };
+
+  async function loadDashboard() {
+    try {
+      view.data = await api(`/api/summary?days=${view.days}`);
+      TZ = (view.data.hb && view.data.hb.tz) || TZ;
+      document.getElementById("instance").textContent = (view.data.hb && view.data.hb.instance) || "Alarmanlage";
+      document.getElementById("who").textContent = view.data.user || "";
+      renderDashboard();
+    } catch (err) {
+      app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+  }
+
+  function renderDashboard() {
+    const d = view.data;
+    const a = analyse(d);
+    const k = a.kpi;
+    const range = (n, l) => `<button class="${view.days === n ? "on" : ""}" data-days="${n}">${l}</button>`;
+    app.innerHTML = `
+      ${heroView(d)}
+      <div class="filters"><div class="seg">${range(7, "7 Tage")}${range(30, "30 Tage")}${range(90, "90 Tage")}${range(365, "1 Jahr")}</div>
+        <span class="grow"></span><span class="muted small">Stand ${esc(timeOnly(d.now))}</span></div>
+      <div class="tiles">
+        ${tile("Alarme", String(k.alarms), k.acked ? `${k.acked} quittiert` : "", k.alarms > 0)}
+        ${tile("Vorwarnungen", String(k.pending), `${k.defused} rechtzeitig entschärft`)}
+        ${tile("Scharf", `${Math.round(k.armedShare * 100)} %`, "der Zeit im Zeitraum")}
+        ${tile("Quittierzeit", k.ackMedian == null ? "–" : duration(k.ackMedian), "Median bis zur Bestätigung")}
+        ${tile("Funkstille", String(k.outages), k.outageSec ? `insgesamt ${duration(k.outageSec)}` : "keine Ausfälle", k.outages > 0)}
+        ${tile("Falsche Codes", String(k.wrong), k.shots ? `${k.shots} Kamerabilder gespeichert` : "")}
+      </div>
+      <div class="grid2" style="margin-top:14px">${armedChart(a, view.table)}${triggersCard(a)}</div>
+      <h2>Vorfälle</h2>
+      ${a.incidents.length ? `<div class="incidents">${a.incidents.slice(0, 24).map(incidentCard).join("")}</div>` : `<div class="card muted">Keine Vorfälle im Zeitraum.</div>`}
+      <h2>Protokoll</h2>
+      ${logView(d, view.log)}`;
+    bindArmedChart(a);
+    app.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { view.days = Number(b.dataset.days); loadDashboard(); }));
+    app.querySelectorAll("[data-log]").forEach((b) => b.addEventListener("click", () => { view.log = b.dataset.log; view.logLimit = 25; renderDashboard(); }));
+    const more = app.querySelector("[data-more]");
+    if (more) more.addEventListener("click", () => { view.logLimit += 50; renderDashboard(); });
+    const tt = app.querySelector("[data-toggle-table]");
+    if (tt) tt.addEventListener("click", () => { view.table = !view.table; renderDashboard(); });
+  }
+
+  // ------------------------------------------------------------ incident
+  async function loadIncident(id, token) {
+    const q = token ? `?t=${encodeURIComponent(token)}` : "";
+    try {
+      const d = await api(`/api/incident/${id}${q}`);
+      TZ = d.tz || TZ;
+      if (d.instance) document.getElementById("instance").textContent = d.instance;
+      renderIncident(d, token);
+    } catch (err) {
+      app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+  }
+
+  function renderIncident(d, token) {
+    const ev = d.events;
+    const trig = ev.find((e) => e.event === "triggered");
+    const first = ev.find((e) => e.event === "pending" || e.event === "triggered") || ev[0];
+    const color = trig ? "var(--critical)" : "var(--warning)";
+    const start = ev.length ? ev[0].ts : null;
+    app.innerHTML = `
+      ${token ? "" : `<p style="margin:20px 0 0"><a href="/">← Dashboard</a></p>`}
+      <h1>${esc(first ? where(first) || LABELS[first.event] : "Vorfall")}</h1>
+      <div class="chips"><span class="chip" style="--c:${color}">${trig ? "Alarm" : "Vorwarnung"}</span>${start ? `<span class="muted">${esc(fmt(start, { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }))}</span>` : ""}</div>
+      <h2>Ablauf</h2>
+      <section class="card"><ul class="timeline">${ev.map((e) => `<li style="--c:${EV_COLOR[e.event] || "var(--idle)"}"><span class="t">${esc(timeOnly(e.ts))}</span><span class="d"></span>
+        <span><b>${esc(LABELS[e.event] || e.event)}</b>${where(e) ? ` · ${esc(where(e))}` : ""}${e.user ? ` · ${esc(e.user)}` : ""}${e.mode && MODES[e.mode] && e.event !== "acknowledged" ? ` <span class="muted">· ${MODES[e.mode]}</span>` : ""}</span></li>`).join("") || `<li class="muted">Keine Ereignisse.</li>`}</ul></section>
+      <h2>Kamerabilder</h2>
+      ${d.snapshots.length ? `<div class="gallery">${d.snapshots.map((s) => `<figure class="shot" data-shot="${s.id}"><div class="ph">lädt …</div>
+        <figcaption><span>${esc(s.camera || "Kamera")}</span><span class="grow"></span><span>${esc(timeOnly(s.ts))}</span></figcaption></figure>`).join("")}</div>`
+        : `<div class="card muted">Keine Kamerabilder zu diesem Vorfall.</div>`}`;
+    loadShots(d, token);
+  }
+
+  async function loadShots(d, token) {
+    for (const s of d.snapshots) {
+      const fig = app.querySelector(`[data-shot="${s.id}"]`);
+      if (!fig) continue;
+      try {
+        const q = new URLSearchParams({ i: d.incident });
+        if (token) q.set("t", token);
+        const img = await api(`/api/img/${s.id}?${q}`);
+        const el = document.createElement("img");
+        el.alt = `${img.camera || "Kamera"} ${timeOnly(img.ts)}`;
+        el.src = `data:${img.type};base64,${img.data}`;
+        fig.querySelector(".ph").replaceWith(el);
+        fig.addEventListener("click", () => {
+          const box = document.createElement("div");
+          box.className = "lightbox";
+          box.innerHTML = `<img alt="" src="${el.src}">`;
+          box.addEventListener("click", () => box.remove());
+          document.body.appendChild(box);
+        });
+      } catch {
+        fig.querySelector(".ph").textContent = "nicht verfügbar";
+      }
+    }
+  }
+
+  // -------------------------------------------------------------- route
+  const m = location.pathname.match(/^\/i\/([a-f0-9]{8,32})$/);
+  if (m) {
+    const token = new URLSearchParams(location.search).get("t") || "";
+    loadIncident(m[1], token);
+  } else {
+    loadDashboard();
+    setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
+    let resizeTimer = null;
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (view.data && !view.table) renderDashboard(); }, 150); });
+  }
+})();
+</script>
+</body>
+</html>

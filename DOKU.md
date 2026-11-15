@@ -6,7 +6,7 @@ Admin- und Wartungsdoku.
 
 - Home Assistant ≥ 2026.10 (Container, HA OS oder Supervised). Add-on-Prüfungen und Add-on-Sicherung gibt es nur mit Supervisor.
 - Für Git: ein **privates** GitHub-Repository mit Deploy-Key mit Schreibrecht (empfohlen) oder ein Fine-grained Token, das nur für dieses Repo Contents lesen/schreiben darf. Andere Git-Server per SSH oder HTTPS funktionieren ebenfalls.
-- Optional: Cloudflare-Account für den Probe-Worker.
+- Optional: Cloudflare-Account für den Worker (Workers, D1, für das Dashboard Zero Trust Access).
 - Python-Abhängigkeiten installiert HA automatisch: `dulwich`, `paramiko`.
 
 ## Konfiguration
@@ -120,9 +120,17 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
 3. **Aktionen:**
    - Sirenen und Lichter werden bei Alarm eingeschaltet.
    - Das Warnsignal läuft während der Verzögerungen.
-   - Benachrichtigungen gehen an die Bastion-Benachrichtigungsziele. Ein Alarm kommt als kritische Push-Nachricht und durchbricht damit den Stumm-Modus.
-4. **Codes:** Codes werden nur als scrypt-Hash gespeichert. Sobald ein Code existiert, verlangt das Unscharfschalten einen Code. Nach 5 falschen Eingaben sperrt die Anlage die Eingabe für 5 Minuten. Während eines Alarms oder einer Vorwarnung verlangt auch jedes Umschalten einen Code, damit niemand die Sirene durch Scharfschalten stummschalten kann.
-5. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Pushover, Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist. Alarme leitet er unabhängig von HA weiter.
+   - Benachrichtigungen gehen an die Bastion-Benachrichtigungsziele und, falls aktiv, über den Worker. Ein Alarm kommt als kritische Push-Nachricht und durchbricht damit den Stumm-Modus. Vorwarnung und Alarm tragen in der Companion App denselben Tag und einen Link zum Vorfall. Nach dem Unscharfschalten verschwinden sie vom Handy.
+4. **Töne:** Lautsprecher (Medienplayer) wählen, Lautstärke für Sirene und Hinweistöne einstellen, pro Ereignis einen Ton zuordnen.
+   - Alarm, Vorwarnung und Ausgangsverzögerung wiederholen sich, solange der Zustand dauert. Die Sirene endet mit der Sirenendauer.
+   - Scharf und Unscharf spielen einmal. Lautsprecher mit Durchsage-Funktion (z. B. Sonos) spielen sie über laufende Musik, die danach weiterläuft.
+   - Danach stellt Bastion die vorherige Lautstärke wieder her.
+   - Töne: mitgelieferte (Sirene, Piepen schnell/langsam, Gong) oder eigene Dateien aus „Meine Medien“. „MP3 hochladen“ legt die Datei in den lokalen HA-Medien unter `bastion/` ab.
+   - Die Lautsprecher holen die Datei direkt bei HA ab. Dafür muss unter Einstellungen → System → Netzwerk eine interne URL gesetzt sein, die die Lautsprecher erreichen.
+5. **Codes:** Codes werden nur als scrypt-Hash gespeichert. Sobald ein Code existiert, verlangt das Unscharfschalten einen Code. Nach 5 falschen Eingaben sperrt die Anlage die Eingabe für 5 Minuten. Während eines Alarms oder einer Vorwarnung verlangt auch jedes Umschalten einen Code, damit niemand die Sirene durch Scharfschalten stummschalten kann.
+6. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Pushover, Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist, leitet Alarme unabhängig von HA weiter und bewahrt Protokoll und Kamerabilder außer Haus auf. Unter „Protokoll außer Haus“ die Kameras wählen, deren Bilder bei Vorwarnung und Alarm hochgeladen werden.
+
+**Vorfälle:** Vorwarnung und anschließender Alarm bilden einen Vorfall mit eigener ID. Er endet mit dem Unscharf- oder erneuten Scharfschalten. Alle Protokolleinträge und Kamerabilder des Vorfalls tragen diese ID.
 
 **Offene Sensoren:** Ist beim Scharfschalten ein Sensor offen, verweigert Bastion das Scharfschalten und nennt die offenen Sensoren. „Trotzdem scharf schalten“ überbrückt sie, bis sie schließen.
 
@@ -151,11 +159,11 @@ Token und URL stehen im Panel unter „Anomalien & Köder“. Leg sie dort ab, w
 
 **Firmware:** Die Firmware-Versionen von ESPHome-, Tasmota- und WLED-Geräten sowie der Zigbee2MQTT-Bridge aus der Geräteübersicht werden gegen die GitHub-Advisories dieser Projekte geprüft.
 
-## Cloudflare Worker (Port-Prüfung, Totmannschalter, Alarm-Weiterleitung)
+## Cloudflare Worker (Totmannschalter, Protokoll, Dashboard, Port-Prüfung)
 
 ```bash
 cd extras/cloudflare-worker
-npx wrangler kv namespace create BASTION_KV      # ausgegebene id in wrangler.toml eintragen
+npx wrangler d1 create bastion                   # ausgegebene database_id in wrangler.toml eintragen
 npx wrangler deploy
 npx wrangler secret put PROBE_TOKEN              # zufälliger Wert, auch in Bastion → Externe Prüfung
 npx wrangler secret put ALARM_SECRET             # Wert aus Alarmanlage → Einstellungen → Cloud-Worker
@@ -165,20 +173,46 @@ npx wrangler secret put TELEGRAM_BOT_TOKEN       # optional, dazu TELEGRAM_CHAT_
 npx wrangler secret put NTFY_URL                 # optional, z. B. https://ntfy.sh/<geheimes-topic>
 ```
 
-Secrets lassen sich statt mit wrangler auch im Cloudflare-Dashboard setzen: Workers & Pages → bastion-probe → Settings → Variables and Secrets → Add → Typ *Secret*.
+Die Tabellen legt der Worker beim ersten Aufruf selbst an. Secrets lassen sich statt mit wrangler auch im Cloudflare-Dashboard setzen: Workers & Pages → bastion-probe → Settings → Variables and Secrets → Add → Typ *Secret*. Tokens dort immer als *Secret* anlegen, nicht als Text-Variable.
 
-**Pushover:** Ein Alarm kommt mit Notfall-Priorität (2). Er wiederholt sich jede Minute, bis du ihn in der App bestätigst, höchstens 30 Minuten lang, mit dem Ton `siren` (änderbar über `PUSHOVER_SOUND`). „HA nicht erreichbar“ kommt ebenfalls als Notfall, Vorwarnungen und nicht erreichbare Sensoren mit hoher Priorität, alles andere normal. Mit `PUSHOVER_DEVICE` lässt sich auf ein Gerät beschränken.
+Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥ 22, D1 wird mit `node:sqlite` nachgebildet).
 
-Weitere Variablen: `WEBHOOK_URL` (bekommt JSON), `OFFLINE_MINUTES` (Standard 10), `ALERT_WHEN_DISARMED=1` (meldet Ausfälle auch bei unscharfer Anlage).
+**Pushover:** Ein Alarm kommt mit Notfall-Priorität (2). Er wiederholt sich jede Minute, bis jemand ihn bestätigt, höchstens 30 Minuten lang, mit dem Ton `siren` (änderbar über `PUSHOVER_SOUND`). „HA nicht erreichbar“ bei scharfer Anlage kommt ebenfalls als Notfall, Vorwarnungen und falsche Codes mit hoher Priorität, alles andere normal. Mit `PUSHOVER_DEVICE` lässt sich auf ein Gerät beschränken.
+- **Quittierung:** Bestätigt jemand den Alarm, ruft Pushover den Worker auf. Der Worker prüft die Bestätigung bei Pushover nach (zusätzlich jede Minute per Cron), meldet „Alarm quittiert von <Gerät>“ an alle Kanäle und gibt sie mit dem nächsten Lebenszeichen an HA. Sie erscheint im Alarm-Protokoll und kann benachrichtigt werden.
+- **Entwarnung:** Unscharfschalten bricht die Notfall-Wiederholung auf allen Handys ab.
+
+**Welche Ereignisse gepusht werden,** bestimmt die Auswahl „Benachrichtigen bei“ in Bastion (Aktionen). Gespeichert wird jedes Ereignis.
+
+**Protokoll außer Haus:**
+- Jedes Alarmereignis (Scharf, Unscharf, Vorwarnung, Alarm, falscher Code, Scharfschalten fehlgeschlagen, Sensor nicht erreichbar, Quittierung, Funkstille, Neustart) landet in D1.
+- HA kann nur anhängen, nicht löschen. Was beim Worker angekommen ist, bleibt erhalten, auch wenn HA zerstört oder übernommen wird.
+- Bei Vorwarnung und Alarm schickt HA Bilder der gewählten Kameras (Standard: 3 pro Kamera im Abstand von 5 s, auf 1280 px verkleinert).
+- Alarm-Pushs enthalten einen Link `…/i/<vorfall>?t=<token>` auf eine Vorfallseite mit Ablauf und Kamerabildern. Der Token gilt nur für diesen einen Vorfall.
+- Aufbewahrung: `LOG_DAYS` (Standard 365) für Ereignisse, `SNAPSHOT_DAYS` (Standard 30) für Bilder.
 
 **Totmannschalter:**
-- HA schickt alle 2 Minuten ein signiertes Lebenszeichen mit dem Alarmzustand.
-- Der Worker prüft per Cron alle 5 Minuten. Bleibt das Lebenszeichen bei scharfer Anlage länger als `OFFLINE_MINUTES` aus, meldet er „Home Assistant nicht erreichbar“. Ursache kann ein Strom- oder Internetausfall sein, aber auch Sabotage.
-- Kommt HA zurück, meldet er „wieder erreichbar“.
+- HA schickt alle 2 Minuten ein signiertes Lebenszeichen, während Vorwarnung oder Alarm alle 15 Sekunden. Es enthält Zustand, offene und nicht erreichbare Sensoren, Startzeit von HA und Host.
+- Der Worker prüft jede Minute. Bleibt das Lebenszeichen bei scharfer Anlage länger als `OFFLINE_MINUTES` (Standard 10) aus, meldet er „Home Assistant nicht erreichbar“ mit dem letzten Stand, den letzten Ereignissen und einer Einschätzung:
+  - Funkstille während Vorwarnung oder Alarm: Sabotage wahrscheinlich, Link zum Vorfall.
+  - Kurz vorher fielen Sensoren aus: Funkstörung, Stromausfall oder Sabotage möglich.
+  - Geplanter Neustart: HA meldet das Herunterfahren. Der Worker wartet dann bis `PLANNED_MINUTES` (Standard 20).
+- Kommt HA zurück, nennt die Meldung die Dauer und die Ursache: Rechner neu gestartet (Stromausfall), HA neu gestartet oder Netzwerk unterbrochen (HA lief durch).
+- Bei unscharfer Anlage werden Ausfälle nur protokolliert (`ALERT_WHEN_DISARMED=1` meldet auch diese).
 
-**Alarm-Weiterleitung:** Alarm, Vorwarnung, Scharf, Unscharf und nicht erreichbare Sensoren gehen zusätzlich über die Worker-Kanäle raus.
+**Dashboard (nur lesend, hinter Cloudflare Access):**
+- Zeigt Status, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Einrichten:
+  1. Worker → Settings → Domains & Routes → Custom Domain hinzufügen, z. B. `bastion.example.com`.
+  2. Zero Trust → Access → Applications → Self-hosted, Domain wie oben, Policy mit den erlaubten E-Mail-Adressen.
+  3. Den „Application Audience (AUD) Tag“ der Anwendung kopieren.
+  4. Im Worker die Variablen `DASHBOARD_HOST` (die Domain), `ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) und `ACCESS_AUD` setzen.
+- Der Worker prüft das Access-Token selbst (Signatur, Audience, Aussteller, Ablauf). Über die workers.dev-Adresse ist das Dashboard nicht erreichbar. HA spricht weiter über die workers.dev-Adresse, sie liegt nicht hinter Access.
 
-**Sicherheit:** Jede Meldung von HA trägt eine HMAC-SHA256-Signatur über Zeitstempel und Inhalt, Wiederholungen werden nach 5 Minuten abgewiesen. Der Worker nimmt keine Befehle an. Fernsteuern lässt sich die Anlage über ihn nicht.
+**Sicherheit:**
+- Jede Meldung von HA trägt eine HMAC-SHA256-Signatur über Zeitstempel und Inhalt, Wiederholungen werden nach 5 Minuten abgewiesen.
+- Der Worker nimmt keine Befehle an. Fernsteuern lässt sich die Anlage über ihn nicht.
+- Pushover-Rückrufe tragen ein geheimes Pfad-Token und werden zusätzlich bei Pushover gegengeprüft.
+- Die Seiten senden eine strikte Content-Security-Policy und `Referrer-Policy: no-referrer`, damit Vorfall-Tokens nicht weitergegeben werden.
 
 **Port-Prüfung:**
 
@@ -210,4 +244,8 @@ Der Worker baut eine TCP-Verbindung zur IP des Aufrufers auf (`CF-Connecting-IP`
 | Viele Befunde „Klartext-Zugangsdaten“ | Werte stehen direkt in YAML | Nach `secrets.yaml` verschieben und mit `!secret` referenzieren |
 | Advisories fehlen | GitHub-API-Limit (60/h ohne Token) | Lese-Token in den Audit-Optionen hinterlegen |
 | Probe `401` | Token falsch | `PROBE_TOKEN` im Worker und in Bastion abgleichen |
+| Lautsprecher spielen keinen Ton | Log: „Unable to determine Home Assistant URL“ oder der Lautsprecher erreicht HA nicht | Interne URL unter Einstellungen → System → Netzwerk setzen, die im LAN erreichbar ist |
+| Kamerabilder fehlen im Vorfall | Log: „snapshot … too large“ oder Kamera-Fehler | Kamera liefert auch verkleinert mehr als ~1 MB. Kleineren Stream bzw. Snapshot-Auflösung wählen |
+| Dashboard zeigt 404 | Aufruf über workers.dev, `ACCESS_AUD`/`ACCESS_TEAM_DOMAIN` fehlen oder Domain passt nicht zu `DASHBOARD_HOST` | Über die Access-Domain aufrufen, Variablen prüfen |
+| Worker meldet `ALARM_SECRET not set` | Secret fehlt im Worker | Secret setzen, Wert aus Bastion → Cloud-Worker |
 | Fehlversuche werden nicht gezählt | Logger `homeassistant.components.http.ban` steht in der Logger-Konfiguration auf `error` | Bastion setzt ihn auf `warning`. Diese Einstellung in `logger:` nicht wieder überschreiben |
