@@ -1,0 +1,7 @@
+name = "bastion-probe"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# Token setzen (empfohlen):
+#   npx wrangler secret put PROBE_TOKEN

@@ -1,0 +1,38 @@
+{
+  "domain": "bastion",
+  "name": "Bastion",
+  "after_dependencies": [
+    "automation",
+    "backup",
+    "cloud",
+    "diagnostics",
+    "esphome",
+    "hassio",
+    "lovelace",
+    "mobile_app",
+    "mqtt",
+    "recorder",
+    "webhook"
+  ],
+  "codeowners": [
+    "@hxcde"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "persistent_notification",
+    "repairs",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/hxcde/myHACS",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/hxcde/myHACS/issues",
+  "requirements": [
+    "dulwich==1.2.21",
+    "paramiko==5.1.0"
+  ],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

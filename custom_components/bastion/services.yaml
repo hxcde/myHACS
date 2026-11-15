@@ -1,0 +1,48 @@
+run_audit:
+external_scan:
+git_commit:
+  fields:
+    message:
+      selector:
+        text:
+git_restore:
+  fields:
+    commit:
+      required: true
+      selector:
+        text:
+    areas:
+      selector:
+        select:
+          multiple: true
+          options:
+            - config
+            - storage
+            - esphome
+            - zigbee2mqtt
+            - addons
+            - extra
+    paths:
+      selector:
+        text:
+          multiple: true
+    restart:
+      default: false
+      selector:
+        boolean:
+dismiss_finding:
+  fields:
+    finding_id:
+      required: true
+      selector:
+        text:
+    dismissed:
+      default: true
+      selector:
+        boolean:
+accept_integrity:
+  fields:
+    domain:
+      selector:
+        text:
+reset_git_host_key:

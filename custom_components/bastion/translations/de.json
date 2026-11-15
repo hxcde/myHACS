@@ -1,0 +1,249 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bastion",
+        "description": "Sicherheitsaudit, Versionierung der Konfiguration in Git und Anomalie-Erkennung. Eingestellt wird alles nach der Einrichtung in den Optionen."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Bastion ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bastion",
+        "menu_options": {
+          "audit": "Sicherheitsaudit",
+          "notifications": "Benachrichtigungen",
+          "git": "Git-Versionierung",
+          "probe": "Externe Prüfung",
+          "anomaly": "Anomalie-Erkennung"
+        }
+      },
+      "audit": {
+        "title": "Sicherheitsaudit",
+        "description": "GitHub-Token hinterlegt: {token_state}. Feld leer lassen, um den Token zu behalten.",
+        "data": {
+          "audit_interval_hours": "Prüfintervall",
+          "repairs_min_severity": "Reparaturen anlegen ab Schweregrad",
+          "max_admins": "Maximale Anzahl Administratoren",
+          "token_max_age_days": "Maximales Alter von Long-Lived-Tokens",
+          "token_unused_days": "Token gilt als ungenutzt nach",
+          "disabled_checks": "Deaktivierte Prüfgruppen",
+          "github_token": "GitHub-Token (optional, nur lesen, höheres API-Limit)",
+          "clear_github_token": "Hinterlegten GitHub-Token entfernen"
+        }
+      },
+      "notifications": {
+        "title": "Benachrichtigungen",
+        "description": "Ziele sind Notify-Entitäten (notify.xyz) oder Notify-Dienste (notify.mobile_app_handy). Eine dauerhafte Benachrichtigung wird immer erstellt.",
+        "data": {
+          "notify_targets": "Benachrichtigungsziele",
+          "notify_min_severity": "Bei neuen Befunden benachrichtigen ab",
+          "notify_logins": "Bei Anmeldungen und neuen IPs benachrichtigen",
+          "notify_public_ip_only": "Nur bei Anmeldungen von öffentlichen IPs",
+          "brute_force_threshold": "Brute-Force-Alarm ab Fehlversuchen (10 Min.)",
+          "geoip_lookup": "Land öffentlicher IPs ermitteln (sendet die IP an ipwho.is)"
+        }
+      },
+      "git": {
+        "title": "Git-Versionierung",
+        "description": "Privates Repository für die Konfiguration. SSH: Im nächsten Schritt wird ein Deploy-Key erzeugt. HTTPS: Token mit Contents lesen/schreiben nur für dieses Repo. Token hinterlegt: {token_state}, Passphrase hinterlegt: {passphrase_state}. Geheime Felder leer lassen, um sie zu behalten.",
+        "data": {
+          "git_enabled": "Git-Sync aktivieren",
+          "git_url": "Repository-URL (SSH wie git@github.com:user/repo.git oder HTTPS)",
+          "git_branch": "Branch",
+          "git_auth": "Anmeldung",
+          "git_username": "Benutzername (HTTPS, optional)",
+          "git_token": "Zugriffstoken (HTTPS)",
+          "regenerate_key": "Neuen SSH-Schlüssel erzeugen",
+          "git_passphrase": "Passphrase zur Verschlüsselung der Secrets",
+          "clear_passphrase": "Passphrase entfernen (Secrets werden dann nicht mehr gesichert)",
+          "git_areas": "Inhalte",
+          "git_esphome_path": "ESPHome-Verzeichnis (Standard: /config/esphome)",
+          "git_z2m_path": "Zigbee2MQTT-Datenverzeichnis (Standard: /config/zigbee2mqtt)",
+          "git_extra_paths": "Zusätzliche Pfade (in den Container gemountet)",
+          "git_debounce_seconds": "Commit, wenn sich so lange nichts mehr ändert",
+          "git_daily_time": "Täglicher Commit um",
+          "git_author_name": "Commit-Autor",
+          "git_author_email": "Commit-E-Mail",
+          "git_allow_unverified_private": "Ich bestätige, dass das Repo privat ist (falls nicht prüfbar)"
+        }
+      },
+      "git_key": {
+        "title": "Deploy-Key hinterlegen",
+        "description": "Diesen öffentlichen Schlüssel bei {url} als Deploy-Key **mit Schreibrecht** eintragen (GitHub: Settings → Deploy keys → Add deploy key):\n\n```\n{public_key}\n```\n\nDer private Schlüssel verlässt Home Assistant nie. Weiter, sobald der Key eingetragen ist."
+      },
+      "git_test": {
+        "title": "Verbindung erfolgreich",
+        "description": "Server-Schlüssel: `{fingerprint}`\nRepository: {privacy}\nBranches: {refs}\n\nFingerprint mit dem vom Anbieter veröffentlichten vergleichen. Absenden speichert die Einstellungen."
+      },
+      "git_test_failed": {
+        "title": "Verbindung fehlgeschlagen",
+        "description": "Server-Schlüssel: `{fingerprint}`\nRepository: {privacy}\n{error}\n\nAbsenden führt zurück zu den Einstellungen."
+      },
+      "probe": {
+        "title": "Externe Prüfung",
+        "description": "URL deines Bastion-Cloudflare-Workers (siehe extras/cloudflare-worker). Er prüft nur die öffentliche IP dieses Home Assistant. Token hinterlegt: {token_state}.",
+        "data": {
+          "probe_url": "Worker-URL",
+          "probe_token": "Worker-Token",
+          "clear_probe_token": "Hinterlegten Token entfernen",
+          "probe_interval_hours": "Prüfintervall"
+        }
+      },
+      "anomaly": {
+        "title": "Anomalie-Erkennung",
+        "data": {
+          "anomaly_entities": "Sensoren zum Anlernen (Strom, Wasser, Gas, Temperatur …)",
+          "anomaly_sensitivity": "Empfindlichkeit (Standardabweichungen, höher = weniger Alarme)",
+          "anomaly_login_time": "Anmeldungen zu ungewöhnlichen Zeiten erkennen",
+          "anomaly_actions": "Ungewöhnliches Aufschließen / Entschärfen erkennen",
+          "anomaly_sabotage": "Sabotage erkennen (mehrere Sicherheitsgeräte offline)",
+          "sabotage_count": "Gleichzeitig offline",
+          "sabotage_window_seconds": "Innerhalb von",
+          "anomaly_outbound": "Ausgehende Verbindungen beobachten (neue Ziele)"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Ungültige Repository-URL.",
+      "invalid_branch": "Ungültiger Branch-Name.",
+      "ssh_needs_key": "SSH-URLs brauchen die Anmeldung per SSH-Schlüssel.",
+      "https_needs_token": "HTTPS-URLs brauchen einen Token (oder „keine“ für lokale Tests).",
+      "insecure_http": "Unverschlüsseltes HTTP ist nicht erlaubt, bitte HTTPS nutzen.",
+      "token_required": "Token erforderlich.",
+      "auth_failed": "Anmeldung fehlgeschlagen. Ist der Deploy-Key mit Schreibrecht eingetragen bzw. der Token gültig?",
+      "cannot_connect": "Keine Verbindung zum Git-Server.",
+      "host_key_mismatch": "Der Server-Schlüssel passt nicht zum hinterlegten oder veröffentlichten Schlüssel.",
+      "invalid_key": "Der gespeicherte SSH-Schlüssel ist ungültig. Bitte neu erzeugen.",
+      "missing_key": "Kein SSH-Schlüssel gespeichert.",
+      "repo_not_found": "Repository nicht gefunden.",
+      "protocol_error": "Git-Protokollfehler.",
+      "repo_public": "Das Repository ist öffentlich. Bastion pusht nur in private Repositories.",
+      "repo_unverified": "Bastion konnte nicht prüfen, ob das Repository privat ist. Bitte in den Einstellungen bestätigen.",
+      "https_required": "Die Worker-URL muss HTTPS verwenden."
+    }
+  },
+  "selector": {
+    "severity": {
+      "options": {
+        "critical": "Kritisch",
+        "high": "Hoch",
+        "medium": "Mittel",
+        "low": "Niedrig"
+      }
+    },
+    "check_group": {
+      "options": {
+        "access": "Konten, MFA, Tokens",
+        "http": "HTTP-Konfiguration",
+        "exposure": "Webhooks, Sprachassistenten, MQTT",
+        "updates": "Updates und Sicherheitslücken",
+        "supply_chain": "Custom-Integrationen",
+        "config": "Konfiguration und Backups",
+        "supervisor": "Add-ons (Supervisor)"
+      }
+    },
+    "git_auth": {
+      "options": {
+        "ssh": "SSH-Deploy-Key",
+        "token": "HTTPS-Token",
+        "none": "Keine (lokaler Pfad)"
+      }
+    },
+    "git_area": {
+      "options": {
+        "config": "YAML-Konfiguration",
+        "storage": "UI-Konfiguration (.storage)",
+        "inventory": "Inventar (Integrationen, Versionen)",
+        "esphome": "ESPHome",
+        "zigbee2mqtt": "Zigbee2MQTT",
+        "addons": "Add-on-Optionen (Supervisor)",
+        "extra": "Zusätzliche Pfade"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "security_score": { "name": "Sicherheitswert" },
+      "open_findings": { "name": "Offene Befunde" },
+      "failed_logins_24h": { "name": "Fehlgeschlagene Anmeldungen (24 h)" },
+      "git_status": {
+        "name": "Git-Status",
+        "state": {
+          "disabled": "Deaktiviert",
+          "ok": "OK",
+          "pending": "Push ausstehend",
+          "error": "Fehler",
+          "blocked": "Blockiert"
+        }
+      },
+      "git_last_commit": { "name": "Letzter Commit" }
+    },
+    "binary_sensor": {
+      "critical_findings": { "name": "Kritische Befunde" },
+      "sabotage": { "name": "Sabotageverdacht" },
+      "anomaly": { "name": "Anomalie {entity}" }
+    },
+    "button": {
+      "run_audit": { "name": "Audit ausführen" },
+      "git_commit": { "name": "Konfiguration jetzt sichern" },
+      "external_scan": { "name": "Externe Prüfung ausführen" }
+    }
+  },
+  "issues": {
+    "finding": {
+      "title": "{title}",
+      "description": "{description}\n\n**Empfehlung:** {recommendation}"
+    }
+  },
+  "services": {
+    "run_audit": {
+      "name": "Audit ausführen",
+      "description": "Führt das Sicherheitsaudit sofort aus."
+    },
+    "external_scan": {
+      "name": "Externe Prüfung",
+      "description": "Prüft, welche Ports der öffentlichen IP aus dem Internet erreichbar sind."
+    },
+    "git_commit": {
+      "name": "Konfiguration sichern",
+      "description": "Committet und pusht die Konfiguration sofort.",
+      "fields": {
+        "message": { "name": "Nachricht", "description": "Optionale Commit-Nachricht." }
+      }
+    },
+    "git_restore": {
+      "name": "Konfiguration wiederherstellen",
+      "description": "Stellt Dateien aus einem Commit wieder her. Der aktuelle Stand wird vorher committet.",
+      "fields": {
+        "commit": { "name": "Commit", "description": "Vollständige Commit-SHA." },
+        "areas": { "name": "Bereiche", "description": "Nur diese Bereiche (leer = alle)." },
+        "paths": { "name": "Pfade", "description": "Nur diese Repo-Pfade, z. B. homeassistant/automations.yaml." },
+        "restart": { "name": "Neustart", "description": "Home Assistant danach neu starten (nötig für .storage)." }
+      }
+    },
+    "dismiss_finding": {
+      "name": "Befund ausblenden",
+      "description": "Blendet einen Befund aus oder wieder ein.",
+      "fields": {
+        "finding_id": { "name": "Befund-ID", "description": "ID des Befunds." },
+        "dismissed": { "name": "Ausgeblendet", "description": "False blendet den Befund wieder ein." }
+      }
+    },
+    "accept_integrity": {
+      "name": "Integritäts-Baseline übernehmen",
+      "description": "Übernimmt die aktuellen Dateien in custom_components und www als bekannt gut.",
+      "fields": {
+        "domain": { "name": "Integration", "description": "Nur diese Integration, „www“ oder leer für alle." }
+      }
+    },
+    "reset_git_host_key": {
+      "name": "Git-Server-Schlüssel zurücksetzen",
+      "description": "Vergisst den gespeicherten SSH-Hostkey, nachdem eine legitime Änderung geprüft wurde."
+    }
+  }
+}

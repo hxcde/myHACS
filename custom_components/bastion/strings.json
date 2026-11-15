@@ -1,0 +1,249 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bastion",
+        "description": "Security audit, configuration versioning in git and anomaly detection. Everything is configured in the options after setup."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Bastion is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bastion",
+        "menu_options": {
+          "audit": "Security audit",
+          "notifications": "Notifications",
+          "git": "Git versioning",
+          "probe": "External check",
+          "anomaly": "Anomaly detection"
+        }
+      },
+      "audit": {
+        "title": "Security audit",
+        "description": "GitHub token stored: {token_state}. Leave the token field empty to keep it.",
+        "data": {
+          "audit_interval_hours": "Audit interval",
+          "repairs_min_severity": "Create repairs from severity",
+          "max_admins": "Maximum number of administrators",
+          "token_max_age_days": "Maximum age of long-lived tokens",
+          "token_unused_days": "Unused tokens after",
+          "disabled_checks": "Disabled check groups",
+          "github_token": "GitHub token (optional, read only, higher API limit)",
+          "clear_github_token": "Remove stored GitHub token"
+        }
+      },
+      "notifications": {
+        "title": "Notifications",
+        "description": "Targets are notify entities (notify.xyz) or notify services (notify.mobile_app_phone). A persistent notification is always created.",
+        "data": {
+          "notify_targets": "Notification targets",
+          "notify_min_severity": "Notify for new findings from severity",
+          "notify_logins": "Notify on logins and new IPs",
+          "notify_public_ip_only": "Only for logins from public IPs",
+          "brute_force_threshold": "Brute force alarm after failed logins (10 min)",
+          "geoip_lookup": "Look up country of public IPs (sends the IP to ipwho.is)"
+        }
+      },
+      "git": {
+        "title": "Git versioning",
+        "description": "Private repository for the configuration. SSH: a deploy key is generated in the next step. HTTPS: token with contents read/write for this repository only. Token stored: {token_state}, passphrase stored: {passphrase_state}. Leave secret fields empty to keep them.",
+        "data": {
+          "git_enabled": "Enable git sync",
+          "git_url": "Repository URL (SSH like git@github.com:user/repo.git, or HTTPS)",
+          "git_branch": "Branch",
+          "git_auth": "Authentication",
+          "git_username": "Username (HTTPS, optional)",
+          "git_token": "Access token (HTTPS)",
+          "regenerate_key": "Generate a new SSH key",
+          "git_passphrase": "Encryption passphrase for secrets",
+          "clear_passphrase": "Remove passphrase (secrets are no longer backed up)",
+          "git_areas": "Content",
+          "git_esphome_path": "ESPHome directory (default: /config/esphome)",
+          "git_z2m_path": "Zigbee2MQTT data directory (default: /config/zigbee2mqtt)",
+          "git_extra_paths": "Additional paths (mounted into the container)",
+          "git_debounce_seconds": "Commit after changes settle for",
+          "git_daily_time": "Daily commit at",
+          "git_author_name": "Commit author",
+          "git_author_email": "Commit e-mail",
+          "git_allow_unverified_private": "I confirm the repository is private (if it cannot be checked)"
+        }
+      },
+      "git_key": {
+        "title": "Add deploy key",
+        "description": "Add this public key to {url} as a deploy key **with write access** (GitHub: Settings → Deploy keys → Add deploy key):\n\n```\n{public_key}\n```\n\nThe private key never leaves Home Assistant. Continue when the key is added."
+      },
+      "git_test": {
+        "title": "Connection works",
+        "description": "Server key: `{fingerprint}`\nRepository: {privacy}\nBranches: {refs}\n\nCompare the fingerprint with the one published by your provider. Submit to save."
+      },
+      "git_test_failed": {
+        "title": "Connection failed",
+        "description": "Server key: `{fingerprint}`\nRepository: {privacy}\n{error}\n\nSubmit to go back to the settings."
+      },
+      "probe": {
+        "title": "External check",
+        "description": "URL of your Bastion Cloudflare Worker (see extras/cloudflare-worker). It probes only the public IP of this Home Assistant. Token stored: {token_state}.",
+        "data": {
+          "probe_url": "Worker URL",
+          "probe_token": "Worker token",
+          "clear_probe_token": "Remove stored token",
+          "probe_interval_hours": "Check interval"
+        }
+      },
+      "anomaly": {
+        "title": "Anomaly detection",
+        "data": {
+          "anomaly_entities": "Sensors to learn (power, water, gas, temperature …)",
+          "anomaly_sensitivity": "Sensitivity (standard deviations, higher = fewer alerts)",
+          "anomaly_login_time": "Detect logins at unusual times",
+          "anomaly_actions": "Detect unusual unlock / disarm actions",
+          "anomaly_sabotage": "Detect sabotage (several security devices offline)",
+          "sabotage_count": "Devices offline at once",
+          "sabotage_window_seconds": "Within",
+          "anomaly_outbound": "Watch outbound connections (new destinations)"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Invalid repository URL.",
+      "invalid_branch": "Invalid branch name.",
+      "ssh_needs_key": "SSH URLs need SSH key authentication.",
+      "https_needs_token": "HTTPS URLs need a token (or 'none' for local tests).",
+      "insecure_http": "Plain HTTP is not allowed, use HTTPS.",
+      "token_required": "Token required.",
+      "auth_failed": "Authentication failed. Is the deploy key added with write access / the token valid?",
+      "cannot_connect": "Cannot connect to the git server.",
+      "host_key_mismatch": "The server key does not match the stored or published key.",
+      "invalid_key": "The stored SSH key is invalid. Generate a new one.",
+      "missing_key": "No SSH key stored.",
+      "repo_not_found": "Repository not found.",
+      "protocol_error": "Git protocol error.",
+      "repo_public": "The repository is public. Bastion only pushes to private repositories.",
+      "repo_unverified": "Bastion could not verify that the repository is private. Confirm it in the settings.",
+      "https_required": "The worker URL must use HTTPS."
+    }
+  },
+  "selector": {
+    "severity": {
+      "options": {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
+      }
+    },
+    "check_group": {
+      "options": {
+        "access": "Accounts, MFA, tokens",
+        "http": "HTTP configuration",
+        "exposure": "Webhooks, voice assistants, MQTT",
+        "updates": "Updates and advisories",
+        "supply_chain": "Custom integrations",
+        "config": "Configuration and backups",
+        "supervisor": "Add-ons (Supervisor)"
+      }
+    },
+    "git_auth": {
+      "options": {
+        "ssh": "SSH deploy key",
+        "token": "HTTPS token",
+        "none": "None (local path)"
+      }
+    },
+    "git_area": {
+      "options": {
+        "config": "YAML configuration",
+        "storage": "UI configuration (.storage)",
+        "inventory": "Inventory (integrations, versions)",
+        "esphome": "ESPHome",
+        "zigbee2mqtt": "Zigbee2MQTT",
+        "addons": "Add-on options (Supervisor)",
+        "extra": "Additional paths"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "security_score": { "name": "Security score" },
+      "open_findings": { "name": "Open findings" },
+      "failed_logins_24h": { "name": "Failed logins (24 h)" },
+      "git_status": {
+        "name": "Git status",
+        "state": {
+          "disabled": "Disabled",
+          "ok": "OK",
+          "pending": "Push pending",
+          "error": "Error",
+          "blocked": "Blocked"
+        }
+      },
+      "git_last_commit": { "name": "Last commit" }
+    },
+    "binary_sensor": {
+      "critical_findings": { "name": "Critical findings" },
+      "sabotage": { "name": "Sabotage suspicion" },
+      "anomaly": { "name": "Anomaly {entity}" }
+    },
+    "button": {
+      "run_audit": { "name": "Run audit" },
+      "git_commit": { "name": "Back up configuration now" },
+      "external_scan": { "name": "Run external check" }
+    }
+  },
+  "issues": {
+    "finding": {
+      "title": "{title}",
+      "description": "{description}\n\n**Recommendation:** {recommendation}"
+    }
+  },
+  "services": {
+    "run_audit": {
+      "name": "Run audit",
+      "description": "Runs the security audit now."
+    },
+    "external_scan": {
+      "name": "External check",
+      "description": "Checks which ports of the public IP are reachable from the internet."
+    },
+    "git_commit": {
+      "name": "Back up configuration",
+      "description": "Commits and pushes the configuration now.",
+      "fields": {
+        "message": { "name": "Message", "description": "Optional commit message." }
+      }
+    },
+    "git_restore": {
+      "name": "Restore configuration",
+      "description": "Restores files from a commit. The current state is committed first.",
+      "fields": {
+        "commit": { "name": "Commit", "description": "Full commit SHA." },
+        "areas": { "name": "Areas", "description": "Only these areas (empty = all)." },
+        "paths": { "name": "Paths", "description": "Only these repository paths, e.g. homeassistant/automations.yaml." },
+        "restart": { "name": "Restart", "description": "Restart Home Assistant afterwards (required for .storage)." }
+      }
+    },
+    "dismiss_finding": {
+      "name": "Dismiss finding",
+      "description": "Hides a finding or shows it again.",
+      "fields": {
+        "finding_id": { "name": "Finding ID", "description": "ID of the finding." },
+        "dismissed": { "name": "Dismissed", "description": "False shows the finding again." }
+      }
+    },
+    "accept_integrity": {
+      "name": "Accept integrity baseline",
+      "description": "Accepts the current files of custom_components and www as known good.",
+      "fields": {
+        "domain": { "name": "Integration", "description": "Only this integration, 'www' or empty for all." }
+      }
+    },
+    "reset_git_host_key": {
+      "name": "Reset git server key",
+      "description": "Forgets the stored SSH host key after you verified a legitimate change."
+    }
+  }
+}
