@@ -2,256 +2,317 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="light dark">
-<title>Bastion Security Operations</title>
+<title>Bastion</title>
 <style>
-/* Bastion Security Operations: black and white, color only for data and status. */
+/* Bastion – im Controller-Design von Argus: flach, klare Kanten, hoher Kontrast, ein Akzent (Blau). */
 :root {
-  color-scheme: dark;
-  --bg: #000000; --surface: #0a0a0a; --surface-2: #0f0f0f; --surface-3: #171717;
-  --line: #1f1f1f; --line-strong: #2e2e2e;
-  --text: #fafafa; --muted: #a3a3a3; --dim: #6e6e6e;
-  --accent: #fafafa; --accent-soft: rgba(255, 255, 255, .07); --on-accent: #000000;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70;
-  --good: #22c55e; --warning: #eab308; --serious: #f97316; --critical: #ef4444; --idle: #737373;
-  --shadow: none;
-  --radius: 8px; --radius-lg: 10px;
-  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #ffffff; --surface: #ffffff; --surface-2: #fafafa; --surface-3: #f2f2f2;
-  --line: #e8e8e8; --line-strong: #d4d4d4;
-  --text: #0a0a0a; --muted: #525252; --dim: #8a8a8a;
-  --accent: #0a0a0a; --accent-soft: rgba(0, 0, 0, .05); --on-accent: #ffffff;
+  color-scheme: light dark;
+  --bg: #eef0f3; --panel: #ffffff; --panel-2: #f8f9fa; --chip-bg: #eef0f2; --hover: #f4f5f7; --active: #eaf2ff;
+  --border: #e2e4e8; --border-strong: #d2d5da; --hairline: rgb(16 24 40 / 8%);
+  --text: #14161a; --text-2: #5c6067; --text-3: #868a91;
+  --primary: #006fff; --primary-hover: #005fe0; --primary-soft: #e8f1ff;
+  --green: #18a957; --green-soft: #e7f6ee; --red: #e5383b; --red-soft: #fdecec; --orange: #e8930c; --orange-soft: #fdf3e2;
+  --violet: #6e56cf; --violet-soft: #f0edfb; --gray: #a1a8b2;
+  --pop-shadow: 0 10px 32px rgb(16 24 40 / 14%), 0 2px 6px rgb(16 24 40 / 6%);
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
-  --good: #15803d; --warning: #a16207; --serious: #c2410c; --critical: #dc2626; --idle: #737373;
+  --radius: 10px; --radius-s: 6px; --ease: cubic-bezier(.2, .7, .2, 1); --t-fast: 120ms; --t: 200ms;
+  --h: 32px; --h-in: 28px;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; -webkit-tap-highlight-color: transparent;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1012; --panel: #1b1c1f; --panel-2: #202125; --chip-bg: #27282c; --hover: #232428; --active: #27292d;
+    --border: #2a2b30; --border-strong: #393b41; --hairline: rgb(255 255 255 / 7%);
+    --text: #f6f7f8; --text-2: #a4a8af; --text-3: #72767d;
+    --primary: #4593fc; --primary-hover: #64a6ff; --primary-soft: rgb(69 147 252 / 16%);
+    --green: #2fbf6c; --green-soft: rgb(47 191 108 / 13%); --red: #f2555a; --red-soft: rgb(242 85 90 / 13%);
+    --orange: #f2a93b; --orange-soft: rgb(242 169 59 / 13%); --violet: #9b87f5; --violet-soft: rgb(155 135 245 / 14%); --gray: #5f666f;
+    --pop-shadow: 0 12px 36px rgb(0 0 0 / 55%);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1012; --panel: #1b1c1f; --panel-2: #202125; --chip-bg: #27282c; --hover: #232428; --active: #27292d;
+  --border: #2a2b30; --border-strong: #393b41; --hairline: rgb(255 255 255 / 7%);
+  --text: #f6f7f8; --text-2: #a4a8af; --text-3: #72767d;
+  --primary: #4593fc; --primary-hover: #64a6ff; --primary-soft: rgb(69 147 252 / 16%);
+  --green: #2fbf6c; --green-soft: rgb(47 191 108 / 13%); --red: #f2555a; --red-soft: rgb(242 85 90 / 13%);
+  --orange: #f2a93b; --orange-soft: rgb(242 169 59 / 13%); --violet: #9b87f5; --violet-soft: rgb(155 135 245 / 14%); --gray: #5f666f;
+  --pop-shadow: 0 12px 36px rgb(0 0 0 / 55%);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+}
+:root[data-theme="light"] { color-scheme: light; }
+/* Statusnamen, die die Auswertung verwendet */
+:root { --good: var(--green); --warning: var(--orange); --serious: #f97316; --critical: var(--red); --idle: var(--gray); --muted: var(--text-2); --accent: var(--primary); }
+
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+html { scrollbar-gutter: stable; }
+body { overflow-x: hidden; }
 * { box-sizing: border-box; }
-html, body { margin: 0; }
-body { color: var(--text); background: var(--bg); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1, "cv11" 1; min-height: 100vh; }
-.wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
-.muted { color: var(--muted); }
-.small { font-size: 12.5px; }
-.mono { font-family: var(--mono); font-size: .9em; letter-spacing: -.01em; }
-.grow { flex: 1; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3, p { margin: 0; }
 button { font: inherit; color: inherit; }
-a { color: var(--text); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
-a:hover { text-decoration-color: var(--text); }
-a.card, .dtabs a { text-decoration: none; }
-::selection { background: var(--accent-soft); }
+.mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+svg.icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.muted { color: var(--text-2); }
+.faint { color: var(--text-3); }
+.small { font-size: 12px; }
+.grow { flex: 1; min-width: 0; }
+.hide-sm { }
 
-/* ------------------------------------------------------------ command bar */
-.bar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: saturate(1.3) blur(14px); border-bottom: 1px solid var(--line); }
-.bar-in { display: flex; align-items: center; gap: 18px; min-height: 64px; padding-top: 8px; padding-bottom: 8px; }
-.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.brand svg { flex: none; }
-.brand b { display: block; font-size: 15px; font-weight: 700; letter-spacing: .18em; }
-.brand span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sysbar { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 0 1 auto; }
-.sysbar::-webkit-scrollbar { display: none; }
-.sys { display: flex; align-items: center; gap: 7px; padding: 5px 9px; flex: none; border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
-  white-space: nowrap; font-size: 12px; }
-.sys-k { color: var(--muted); font-size: 12px; }
-.sys-v { font-weight: 600; }
-.clock { text-align: right; line-height: 1.15; }
-.clock b { display: block; font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: .04em; }
-.clock span { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; }
-.clock { flex: none; }
-.who { font-size: 11px; color: var(--muted); font-family: var(--mono); }
-.icon-btn { width: 34px; height: 34px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
-.icon-btn:hover { color: var(--text); border-color: var(--line-strong); }
-@media (max-width: 1580px) { .who { display: none; } }
-@media (max-width: 980px) { .bar-in { flex-wrap: wrap; gap: 12px; } .sysbar { order: 5; width: 100%; flex-basis: 100%; } }
+/* ---------- Shell ---------- */
+.sidebar { position: fixed; inset: 0 auto 0 0; width: 216px; z-index: 30; background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 12px 10px; gap: 2px; }
+.brand { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px; margin-bottom: 10px; color: var(--text); font-weight: 600; font-size: 15px; letter-spacing: -.01em; }
+.brand:hover { text-decoration: none; }
+.brand svg { width: 26px; height: 26px; flex: none; }
+.nav-section { font-size: 11px; font-weight: 600; color: var(--text-3); padding: 12px 10px 6px; text-transform: uppercase; letter-spacing: .04em; }
+.sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+.side-link { position: relative; display: flex; align-items: center; gap: 11px; height: 36px; padding: 0 10px; border-radius: var(--radius-s); color: var(--text);
+  font-weight: 500; font-size: 13px; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.side-link svg.icon { width: 20px; height: 20px; color: var(--primary); }
+.side-link:hover { background: var(--hover); text-decoration: none; }
+.side-link.active { background: var(--active); font-weight: 600; }
+.side-link.active::before { content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--primary); }
+.side-link .short, .side-link .tip { display: none; }
+.side-link .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff;
+  font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+.side-link .badge:empty { display: none; }
+.sidebar .spacer { flex: 1; }
+.side-user { display: flex; align-items: center; gap: 10px; padding: 12px 8px 4px; border-top: 1px solid var(--border); margin-top: 8px; min-width: 0; }
+.side-user .email { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--primary); color: #fff; font-weight: 600; font-size: 12px; }
+.shell { margin-left: 216px; min-height: 100vh; min-height: 100dvh; min-width: 0; }
+body.bare .sidebar { display: none; }
+body.bare .shell { margin-left: 0; }
+.header { position: sticky; top: 0; z-index: 20; height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 24px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 15px; flex: 1; }
+.crumbs a, .crumbs .root { color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.crumbs .sep { color: var(--text-3); }
+.crumbs h1 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.header .right { display: flex; align-items: center; gap: 8px; flex: none; }
+.updated { color: var(--text-3); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+main { padding: 20px 24px 48px; max-width: 1280px; min-width: 0; margin-inline: auto; }
 
-/* --------------------------------------------------------------- LEDs */
-.led { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); }
-.led.live { animation: blink 2.4s ease-in-out infinite; }
-.led.alarm { animation: blink .8s ease-in-out infinite; }
-@keyframes blink { 50% { opacity: .35; } }
+/* ---------- Layout ---------- */
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.spread { justify-content: space-between; }
+.grid { display: grid; gap: 16px; }
+.grid > * { min-width: 0; }
+.grid.kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.grid.two { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
+.grid.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.mt { margin-top: 16px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; min-height: 48px; border-bottom: 1px solid var(--border); }
+.card-head h2 { font-size: 14px; font-weight: 600; }
+.card-head .sub { font-size: 12px; color: var(--text-2); font-weight: 400; margin-top: 1px; }
+.card-body { padding: 16px; }
+.card-body.flush { padding: 0; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 24px 0 10px; }
 
-/* --------------------------------------------------------------- panels */
-h1 { font-size: 26px; letter-spacing: -.01em; margin: 10px 0 6px; }
-h2 { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; color: var(--text); margin: 36px 0 14px; }
-h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-.eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); font-family: var(--mono); }
-.card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 20px; }
-.loading, .error { padding: 90px 0; text-align: center; color: var(--muted); font-family: var(--mono); letter-spacing: .08em; }
-.loading::before { content: ""; display: block; width: 34px; height: 34px; margin: 0 auto 16px; border-radius: 50%;
-  border: 2px solid var(--line-strong); border-top-color: var(--text); animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* Kennzahlen */
+.kpi { padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kpi .label { font-size: 12px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.kpi .label svg.icon { width: 15px; height: 15px; color: var(--primary); }
+.kpi .value { font-size: 24px; font-weight: 650; letter-spacing: -.025em; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .value.bad { color: var(--red); }
+.kpi .sub { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------------------------------------------------------------- hero */
-.hero { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(240px, 320px); gap: 26px; align-items: center; margin-top: 22px; padding: 24px; }
-.hero.alarm { border-color: var(--critical); }
-.hero:not(:has(.situation)) { grid-template-columns: auto minmax(0, 1fr); }
-.core { position: relative; width: 112px; height: 112px; flex: none; color: var(--text); }
-.core > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.core-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-.core-led { position: absolute; right: 14px; top: 14px; }
-.hero-main { min-width: 0; }
-.hero-state { font-size: 30px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; margin-top: 6px; }
-.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 10px 18px; margin-top: 14px; }
-.kv div { min-width: 0; }
-.kv dt { font-size: 12px; color: var(--muted); }
-.kv dd { margin: 2px 0 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.chip { display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px; border-radius: 5px; font-size: 12px;
-  background: var(--surface-3); color: var(--text); border: 1px solid var(--line-strong); }
-.chip::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--idle)); }
-.chip.tiny { padding: 0 6px; font-size: 10.5px; }
-.chip.tiny::before { width: 5px; height: 5px; }
-.situation { border-left: 1px solid var(--line); padding-left: 22px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
-.sit-level { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 20px; font-weight: 700; letter-spacing: .02em; color: var(--text); }
-.sit-list { list-style: none; margin: 10px 0 0; padding: 0; font-size: 12.5px; color: var(--muted); }
-.sit-list li { display: flex; gap: 8px; padding: 3px 0; }
-.sit-list li::before { content: "–"; color: var(--dim); }
-@media (max-width: 900px) {
-  .hero { grid-template-columns: auto minmax(0, 1fr); }
-  .situation { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); padding: 16px 0 0; }
+/* Status */
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c, var(--gray)); display: inline-block; }
+.tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 500; background: var(--chip-bg); color: var(--text); white-space: nowrap; }
+.tag.dotted::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--gray)); flex: none; }
+.pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px; max-width: 100%; background: var(--chip-bg); color: var(--text);
+  font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill.ok { background: var(--green-soft); color: var(--green); font-weight: 600; }
+.pill.warn { background: var(--orange-soft); color: var(--orange); font-weight: 600; }
+.pill.bad { background: var(--red-soft); color: var(--red); font-weight: 600; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Statusbereich mit Farbkugel */
+.hero { padding: 16px 20px 14px; background: linear-gradient(135deg, color-mix(in srgb, var(--hero-c) 10%, var(--panel)) 0%, var(--panel) 60%); }
+.hero-ok { --hero-c: var(--green); } .hero-warn { --hero-c: var(--orange); } .hero-down { --hero-c: var(--red); } .hero-maint { --hero-c: var(--violet); } .hero-idle { --hero-c: var(--gray); }
+.hero-top { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.hero-text { min-width: 0; flex: 1; }
+.hero-text h2 { font-size: 18px; font-weight: 700; letter-spacing: -.015em; line-height: 1.3; }
+.hero-text p { color: var(--text-2); margin-top: 2px; font-size: 12px; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.hstat { display: flex; flex-direction: column; gap: 1px; padding: 0 16px; min-width: 0; }
+.hstat:first-child { padding-left: 0; }
+.hstat + .hstat { border-left: 1px solid var(--border); }
+.hv { font-size: 18px; font-weight: 650; letter-spacing: -.015em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hv.bad { color: var(--red); } .hv.warn { color: var(--orange); } .hv.ok { color: var(--green); }
+.hl { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orb { position: relative; isolation: isolate; overflow: hidden; flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; color: #fff;
+  background: radial-gradient(circle at 50% 60%, var(--orb-a), var(--orb-z));
+  box-shadow: inset 0 0 0 .5px rgb(255 255 255 / 14%), 0 2px 12px -3px color-mix(in srgb, var(--orb-c) 50%, transparent); animation: orb-glow 5s ease-in-out infinite; }
+.orb-ok { --orb-a: #0e6b3c; --orb-z: #08391f; --c1: #3ee08f; --c2: #2ad4e6; --c3: #b6ec4c; --orb-c: #2fbf6c; }
+.orb-warn { --orb-a: #7a4706; --orb-z: #3d2402; --c1: #ffb547; --c2: #ffd166; --c3: #ff8a3d; --orb-c: #f2a93b; }
+.orb-down { --orb-a: #7a1418; --orb-z: #3b0709; --c1: #ff5a5f; --c2: #ff8f6b; --c3: #ff3d7f; --orb-c: #f2555a; }
+.orb-maint { --orb-a: #3b2a85; --orb-z: #1c1440; --c1: #9b87f5; --c2: #6aa6ff; --c3: #c58af9; --orb-c: #9b87f5; }
+.orb-idle { --orb-a: #3a3d44; --orb-z: #1e2024; --c1: #9aa1ab; --c2: #6b7280; --c3: #c0c6cf; --orb-c: #8f949b; }
+.orb-in { position: absolute; inset: 0; animation: orb-spin 14s linear infinite; }
+.orb-b { position: absolute; width: 78%; height: 78%; border-radius: 50%; filter: blur(5px); mix-blend-mode: screen; }
+.orb-b.b1 { left: -8%; top: -6%; background: radial-gradient(circle, var(--c1) 0%, transparent 68%); animation: orb-1 5.6s ease-in-out infinite; }
+.orb-b.b2 { right: -12%; top: 12%; background: radial-gradient(circle, var(--c2) 0%, transparent 68%); animation: orb-2 7.2s ease-in-out infinite; }
+.orb-b.b3 { left: 12%; bottom: -16%; background: radial-gradient(circle, var(--c3) 0%, transparent 66%); animation: orb-3 6.4s ease-in-out infinite; }
+.orb svg.icon { position: relative; z-index: 1; width: 21px; height: 21px; stroke-width: 2.4; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 30%)); }
+.orb-lg { width: 58px; height: 58px; }
+.orb-lg .orb-b { filter: blur(6px); }
+.orb-lg svg.icon { width: 26px; height: 26px; stroke-width: 2.2; }
+@keyframes orb-spin { to { transform: rotate(360deg); } }
+@keyframes orb-1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(34%, 30%) scale(1.18); } }
+@keyframes orb-2 { 0%, 100% { transform: translate(0, 0) scale(1.06); } 50% { transform: translate(-42%, 24%) scale(.84); } }
+@keyframes orb-3 { 0%, 100% { transform: translate(0, 0) scale(.92); } 50% { transform: translate(22%, -46%) scale(1.22); } }
+@keyframes orb-glow {
+  0%, 100% { box-shadow: inset 0 0 0 .5px rgb(255 255 255 / 14%), 0 2px 10px -4px color-mix(in srgb, var(--orb-c) 40%, transparent); }
+  50% { box-shadow: inset 0 0 0 .5px rgb(255 255 255 / 14%), 0 2px 16px -3px color-mix(in srgb, var(--orb-c) 58%, transparent); }
 }
-@media (max-width: 560px) {
-  .hero { grid-template-columns: 1fr; justify-items: start; padding: 18px; }
-  .core { width: 92px; height: 92px; }
-  .hero-state { font-size: 24px; }
-  .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 
-/* ------------------------------------------------------------ navigation */
-.dtabs { display: flex; gap: 2px; margin-top: 22px; border-bottom: 1px solid var(--line); }
-.dtabs a { position: relative; display: flex; align-items: center; gap: 8px; padding: 11px 16px; color: var(--muted); font-weight: 600; font-size: 13.5px;
-  text-decoration: none; }
-.dtabs a:hover { color: var(--text); text-decoration: none; }
-.dtabs a.on { color: var(--text); }
-.dtabs a.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--text); }
-.badge { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--surface-3);
-  color: var(--text); border: 1px solid var(--line-strong); }
-.badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--c, var(--idle)); }
-.filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
-.seg { display: inline-flex; padding: 3px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line); }
-.seg button { border: none; background: none; padding: 6px 13px; border-radius: 5px; cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+/* Hinweise */
+.problem { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text); }
+.problem:last-child { border-bottom: 0; }
+.problem .dot { margin-top: 6px; }
+.problem .pname { font-weight: 600; }
+.problem .msg { color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; }
+.problem .since { margin-left: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 8px; }
+
+/* Buttons und Filter */
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--h); padding: 0 12px; border-radius: var(--radius-s);
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
+.btn:hover { background: var(--hover); text-decoration: none; }
+.btn:active { transform: scale(.98); }
+.btn.icon-only { width: var(--h); padding: 0; }
+.btn.sm { height: var(--h-in); padding: 0 10px; font-size: 12px; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--chip-bg); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { border: 0; background: transparent; color: var(--text-2); height: var(--h-in); padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; flex: none; transition: color var(--t-fast) var(--ease); }
 .seg button:hover { color: var(--text); }
-.seg button.on { background: var(--text); color: var(--bg); font-weight: 600; }
-.stamp { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
+.seg button.active { color: var(--text); font-weight: 600; background: var(--panel); box-shadow: 0 0 0 1px var(--border-strong); }
+.toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 
-/* ------------------------------------------------------------ KPI tiles */
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-top: 14px; }
-.tile { padding: 16px 18px; overflow: hidden; }
-.tile .led { position: absolute; top: 16px; right: 16px; }
-.tile-label { font-size: 12.5px; color: var(--muted); font-weight: 500; padding-right: 16px; }
-.tile-value { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: -.03em; margin-top: 8px; line-height: 1.1; }
-.tile-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
-.tile.alert .tile-value { color: var(--critical); }
-
-/* ---------------------------------------------------------------- charts */
-.grid2 { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; }
-@media (max-width: 880px) { .grid2 { grid-template-columns: 1fr; } }
-.chart-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-.chart-title { font-weight: 600; font-size: 14.5px; }
-.chart-head .muted.small, .card > .muted.small { margin-top: 4px; }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12px; color: var(--muted); }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
-.legend b { color: var(--text); font-weight: 600; margin-left: 4px; font-family: var(--mono); }
-.link-btn { border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); cursor: pointer; padding: 3px 10px; border-radius: 5px; font-size: 12px; font-weight: 500; }
-.link-btn:hover { background: var(--surface-3); }
-.chart { position: relative; margin-top: 16px; }
-.chart svg { display: block; overflow: visible; }
-.chart .grid line { stroke: var(--line); stroke-width: 1; }
-.chart .axis text { fill: var(--dim); font-size: 10.5px; font-family: var(--mono); }
-.chart .hit { fill: transparent; cursor: default; }
-.chart .hit:hover { fill: var(--accent-soft); }
-.tip { position: absolute; pointer-events: none; z-index: 4; background: var(--surface-3); border: 1px solid var(--line-strong);
-  border-radius: 6px; padding: 8px 10px; font-size: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.3); min-width: 160px; transform: translate(-50%, calc(-100% - 12px)); }
-.tip-row { display: flex; align-items: center; gap: 8px; }
-.tip-row i { width: 9px; height: 9px; border-radius: 2px; }
-.tip-row b { margin-left: auto; font-family: var(--mono); }
-.bars { display: flex; flex-direction: column; gap: 11px; margin-top: 16px; }
-.hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; }
-.hbar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hbar-val { font-family: var(--mono); color: var(--text); }
-.hbar-track { grid-column: 1 / -1; display: flex; gap: 2px; height: 8px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
-.hbar-fill { height: 100%; border-radius: 2px; background: var(--c, var(--s1)); }
-
-/* ---------------------------------------------------------------- tables */
+/* Tabellen */
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 500; font-size: 12px; }
-tbody tr { transition: background .12s; }
-tbody tr:hover { background: var(--accent-soft); }
-td.num, th.num { text-align: right; font-family: var(--mono); }
-td.t { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-.table-wrap { overflow-x: auto; margin-top: 12px; }
-.log-ev { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; font-weight: 500; }
-.log-ev i { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--idle)); flex: none; }
-.more { padding: 10px; text-align: center; }
+th { text-align: left; font-weight: 500; font-size: 12px; color: var(--text-2); padding: 0 12px; height: 38px; border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--panel-2); }
+td { padding: 0 12px; height: 48px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td.msg { padding-top: 10px; padding-bottom: 10px; overflow-wrap: anywhere; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background var(--t-fast) var(--ease); }
+tbody tr.link { cursor: pointer; }
+tbody tr.link:hover td { background: var(--hover); }
+th:first-child, td:first-child { padding-left: 16px; }
+th:last-child, td:last-child { padding-right: 16px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.t { color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+td .name { font-weight: 600; }
+.more { padding: 10px; text-align: center; border-top: 1px solid var(--border); }
+.empty { padding: 32px 16px; text-align: center; color: var(--text-2); }
 
-/* ------------------------------------------------------------ security */
-.hero-badge.ring { position: relative; width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; }
-.findings { display: flex; flex-direction: column; margin-top: 12px; }
-.finding { display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
-.finding:last-child { border-bottom: none; }
-.finding .chip, .exp-row .chip { justify-content: center; }
-.f-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.f-cat { font-size: 12px; color: var(--dim); }
-@media (max-width: 600px) { .finding { grid-template-columns: 1fr; gap: 4px; } .f-cat { display: none; } }
-.exp { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface-3); border: 1px solid var(--line); }
-.exp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-.exp-row { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: center; padding: 4px 0; }
+/* Balken und Diagramme */
+.bars { display: grid; gap: 12px; padding: 16px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr) 44px; align-items: center; gap: 12px; font-size: 13px; }
+.bar-row .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.bar-track { display: flex; gap: 2px; height: 6px; background: var(--chip-bg); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--c, var(--primary)); border-radius: 3px; }
+.bar-row .val { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.chart-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.chart-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.chart-legend b { color: var(--text); font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.chart { position: relative; margin-top: 12px; }
+.chart svg { display: block; overflow: visible; }
+.chart .grid line { stroke: var(--border); stroke-width: 1; }
+.chart .axis text { fill: var(--text-3); font-size: 11px; font-family: inherit; }
+.chart .hit { fill: transparent; }
+.chart .hit:hover { fill: var(--hover); fill-opacity: .6; }
+.tip { position: absolute; pointer-events: none; z-index: 5; min-width: 150px; max-width: 260px; padding: 8px 11px; border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--border-strong); box-shadow: var(--pop-shadow); font-size: 12px; line-height: 1.5; transform: translate(-50%, calc(-100% - 10px)); }
+.tip-row { display: flex; align-items: center; gap: 8px; }
+.tip-row i { width: 9px; height: 9px; border-radius: 3px; }
+.tip-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
 
-/* ------------------------------------------------------------- incidents */
-.incidents { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
-.incident { display: block; color: inherit; transition: border-color .15s, background .15s; }
-.incident:hover { text-decoration: none; border-color: var(--line-strong); background: var(--surface-2); }
-.incident-top { display: flex; align-items: center; gap: 8px; }
-.case { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-.incident-title { font-weight: 700; font-size: 15px; margin-top: 10px; }
-.incident-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
-
-/* --------------------------------------------------------- incident page */
-.back { display: inline-flex; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; font-weight: 500; color: var(--muted); }
-.back:hover { color: var(--text); text-decoration: none; }
-.timeline { list-style: none; margin: 0; padding: 0; position: relative; }
-.timeline::before { content: ""; position: absolute; left: 87px; top: 10px; bottom: 10px; width: 1px; background: var(--line-strong); }
-.timeline li { display: grid; grid-template-columns: 74px 14px 1fr; gap: 10px; padding: 8px 0; position: relative; }
-.timeline .t { color: var(--muted); font-family: var(--mono); font-size: 12px; padding-top: 1px; }
-.timeline .d { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; background: var(--c, var(--idle)); box-shadow: 0 0 0 3px var(--surface); }
-.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.shot { position: relative; margin: 0; border-radius: var(--radius); overflow: hidden; background: #000; border: 1px solid var(--line); cursor: zoom-in; }
-.shot .ph { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; font-family: var(--mono); }
+/* Vorfall */
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 76px 16px 1fr; gap: 10px; align-items: start; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.timeline li:last-child { border-bottom: 0; }
+.timeline .t { color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 13px; }
+.timeline .dot { margin-top: 5px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 16px; }
+.shot { margin: 0; border-radius: var(--radius-s); overflow: hidden; background: var(--chip-bg); border: 1px solid var(--border); cursor: zoom-in; }
+.shot .ph { aspect-ratio: 16 / 9; display: grid; place-items: center; color: var(--text-3); font-size: 12px; }
 .shot img { display: block; width: 100%; height: auto; }
-.shot figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 7px; font-size: 11px; font-family: var(--mono); color: #e2eaf2;
-  display: flex; gap: 8px; background: linear-gradient(transparent, rgba(0,0,0,.75)); letter-spacing: .04em; }
-.lightbox { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.9); display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
-.lightbox img { max-width: 100%; max-height: 100%; border-radius: 6px; }
+.shot figcaption { padding: 8px 10px; font-size: 12px; color: var(--text-2); display: flex; gap: 8px; }
+.lightbox { position: fixed; inset: 0; z-index: 60; background: rgb(0 0 0 / 85%); display: grid; place-items: center; padding: 16px; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+.loading, .error { padding: 80px 0; text-align: center; color: var(--text-2); }
 
-footer { padding: 44px 0 30px; text-align: center; font-size: 12px; color: var(--dim); }
-footer .led { margin-right: 8px; vertical-align: 1px; }
-@media (max-width: 600px) { h1 { font-size: 22px; } .tile-value { font-size: 25px; } .hide-sm { display: none; } .clock b { font-size: 15px; } }
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .sidebar { width: 60px; padding: 12px 8px; align-items: center; }
+  .brand { padding: 0; justify-content: center; }
+  .brand span, .side-link .label, .side-user .email, .nav-section { display: none; }
+  .side-link { width: 44px; height: 40px; justify-content: center; padding: 0; }
+  .side-link.active::before { left: -8px; }
+  .side-link .badge { position: absolute; top: 3px; right: 2px; margin: 0; }
+  .shell { margin-left: 60px; }
+}
+@media (max-width: 900px) { .grid.two, .grid.even { grid-template-columns: minmax(0, 1fr); } .hide-md { display: none; } }
+@media (max-width: 640px) {
+  :root { font-size: 15px; --radius: 14px; }
+  .sidebar { inset: auto 0 0 0; width: auto; height: calc(58px + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom); flex-direction: row; align-items: stretch;
+    border-right: 0; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(18px) saturate(160%); }
+  .brand, .sidebar .spacer, .side-user, .nav-section { display: none; }
+  .sidebar nav { flex-direction: row; gap: 0; width: 100%; }
+  .side-link { flex: 1 1 0; flex-direction: column; justify-content: center; gap: 3px; width: auto; height: 58px; padding: 0; border-radius: 0; font-size: 10.5px; }
+  .side-link .short { display: block; }
+  .side-link svg.icon { width: 22px; height: 22px; }
+  .side-link.active { background: transparent; color: var(--primary); }
+  .side-link.active::before { left: 30%; right: 30%; top: 0; bottom: auto; width: auto; height: 2px; border-radius: 0 0 2px 2px; }
+  .side-link .badge { position: absolute; top: 6px; left: calc(50% + 6px); right: auto; margin: 0; }
+  .shell { margin-left: 0; padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+  body.bare .shell { padding-bottom: 0; }
+  .header { padding: 0 12px 0 16px; gap: 10px; }
+  .updated { display: none; }
+  main { padding: 12px 12px 28px; }
+  .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
+  .hstat:nth-child(3) { padding-left: 0; border-left: 0; }
+  .hide-sm { display: none; }
+  .bar-row { grid-template-columns: minmax(0, 1fr) 40px; }
+  .grid.kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .hero-top { flex-wrap: wrap; }
+  .bar-row .bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<header class="bar"><div class="wrap bar-in">
-  <div class="brand">
-    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M16 2.5 4.5 7v8.2c0 7 4.9 13.2 11.5 14.8 6.6-1.6 11.5-7.8 11.5-14.8V7L16 2.5Z" fill="var(--text)"/>
-      <circle cx="16" cy="13.8" r="2.7" fill="var(--bg)"/><path d="M14.7 15.2h2.6l.9 5.6h-4.4l.9-5.6Z" fill="var(--bg)"/>
-    </svg>
-    <div><b>BASTION</b><span id="instance">Security Operations</span></div>
-  </div>
-  <div class="sysbar" id="sysbar"></div>
-  <span class="grow"></span>
-  <div class="clock hide-sm"><b id="clock-time">--:--:--</b><span id="clock-date"></span></div>
-  <span id="who" class="who hide-sm"></span>
-  <button class="icon-btn" id="theme" title="Darstellung" aria-label="Darstellung wechseln"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2v16a8 8 0 0 1 0-16Z"/></svg></button>
-</div></header>
-<main class="wrap" id="app"><div class="loading">Lädt …</div></main>
-<footer>Bastion Security Operations · nur lesend · signierte Verbindung</footer>
+<aside class="sidebar" id="sidebar">
+  <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 4.5 7v8.2c0 7 4.9 13.2 11.5 14.8 6.6-1.6 11.5-7.8 11.5-14.8V7L16 2.5Z" fill="var(--primary)"/><circle cx="16" cy="13.8" r="2.7" fill="#fff"/><path d="M14.7 15.2h2.6l.9 5.6h-4.4l.9-5.6Z" fill="#fff"/></svg><span>Bastion</span></a>
+  <div class="nav-section">Überwachung</div>
+  <nav>
+    <a class="side-link" href="#" data-nav="alarm"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg><span class="label">Alarmanlage</span><span class="short">Alarm</span><span class="badge" id="badge-alarm"></span></a>
+    <a class="side-link" href="#sicherheit" data-nav="security"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="label">Sicherheit</span><span class="short">Sicherheit</span><span class="badge" id="badge-sec"></span></a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="side-user"><span class="avatar" id="avatar">B</span><span class="email" id="who"></span></div>
+</aside>
+<div class="shell">
+  <header class="header">
+    <div class="crumbs"><span class="root" id="instance">Bastion</span><span class="sep">/</span><h1 id="title">Übersicht</h1></div>
+    <div class="right"><span class="updated" id="updated"></span><button class="btn icon-only" id="theme" aria-label="Darstellung wechseln"></button></div>
+  </header>
+  <main id="app"><div class="loading">Lädt …</div></main>
+</div>
 <script>
 (() => {
   "use strict";
@@ -278,16 +339,39 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
   let TZ = "Europe/Berlin";
 
   // ------------------------------------------------------------- theme
-  let theme = "dark";
-  try { theme = localStorage.getItem("bastion-theme") === "light" ? "light" : "dark"; } catch { /* storage blocked */ }
+  // System, hell, dunkel (wie Argus); das System gilt ohne Attribut.
+  const THEMES = ["system", "light", "dark"];
+  let theme = "system";
+  try { theme = localStorage.getItem("bastion-theme") || "system"; } catch { /* Speicher gesperrt */ }
+  const ICON = {
+    system: '<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+    light: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    dark: '<svg class="icon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>',
+    shield: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
+    shieldOff: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6l-7-3Z"/></svg>',
+    alert: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19L12 4Z"/><path d="M12 10v4M12 17.5v.01"/></svg>',
+    bell: '<svg class="icon" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>',
+    clock: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    wifiOff: '<svg class="icon" viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 4-2.4M9 5.2A15 15 0 0 1 22 8.5M5 12a10 10 0 0 1 3.3-2M12 9a10 10 0 0 1 7 3M8.5 15.5a5 5 0 0 1 7 0M12 19.5h.01M3 3l18 18"/></svg>',
+    key: '<svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/></svg>',
+    lock: '<svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+    user: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+    globe: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+    ban: '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>',
+    camera: '<svg class="icon" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+    check: '<svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
+    back: '<svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
+  };
   const applyTheme = () => {
-    if (theme === "light") document.documentElement.setAttribute("data-theme", "light");
+    if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
     else document.documentElement.removeAttribute("data-theme");
-    document.getElementById("theme").title = theme === "light" ? "Tagmodus (zur Konsole wechseln)" : "Konsole (zum Tagmodus wechseln)";
+    const btn = document.getElementById("theme");
+    btn.innerHTML = ICON[theme] || ICON.system;
+    btn.title = `Darstellung: ${{ system: "System", light: "Hell", dark: "Dunkel" }[theme] || "System"}`;
   };
   applyTheme();
   document.getElementById("theme").addEventListener("click", () => {
-    theme = theme === "light" ? "dark" : "light";
+    theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
     try { localStorage.setItem("bastion-theme", theme); } catch { /* ignore */ }
     applyTheme();
   });
@@ -408,26 +492,152 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
 
   // ------------------------------------------------------------- views
   const STATE_VIEW = {
-    disarmed: ["Unscharf", "var(--good)"], arming: ["Wird scharf", "var(--text)"], pending: ["Vorwarnung", "var(--warning)"],
-    triggered: ["Alarm", "var(--critical)"], armed_home: ["Scharf · Zuhause", "var(--text)"], armed_night: ["Scharf · Nacht", "var(--text)"],
-    armed_away: ["Scharf · Abwesend", "var(--text)"],
+    disarmed: ["Unscharf", "idle"], arming: ["Wird scharf", "maint"], pending: ["Vorwarnung", "warn"], triggered: ["Alarm", "down"],
+    armed_home: ["Scharf · Zuhause", "ok"], armed_night: ["Scharf · Nacht", "ok"], armed_away: ["Scharf · Abwesend", "ok"],
   };
-  const shieldPath = "M12 1.5 3.5 5v6.2c0 5.2 3.6 10 8.5 11.3 4.9-1.3 8.5-6.1 8.5-11.3V5L12 1.5Z";
-  const shieldIcon = (size = 30) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="1.4" d="${shieldPath}"/><circle cx="12" cy="10.4" r="2" fill="currentColor"/><path d="M11.1 11.6h1.8l.6 4h-3l.6-4Z" fill="currentColor"/></svg>`;
+  const TONE_COLOR = { ok: "var(--green)", warn: "var(--orange)", down: "var(--red)", maint: "var(--violet)", idle: "var(--gray)" };
 
-  // Status dial: thin ring, shield, status LED (no animation).
-  function core(color, _mode, inner) {
-    return `<div class="core">
-      <svg viewBox="0 0 112 112" aria-hidden="true">
-        <circle cx="56" cy="56" r="54" fill="none" stroke="var(--line-strong)" stroke-width="1"/>
-        <circle cx="56" cy="56" r="40" fill="none" stroke="var(--line)" stroke-width="1"/>
-      </svg>
-      <span class="led core-led ${color === "var(--critical)" ? "alarm" : ""}" style="--c:${color}"></span>
-      <div class="core-icon">${inner || shieldIcon(40)}</div>
-    </div>`;
+  function orb(tone, icon, large = true) {
+    return `<div class="orb orb-${tone}${large ? " orb-lg" : ""}" aria-hidden="true"><div class="orb-in"><span class="orb-b b1"></span><span class="orb-b b2"></span><span class="orb-b b3"></span></div>${icon}</div>`;
   }
 
-  // Overall situation from alarm, link, findings, logins, worker attacks and the outside check.
+  function hero({ tone, icon, title, sub, stats, side }) {
+    return `<section class="card hero hero-${tone}">
+      <div class="hero-top">${orb(tone, icon)}<div class="hero-text"><h2>${title}</h2><p>${sub}</p></div>${side || ""}</div>
+      <div class="hero-stats">${stats.map((x) => `<div class="hstat"><span class="hv ${x.cls || ""}">${esc(x.v)}</span><span class="hl">${esc(x.l)}</span></div>`).join("")}</div>
+    </section>`;
+  }
+
+  function kpi(label, icon, value, sub, bad) {
+    return `<div class="card kpi"><div class="label">${icon}${esc(label)}</div><div class="value ${bad ? "bad" : ""}">${esc(value)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`;
+  }
+
+  function card(title, body, { sub = "", right = "", flush = false } = {}) {
+    return `<section class="card"><div class="card-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>${right}</div>
+      <div class="card-body ${flush ? "flush" : ""}">${body}</div></section>`;
+  }
+
+  const sitTone = { critical: "down", elevated: "warn", normal: "ok" };
+
+  function hintsCard(d) {
+    const sit = situation(d);
+    const color = TONE_COLOR[sitTone[sit.key]];
+    const rows = sit.reasons.map((r) => `<div class="problem"><span class="dot" style="--c:${sit.key === "normal" ? "var(--green)" : color}"></span><div class="grow"><div class="pname" style="font-weight:500">${esc(r)}</div></div></div>`).join("");
+    return card("Lagebild", rows, { flush: true, right: `<span class="pill ${sit.key === "normal" ? "ok" : sit.key === "critical" ? "bad" : "warn"}">${sit.label}</span>` });
+  }
+
+  function alarmHero(d) {
+    const hb = d.hb;
+    if (!hb) {
+      return hero({ tone: "idle", icon: ICON.shieldOff, title: "Keine Daten", sub: "Home Assistant hat sich noch nicht gemeldet.", stats: [{ v: "–", l: "Lage" }, { v: "–", l: "Offen" }, { v: "–", l: "Nicht erreichbar" }, { v: "–", l: "Letztes Signal" }] });
+    }
+    const [label, tone0] = STATE_VIEW[hb.state] || [hb.state, "idle"];
+    const tone = hb.offline ? (isArmed(hb.state) ? "down" : "warn") : tone0;
+    const lastChange = [...d.events].reverse().find((e) => e.state && e.event !== "acknowledged");
+    const sit = situation(d);
+    const subParts = [hb.offline ? `Keine Verbindung seit ${dateTime(hb.received)}` : lastChange ? `Seit ${dateTime(lastChange.ts)}` : "", hb.instance || "", hb.version ? `Bastion ${hb.version}` : ""].filter(Boolean);
+    return hero({
+      tone,
+      icon: tone === "down" || tone === "warn" ? ICON.alert : tone === "idle" ? ICON.shieldOff : ICON.shield,
+      title: esc(hb.offline ? `${label} (letzter Stand)` : label),
+      sub: esc(subParts.join(" · ")),
+      side: `<span class="pill ${sit.key === "normal" ? "ok" : sit.key === "critical" ? "bad" : "warn"}">Lage: ${sit.label}</span>`,
+      stats: [
+        { v: hb.offline ? "Funkstille" : "Online", l: "Verbindung", cls: hb.offline ? "bad" : "ok" },
+        { v: String((hb.open || []).length), l: "Offene Sensoren", cls: (hb.open || []).length ? "warn" : "" },
+        { v: String((hb.unavailable || []).length), l: "Nicht erreichbar", cls: (hb.unavailable || []).length ? "warn" : "" },
+        { v: rel(hb.received), l: "Letztes Signal" },
+      ],
+    });
+  }
+
+  // Stacked daily bars in a card (chart or table).
+  function stackCard({ id, title, sub, rows, series, totals, fmt, showTable, toggle }) {
+    const legend = `<div class="chart-legend">${series.map((x) => `<span><i class="sw" style="background:${x.color}"></i>${esc(x.label)}<b>${esc(fmt(totals ? totals[x.key] : rows.reduce((n, r) => n + r[x.key], 0)))}</b></span>`).join("")}</div>`;
+    const table = `<div class="table-wrap" style="margin:12px -16px -16px"><table><thead><tr><th>Tag</th>${series.map((x) => `<th class="num">${esc(x.label)}</th>`).join("")}${series.length > 1 ? `<th class="num">Gesamt</th>` : ""}</tr></thead><tbody>
+      ${[...rows].reverse().map((r) => `<tr><td class="t">${esc(weekday(r.ts))}</td>${series.map((x) => `<td class="num">${r[x.key] ? esc(fmt(r[x.key])) : "–"}</td>`).join("")}${series.length > 1 ? `<td class="num">${esc(fmt(series.reduce((n, x) => n + r[x.key], 0)))}</td>` : ""}</tr>`).join("")}
+      </tbody></table></div>`;
+    return card(title, `${legend}${showTable ? table : `<div class="chart" id="${id}"></div>`}`, {
+      sub, right: `<button class="btn sm" data-toggle-table="${toggle}">${showTable ? "Diagramm" : "Tabelle"}</button>`,
+    });
+  }
+
+  function barRows(items, empty) {
+    if (!items.length) return `<div class="empty">${esc(empty)}</div>`;
+    const max = Math.max(1, ...items.map((x) => x.total));
+    return `<div class="bars">${items.map((x) => `<div class="bar-row" title="${esc(x.title || x.label)}">
+      <span class="label">${x.labelHtml || esc(x.label)}</span>
+      <span class="bar-track">${x.parts.filter((p) => p.n).map((p) => `<span class="bar-fill" style="width:${(p.n / max) * 100}%;--c:${p.color}"></span>`).join("")}</span>
+      <span class="val">${x.total}</span></div>`).join("")}</div>`;
+  }
+
+  function triggersCard(a) {
+    return card("Häufigste Auslöser", barRows(a.triggers.map((x) => ({
+      label: x.name, labelHtml: `${esc(x.name)}${x.room ? ` <span class="faint">· ${esc(x.room)}</span>` : ""}`, total: x.n, parts: [{ n: x.n, color: "var(--s3)" }],
+    })), "Keine Auslösungen im Zeitraum."), { sub: "Vorwarnungen und Alarme pro Sensor", flush: true });
+  }
+
+  function incidentsCard(list) {
+    if (!list.length) return card("Vorfälle", `<div class="empty">Keine Vorfälle im Zeitraum.</div>`, { flush: true });
+    const rows = list.slice(0, 30).map((inc) => {
+      const tag = inc.triggered ? `<span class="tag dotted" style="--c:var(--red)">Alarm</span>` : `<span class="tag dotted" style="--c:var(--orange)">Vorwarnung entschärft</span>`;
+      return `<tr class="link" data-href="/i/${esc(inc.id)}"><td class="t mono">#${esc(inc.id.slice(0, 8).toUpperCase())}</td>
+        <td><span class="name">${esc(where(inc.first) || LABELS[inc.first.event] || "Vorfall")}</span></td><td>${tag}</td>
+        <td class="t">${esc(dateTime(inc.start))}</td>
+        <td class="hide-sm">${inc.ack ? esc(inc.ack.user || "Pushover") : `<span class="faint">–</span>`}</td>
+        <td class="hide-sm">${inc.dis ? `${esc(inc.dis.user || "–")} <span class="faint">nach ${esc(duration(inc.dis.ts - inc.start))}</span>` : `<span class="faint">–</span>`}</td>
+        <td class="num hide-sm">${inc.shots || "–"}</td></tr>`;
+    }).join("");
+    return card("Vorfälle", `<div class="table-wrap"><table><thead><tr><th>Fall</th><th>Auslöser</th><th>Ergebnis</th><th>Beginn</th><th class="hide-sm">Quittiert</th><th class="hide-sm">Unscharf</th><th class="num hide-sm">Bilder</th></tr></thead><tbody>${rows}</tbody></table></div>`, { flush: true });
+  }
+
+  function seg(items, current, attr) {
+    return `<div class="seg">${items.map(([k, l]) => `<button class="${current === k ? "active" : ""}" ${attr}="${k}">${l}</button>`).join("")}</div>`;
+  }
+
+  function logCard(d, filter) {
+    const all = [...d.events].reverse().filter((e) => filter === "all" || (GROUPS[filter] || []).includes(e.event));
+    const evs = all.slice(0, view.logLimit);
+    const rows = evs.length ? evs.map((e) => {
+      const det = [e.mode && MODES[e.mode] && !["acknowledged", "online", "offline", "restart", "attack", "exposure"].includes(e.event) ? MODES[e.mode] : "", where(e), e.user,
+        e.detail && e.detail.minutes ? `${e.detail.minutes} Min.` : "", (e.detail && (e.detail.cause || e.detail.verdict)) || "",
+        e.detail && e.detail.sensors ? `offen: ${e.detail.sensors.join(", ")}` : "",
+        e.event === "attack" && e.detail ? `${e.detail.total} abgewiesen` : ""].filter(Boolean).join(" · ");
+      return `<tr><td class="t">${esc(dateTime(e.ts))}</td><td><span class="tag dotted" style="--c:${EV_COLOR[e.event] || "var(--gray)"}">${esc(LABELS[e.event] || e.event)}</span></td>
+        <td class="msg">${esc(det)}${e.incident ? ` <a href="/i/${esc(e.incident)}">Fall #${esc(e.incident.slice(0, 8).toUpperCase())}</a>` : ""}</td></tr>`;
+    }).join("") : `<tr><td colspan="3" class="empty">Keine Ereignisse.</td></tr>`;
+    return `<section class="card"><div class="card-head"><h2>Protokoll</h2><span class="faint small">${all.length} Einträge</span></div>
+      <div class="toolbar">${seg([["all", "Alle"], ["alarm", "Alarm"], ["ops", "Bedienung"], ["system", "System"]], filter, "data-log")}</div>
+      <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Ereignis</th><th>Details</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${all.length > evs.length ? `<div class="more"><button class="btn sm" data-more>Weitere ${Math.min(50, all.length - evs.length)} anzeigen</button></div>` : ""}</section>`;
+  }
+
+  function rangeRow(title) {
+    return `<div class="row spread mt"><div class="section-title" style="margin:0">${esc(title)}</div>${seg([[7, "7 Tage"], [30, "30 Tage"], [90, "90 Tage"], [365, "1 Jahr"]].map(([k, l]) => [String(k), l]), String(view.days), "data-days")}</div>`;
+  }
+
+  function renderAlarm(d) {
+    const a = analyse(d);
+    const k = a.kpi;
+    return {
+      html: `${alarmHero(d)}
+        <div class="grid two mt">${hintsCard(d)}${triggersCard(a)}</div>
+        ${rangeRow("Zeitraum")}
+        <div class="grid kpis mt">
+          ${kpi("Alarme", ICON.bell, String(k.alarms), k.acked ? `${k.acked} quittiert` : "keine quittiert", k.alarms > 0)}
+          ${kpi("Vorwarnungen", ICON.alert, String(k.pending), `${k.defused} rechtzeitig entschärft`)}
+          ${kpi("Scharf", ICON.shield, `${Math.round(k.armedShare * 100)} %`, "der Zeit im Zeitraum")}
+          ${kpi("Quittierzeit", ICON.clock, k.ackMedian == null ? "–" : duration(k.ackMedian), "Median bis zur Bestätigung")}
+          ${kpi("Funkstille", ICON.wifiOff, String(k.outages), k.outageSec ? `insgesamt ${duration(k.outageSec)}` : "keine Ausfälle", k.outages > 0)}
+          ${kpi("Falsche Codes", ICON.key, String(k.wrong), k.shots ? `${k.shots} Kamerabilder gespeichert` : "")}
+        </div>
+        <div class="mt">${stackCard({ id: "armed-chart", title: "Scharf-Zeit pro Tag", sub: "Stunden pro Modus", rows: a.days, series: MODE_SERIES, totals: a.totals, fmt: hours, showTable: view.table, toggle: "armed" })}</div>
+        <div class="mt">${incidentsCard(a.incidents)}</div>
+        <div class="mt">${logCard(d, view.log)}</div>`,
+      bind: () => bindStack("armed-chart", a.days, MODE_SERIES, ARMED_OPTS, hours),
+    };
+  }
+
   function situation(d) {
     const crit = [];
     const warn = [];
@@ -458,76 +668,75 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     return { key: "normal", label: "Normal", color: "var(--good)", reasons: ["Keine Auffälligkeiten"] };
   }
 
-  function sysItem(key, value, color, cls = "") {
-    return `<div class="sys"><span class="led ${cls}" style="--c:${color}"></span><span class="sys-k">${esc(key)}</span><span class="sys-v">${esc(value)}</span></div>`;
+  function scoreSvg(points, width) {
+    const W = Math.max(280, Math.round(width)), H = 170, L = 34, B = 24, T = 10, R = 8;
+    const t0 = points[0].t, t1 = Math.max(points[points.length - 1].t, t0 + 86400);
+    const x = (t) => L + ((W - L - R) * (t - t0)) / (t1 - t0);
+    const y = (v) => T + (H - T - B) * (1 - v / 100);
+    const path = points.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+    let svg = `<g class="grid">${[0, 50, 100].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`).join("")}</g>`;
+    svg += `<g class="axis">${[0, 50, 100].map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}`;
+    svg += `<text x="${L}" y="${H - 6}">${esc(dayShort(t0))}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${esc(dayShort(points[points.length - 1].t))}</text></g>`;
+    svg += `<path d="${path}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const last = points[points.length - 1];
+    svg += `<circle cx="${x(last.t)}" cy="${y(last.v)}" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>`;
+    svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--line-strong)" stroke-width="1" visibility="hidden"/>`;
+    svg += `<circle class="cross-dot" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>`;
+    svg += `<rect class="hit-all" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    return { svg: `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf des Sicherheitswerts">${svg}</svg>`, x, y };
   }
 
-  function renderSysbar(d) {
-    const box = document.getElementById("sysbar");
-    if (!box) return;
-    const hb = d.hb;
-    const sit = situation(d);
-    const [state, color] = !hb ? ["—", "var(--idle)"] : hb.offline ? [`${(STATE_VIEW[hb.state] || [hb.state])[0]} ?`, "var(--serious)"] : STATE_VIEW[hb.state] || [hb.state, "var(--idle)"];
-    const link = !hb ? ["Keine Daten", "var(--idle)", ""] : hb.offline ? ["Funkstille", "var(--critical)", "alarm"] : [`Online · ${ageShort(hb.received)}`, "var(--good)", ""];
-    box.innerHTML = sysItem("Anlage", state, color, hb && hb.state === "triggered" ? "alarm" : "")
-      + sysItem("Link", link[0], link[1], link[2])
-      + sysItem("Lage", sit.label, sit.color, sit.key === "critical" ? "alarm" : "")
-      + (d.security ? sysItem("Score", String(Math.round(d.security.score)), level(d.security.score)[1]) : "");
+  function bindScore(points) {
+    const box = document.getElementById("score-chart");
+    if (!box || points.length < 2) return;
+    const { svg, x, y } = scoreSvg(points, box.clientWidth);
+    box.innerHTML = svg;
+    const el = box.querySelector("svg");
+    const cross = el.querySelector(".cross");
+    const dot = el.querySelector(".cross-dot");
+    let tip = null;
+    el.addEventListener("mousemove", (ev) => {
+      const rb = el.getBoundingClientRect();
+      const mx = ((ev.clientX - rb.left) / rb.width) * el.viewBox.baseVal.width;
+      const p = points.reduce((best, q) => (Math.abs(x(q.t) - mx) < Math.abs(x(best.t) - mx) ? q : best), points[0]);
+      cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
+      if (!tip) { tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip); }
+      tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(weekday(p.t))}</div><div class="tip-row"><i style="background:var(--s1)"></i>Sicherheitswert<b>${Math.round(p.v)}</b></div>`;
+      tip.style.left = `${Math.min(rb.width - 80, Math.max(80, (x(p.t) / el.viewBox.baseVal.width) * rb.width))}px`;
+      tip.style.top = `${(y(p.v) / el.viewBox.baseVal.height) * rb.height}px`;
+    });
+    el.addEventListener("mouseleave", () => {
+      cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden");
+      if (tip) { tip.remove(); tip = null; }
+    });
   }
 
-  const ageShort = (ts) => {
-    const s2 = Math.max(0, Math.round(Date.now() / 1000 - ts));
-    if (s2 < 90) return `${s2} s`;
-    if (s2 < 5400) return `${Math.round(s2 / 60)} min`;
-    return `${Math.round(s2 / 3600)} h`;
-  };
-
-  function situationBox(d) {
-    const sit = situation(d);
-    return `<div class="situation">
-      <div class="eyebrow">Lagebild</div>
-      <div class="sit-level"><span class="led ${sit.key === "critical" ? "alarm" : ""}" style="--c:${sit.color}"></span>${sit.label}</div>
-      <ul class="sit-list">${sit.reasons.slice(0, 5).map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
-    </div>`;
-  }
-
-  function heroView(d) {
-    const hb = d.hb;
-    if (!hb) {
-      return `<section class="card hero" style="--state:var(--idle)">${core("var(--idle)", "")}
-        <div class="hero-main"><div class="eyebrow">Alarmanlage</div><div class="hero-state">Keine Daten</div>
-        <div class="muted" style="margin-top:6px">Home Assistant hat sich noch nicht gemeldet.</div></div>${situationBox(d)}</section>`;
+  async function loadShots(d, token) {
+    for (const s of d.snapshots) {
+      const fig = app.querySelector(`[data-shot="${s.id}"]`);
+      if (!fig) continue;
+      try {
+        const q = new URLSearchParams({ i: d.incident });
+        if (token) q.set("t", token);
+        const img = await api(`/api/img/${s.id}?${q}`);
+        const el = document.createElement("img");
+        el.alt = `${img.camera || "Kamera"} ${timeOnly(img.ts)}`;
+        el.src = `data:${img.type};base64,${img.data}`;
+        fig.querySelector(".ph").replaceWith(el);
+        fig.addEventListener("click", () => {
+          const box = document.createElement("div");
+          box.className = "lightbox";
+          box.innerHTML = `<img alt="" src="${el.src}">`;
+          box.addEventListener("click", () => box.remove());
+          document.body.appendChild(box);
+        });
+      } catch {
+        fig.querySelector(".ph").textContent = "nicht verfügbar";
+      }
     }
-    const [label, color] = hb.offline ? ["Keine Verbindung", "var(--serious)"] : STATE_VIEW[hb.state] || [hb.state, "var(--idle)"];
-    const lastChange = [...d.events].reverse().find((e) => e.state && e.event !== "acknowledged");
-    const chips = [];
-    if (hb.offline) chips.push(`<span class="chip" style="--c:var(--serious)">Letzter Stand: ${esc((STATE_VIEW[hb.state] || [hb.state])[0])}</span>`);
-    for (const x of hb.open || []) chips.push(`<span class="chip" style="--c:var(--warning)">offen: ${esc(x)}</span>`);
-    for (const x of hb.unavailable || []) chips.push(`<span class="chip" style="--c:var(--idle)">nicht erreichbar: ${esc(x)}</span>`);
-    const sweep = hb.offline ? "" : hb.state === "triggered" || hb.state === "pending" ? "fast" : isArmed(hb.state) || hb.state === "arming" ? "slow" : "";
-    return `<section class="card hero ${hb.state === "triggered" ? "alarm" : ""}" style="--state:${color}">
-      ${core(color, sweep)}
-      <div class="hero-main">
-        <div class="eyebrow">Alarmanlage · ${esc(hb.instance || "Home Assistant")}</div>
-        <div class="hero-state" style="color:${hb.offline || hb.state === "triggered" || hb.state === "pending" ? color : "var(--text)"}">${esc(label)}</div>
-        <dl class="kv">
-          <div><dt>Seit</dt><dd>${lastChange ? esc(dateTime(lastChange.ts)) : "—"}</dd></div>
-          <div><dt>Letztes Signal</dt><dd>${esc(rel(hb.received))}</dd></div>
-          <div><dt>Intervall</dt><dd>${hb.interval ? `${hb.interval} s` : "—"}</dd></div>
-          <div><dt>Knoten</dt><dd>Bastion ${esc(hb.version || "—")}</dd></div>
-        </dl>
-        ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
-      </div>
-      ${situationBox(d)}
-    </section>`;
   }
 
-  function tile(label, value, sub, alert) {
-    return `<div class="card tile ${alert ? "alert" : ""}">${alert ? `<span class="led" style="--c:var(--critical)"></span>` : ""}
-      <div class="tile-label">${esc(label)}</div><div class="tile-value">${esc(value)}</div>${sub ? `<div class="tile-sub">${esc(sub)}</div>` : ""}</div>`;
-  }
-
-  // Stacked daily bars: rows [{ts, <key>: value}], series [{key, label, color}].
   function stackSvg(rows, series, width, opts) {
     const W = Math.max(280, Math.round(width)), H = W < 500 ? 190 : 230, L = 34, B = 24, T = 8, R = 4;
     const max = opts.max;
@@ -570,20 +779,6 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     return 10 * step;
   }
 
-  function stackCard({ id, title, sub, rows, series, totals, fmt, showTable, toggle }) {
-    const legend = series.length > 1 || totals
-      ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.label)}<b>${esc(fmt(totals ? totals[s.key] : rows.reduce((n, r) => n + r[s.key], 0)))}</b></span>`).join("")}</div>`
-      : "";
-    const table = `<div class="table-wrap"><table><thead><tr><th>Tag</th>${series.map((s) => `<th class="num">${esc(s.label)}</th>`).join("")}${series.length > 1 ? `<th class="num">Gesamt</th>` : ""}</tr></thead><tbody>
-      ${[...rows].reverse().map((r) => `<tr><td>${esc(weekday(r.ts))}</td>${series.map((s) => `<td class="num">${r[s.key] ? esc(fmt(r[s.key])) : "–"}</td>`).join("")}${series.length > 1 ? `<td class="num">${esc(fmt(series.reduce((n, s) => n + r[s.key], 0)))}</td>` : ""}</tr>`).join("")}
-      </tbody></table></div>`;
-    return `<section class="card">
-      <div class="chart-head"><div class="grow"><div class="chart-title">${esc(title)}</div>${sub ? `<div class="muted small">${esc(sub)}</div>` : ""}${legend}</div>
-        <button class="link-btn" data-toggle-table="${toggle}">${showTable ? "Diagramm" : "Tabelle"}</button></div>
-      ${showTable ? table : `<div class="chart" id="${id}"></div>`}
-    </section>`;
-  }
-
   function bindStack(id, rows, series, opts, fmt) {
     const box = document.getElementById(id);
     if (!box) return;
@@ -608,51 +803,6 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
 
   const MODE_SERIES = MODE_KEYS.map((m) => ({ key: m, label: MODES[m], color: MODE_VAR[m] }));
   const ARMED_OPTS = { max: 86400, ticks: [0, 6, 12, 18, 24].map((h) => h * 3600), tick: (t) => `${t / 3600}h`, label: "Scharf-Zeit pro Tag nach Modus" };
-
-  function triggersCard(a) {
-    const max = Math.max(1, ...a.triggers.map((x) => x.n));
-    return `<section class="card"><div class="chart-title">Häufigste Auslöser</div>
-      <div class="muted small">Vorwarnungen und Alarme pro Sensor</div>
-      ${a.triggers.length ? `<div class="bars">${a.triggers.map((x) => `<div class="hbar" title="${esc(x.name)}${x.room ? ` · ${esc(x.room)}` : ""}">
-        <span class="hbar-name">${esc(x.name)}${x.room ? ` <span class="muted">· ${esc(x.room)}</span>` : ""}</span><span class="hbar-val">${x.n}</span>
-        <div class="hbar-track"><div class="hbar-fill" style="width:${(x.n / max) * 100}%;--c:var(--s3)"></div></div></div>`).join("")}</div>`
-        : `<div class="muted" style="margin-top:18px">Keine Auslösungen im Zeitraum.</div>`}
-    </section>`;
-  }
-
-  function incidentCard(inc) {
-    const color = inc.triggered ? "var(--critical)" : "var(--warning)";
-    const meta = [];
-    if (inc.ack) meta.push(`quittiert von ${esc(inc.ack.user || "Pushover")}`);
-    if (inc.dis) meta.push(`unscharf${inc.dis.user ? ` von ${esc(inc.dis.user)}` : ""} nach ${esc(duration(inc.dis.ts - inc.start))}`);
-    if (inc.shots) meta.push(`${inc.shots} Bild${inc.shots === 1 ? "" : "er"}`);
-    return `<a class="card incident" style="--c:${color}" href="/i/${esc(inc.id)}">
-      <div class="incident-top"><span class="case">FALL #${esc(inc.id.slice(0, 8).toUpperCase())}</span><span class="grow"></span><span class="case">${esc(dateTime(inc.start))}</span></div>
-      <div style="margin-top:10px"><span class="chip" style="--c:${color}">${inc.triggered ? "Alarm" : "Vorwarnung entschärft"}</span></div>
-      <div class="incident-title">${esc(where(inc.first) || LABELS[inc.first.event] || "Vorfall")}</div>
-      <div class="incident-meta">${meta.map((m) => `<span>${m}</span>`).join("") || "<span>offen</span>"}</div>
-    </a>`;
-  }
-
-  function logView(d, filter) {
-    const all = [...d.events].reverse().filter((e) => filter === "all" || (GROUPS[filter] || []).includes(e.event));
-    const evs = all.slice(0, view.logLimit);
-    const btn = (k, l) => `<button class="${filter === k ? "on" : ""}" data-log="${k}">${l}</button>`;
-    return `<div class="filters" style="margin-top:0"><div class="seg">${btn("all", "Alle")}${btn("alarm", "Alarm")}${btn("ops", "Bedienung")}${btn("system", "System")}</div></div>
-      <div class="card" style="margin-top:12px;padding:6px 10px"><div class="table-wrap" style="margin:0"><table>
-        <thead><tr><th>Zeit</th><th>Ereignis</th><th>Details</th></tr></thead><tbody>
-        ${evs.length ? evs.map((e) => {
-          const det = [e.mode && MODES[e.mode] && !["acknowledged", "online", "offline", "restart"].includes(e.event) ? MODES[e.mode] : "", where(e), e.user,
-            e.detail && e.detail.minutes ? `${e.detail.minutes} Min.` : "", e.detail && (e.detail.cause || e.detail.verdict) || "",
-            e.detail && e.detail.sensors ? `offen: ${e.detail.sensors.join(", ")}` : "",
-            e.event === "attack" && e.detail ? `${e.detail.total} abgewiesen, ${(e.detail.sources || []).map((x) => x.ip).join(", ")}` : ""].filter(Boolean).join(" · ");
-          return `<tr><td class="t">${esc(dateTime(e.ts))}</td>
-            <td><span class="log-ev" style="--c:${EV_COLOR[e.event] || "var(--idle)"}"><i></i>${esc(LABELS[e.event] || e.event)}</span></td>
-            <td>${esc(det)}${e.incident ? ` <a href="/i/${esc(e.incident)}">Vorfall</a>` : ""}</td></tr>`;
-        }).join("") : `<tr><td colspan="3" class="muted">Keine Ereignisse.</td></tr>`}
-        </tbody></table></div>
-        ${all.length > evs.length ? `<div class="more"><button class="link-btn" data-more>Weitere ${Math.min(50, all.length - evs.length)} von ${all.length - evs.length} anzeigen</button></div>` : ""}</div>`;
-  }
 
   // ----------------------------------------------------------- security
   const SEV_VIEW = {
@@ -728,154 +878,86 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     };
   }
 
-  function scoreRing(score, color) {
-    const r = 48, c = 2 * Math.PI * r, dash = (Math.max(0, Math.min(100, score)) / 100) * c;
-    return `<svg width="112" height="112" viewBox="0 0 112 112" aria-hidden="true">
-      <circle cx="56" cy="56" r="${r}" fill="none" stroke="var(--surface-3)" stroke-width="8"/>
-      <circle cx="56" cy="56" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${dash} ${c}" transform="rotate(-90 56 56)"/>
-      <text x="56" y="62" text-anchor="middle" font-size="28" font-weight="600" fill="var(--text)" font-family="var(--mono)">${Math.round(score)}</text></svg>`;
-  }
+  // ------------------------------------------------------- security views
+  const SEV_TONE = { critical: "var(--red)", high: "#f97316", medium: "var(--orange)", low: "var(--primary)", info: "var(--gray)" };
+  const levelTone = (score) => (score >= 90 ? "ok" : score >= 70 ? "warn" : "down");
 
-  function securityHero(sec) {
-    if (!sec) return `<section class="card hero" style="--state:var(--idle)">${core("var(--idle)", "")}<div class="hero-main"><div class="eyebrow">Sicherheit</div><div class="hero-state">Kein Überblick</div><div class="muted" style="margin-top:6px">Bastion schickt ihn mit dem nächsten Lebenszeichen (ab Version 0.4.1).</div></div>${situationBox(view.data)}</section>`;
-    const [label, color] = level(sec.score);
-    const chips = ["critical", "high", "medium", "low"].filter((k) => sec.counts[k]).map((k) => `<span class="chip" style="--c:${SEV_VIEW[k][1]}">${sec.counts[k]} ${SEV_VIEW[k][0]}</span>`);
+  function securityHero(d) {
+    const sec = d.security;
+    if (!sec) return hero({ tone: "idle", icon: ICON.lock, title: "Kein Sicherheitsüberblick", sub: "Bastion schickt ihn mit dem nächsten Lebenszeichen.", stats: ["Kritisch", "Hoch", "Mittel", "Niedrig"].map((l) => ({ v: "–", l })) });
+    const [label] = level(sec.score);
     const audit = sec.last_audit ? Date.parse(sec.last_audit) / 1000 : null;
-    return `<section class="card hero" style="--state:${color}">
-      <div class="hero-badge ring">${scoreRing(sec.score, color)}</div>
-      <div class="hero-main">
-        <div class="eyebrow">Sicherheitswert</div>
-        <div class="hero-state">${label}</div>
-        <dl class="kv">
-          <div><dt>Offene Befunde</dt><dd>${sec.open}</dd></div>
-          <div><dt>Letztes Audit</dt><dd>${audit ? esc(rel(audit)) : "—"}</dd></div>
-          <div><dt>Git-Sicherung</dt><dd>${esc(sec.git && sec.git.status && sec.git.status !== "disabled" ? sec.git.status.toUpperCase() : "—")}</dd></div>
-          <div><dt>Stand</dt><dd>${esc(rel(sec.received))}</dd></div>
-        </dl>
-        ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
-      </div>
-      ${situationBox(view.data)}
-    </section>`;
+    const sub = [`${sec.open} offene Befunde`, audit ? `Audit ${rel(audit)}` : "", sec.git && sec.git.status && sec.git.status !== "disabled" ? `Git: ${sec.git.status}` : ""].filter(Boolean).join(" · ");
+    return hero({
+      tone: levelTone(sec.score), icon: ICON.lock,
+      title: `Sicherheitswert ${Math.round(sec.score)} · ${esc(label)}`, sub: esc(sub),
+      stats: [
+        { v: String(sec.counts.critical || 0), l: "Kritisch", cls: sec.counts.critical ? "bad" : "" },
+        { v: String(sec.counts.high || 0), l: "Hoch", cls: sec.counts.high ? "warn" : "" },
+        { v: String(sec.counts.medium || 0), l: "Mittel" },
+        { v: String(sec.counts.low || 0), l: "Niedrig" },
+      ],
+    });
   }
 
   function findingsCard(sec) {
     const list = (sec && sec.findings) || [];
-    return `<section class="card"><div class="chart-title">Offene Befunde</div>
-      ${list.length ? `<div class="findings">${list.slice(0, 12).map((f) => {
-        const [lab, col] = SEV_VIEW[f.severity] || SEV_VIEW.info;
-        return `<div class="finding"><span class="chip" style="--c:${col}">${lab}</span><span class="f-title">${esc(f.title)}</span><span class="muted small f-cat">${esc(CATEGORY[f.category] || f.category)}</span></div>`;
-      }).join("")}${list.length > 12 ? `<div class="muted small" style="padding-top:8px">und ${list.length - 12} weitere</div>` : ""}</div>`
-        : `<div class="muted" style="margin-top:14px">Keine offenen Befunde.</div>`}</section>`;
+    const body = list.length ? list.slice(0, 15).map((f) => {
+      const [lab] = SEV_VIEW[f.severity] || SEV_VIEW.info;
+      return `<div class="problem"><span class="dot" style="--c:${SEV_TONE[f.severity] || "var(--gray)"}"></span><div class="grow"><div class="pname">${esc(f.title)}</div><div class="msg">${esc(lab)} · ${esc(CATEGORY[f.category] || f.category)}</div></div></div>`;
+    }).join("") + (list.length > 15 ? `<div class="more faint small">und ${list.length - 15} weitere</div>` : "") : `<div class="empty">Keine offenen Befunde.</div>`;
+    return card("Offene Befunde", body, { flush: true });
   }
 
   function sourcesCard(s) {
-    const max = Math.max(1, ...s.sources.map((x) => x.n));
-    return `<section class="card"><div class="chart-title">Häufigste Quellen</div>
-      <div class="legend">${SEC_SERIES.map((x) => `<span><i style="background:${x.color}"></i>${esc(x.label)}</span>`).join("")}</div>
-      ${s.sources.length ? `<div class="bars">${s.sources.map((x) => `<div class="hbar" title="Home Assistant ${x.ha} · Worker ${x.worker}">
-        <span class="hbar-name mono">${esc(x.ip)}${x.geo ? ` <span class="muted">· ${esc(x.geo)}</span>` : ""}${x.blocked ? ` <span class="chip tiny" style="--c:var(--critical)">gesperrt</span>` : ""}</span><span class="hbar-val">${x.n}</span>
-        <div class="hbar-track">${x.ha ? `<div class="hbar-fill" style="width:${(x.ha / max) * 100}%;--c:var(--s1)"></div>` : ""}${x.worker ? `<div class="hbar-fill" style="width:${(x.worker / max) * 100}%;--c:var(--s2)"></div>` : ""}</div></div>`).join("")}</div>`
-        : `<div class="muted" style="margin-top:18px">Keine Fehlversuche im Zeitraum.</div>`}</section>`;
+    return card("Häufigste Quellen", barRows(s.sources.map((x) => ({
+      label: x.ip, title: `Home Assistant ${x.ha} · Worker ${x.worker}`,
+      labelHtml: `<span class="mono">${esc(x.ip)}</span>${x.geo ? ` <span class="faint">· ${esc(x.geo)}</span>` : ""}${x.blocked ? ` <span class="pill bad" style="height:18px">gesperrt</span>` : ""}`,
+      total: x.n, parts: [{ n: x.ha, color: "var(--s1)" }, { n: x.worker, color: "var(--s2)" }],
+    })), "Keine Fehlversuche im Zeitraum."), { sub: "Fehlversuche bei Home Assistant und abgewiesene Zugriffe am Worker", flush: true,
+      right: `<div class="chart-legend">${SEC_SERIES.map((x) => `<span><i class="sw" style="background:${x.color}"></i>${esc(x.label)}</span>`).join("")}</div>` });
   }
 
-  function secLogView(d, filter) {
-    const all = (d.secevents || []).filter((e) => filter === "all" || (SEC_GROUPS[filter] || []).includes(e.type));
-    const evs = all.slice(0, view.secLimit);
-    const btn = (k, l) => `<button class="${filter === k ? "on" : ""}" data-seclog="${k}">${l}</button>`;
-    return `<div class="filters" style="margin-top:0"><div class="seg">${btn("all", "Alle")}${btn("failed", "Fehlversuche")}${btn("logins", "Anmeldungen")}${btn("accounts", "Konten & Tokens")}</div></div>
-      <div class="card" style="margin-top:12px;padding:6px 10px"><div class="table-wrap" style="margin:0"><table>
-        <thead><tr><th>Zeit</th><th>Ereignis</th><th>Benutzer</th><th>IP</th><th class="hide-sm">Ort / Details</th></tr></thead><tbody>
-        ${evs.length ? evs.map((e) => {
-          const det = [e.geo, e.detail && e.detail.name, e.detail && e.detail.count ? `${e.detail.count}×` : ""].filter(Boolean).join(" · ");
-          return `<tr><td class="t">${esc(dateTime(e.ts))}</td>
-            <td><span class="log-ev" style="--c:${SEC_COLOR[e.type] || "var(--idle)"}"><i></i>${esc(SEC_LABELS[e.type] || e.type)}</span></td>
-            <td>${esc(e.user || "–")}</td><td class="mono">${esc(e.ip || "–")}</td><td class="hide-sm">${esc(det)}</td></tr>`;
-        }).join("") : `<tr><td colspan="5" class="muted">Keine Ereignisse.</td></tr>`}
-        </tbody></table></div>
-        ${all.length > evs.length ? `<div class="more"><button class="link-btn" data-secmore>Weitere ${Math.min(50, all.length - evs.length)} von ${all.length - evs.length} anzeigen</button></div>` : ""}</div>`;
+  function exposureCard(ex) {
+    const results = (ex && ex.results) || [];
+    const tone = { ok: ["ok", "OK"], info: ["", "Hinweis"], warning: ["warn", "Warnung"], critical: ["bad", "Kritisch"] };
+    const body = results.length ? results.map((r) => `<div class="problem" style="display:block">
+        <div class="row spread"><span class="mono">${esc(r.url.replace(/^https?:\/\//, ""))}</span><span class="faint small">${esc(rel(Math.floor(ex.checked / 1000)))}${r.colo ? ` · über ${esc(r.colo)}` : ""}</span></div>
+        ${r.checks.map((c) => `<div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:flex-start"><span class="pill ${tone[c.level] ? tone[c.level][0] : ""}" style="flex:none">${tone[c.level] ? tone[c.level][1] : esc(c.level)}</span><span class="small" style="padding-top:3px">${esc(c.text)}</span></div>`).join("")}
+      </div>`).join("") : `<div class="empty">Noch keine Adresse geprüft.</div>`;
+    return card("Außenprüfung", body, { sub: "Öffentliche Adresse, alle 6 Stunden von außen geprüft", flush: true });
   }
 
   function blockedCard(d, s) {
     const rows = (d.blocked || []).slice(0, 20);
-    return `<section class="card"><div class="chart-title">Vom Worker gesperrte IPs</div>
-      <div class="muted small">Zu viele abgewiesene Zugriffe (falsche Signatur, Token oder Login-Umgehung). ${s.workerAttempts} abgewiesene Zugriffe im Zeitraum.</div>
-      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>IP</th><th>Grund</th><th class="num">Versuche</th><th>Gesperrt</th></tr></thead><tbody>
-        ${rows.map((b) => `<tr><td class="mono">${esc(b.ip)}${b.country ? ` <span class="muted">· ${esc(b.country)}</span>` : ""}</td>
-          <td>${esc(String(b.reason || "").split(",").map((k) => ATTACK_KIND[k] || k).join(", "))}</td><td class="num">${b.n || ""}</td>
-          <td>${b.until > d.now ? `<span class="chip" style="--c:var(--critical)">bis ${esc(dateTime(b.until))}</span>` : `<span class="muted">${esc(dateTime(b.ts))}</span>`}</td></tr>`).join("")}
-        </tbody></table></div>` : `<div class="muted" style="margin-top:14px">Keine Sperren.</div>`}</section>`;
+    const body = rows.length ? `<div class="table-wrap"><table><thead><tr><th>IP</th><th>Grund</th><th class="num">Versuche</th><th>Sperre</th></tr></thead><tbody>
+      ${rows.map((b) => `<tr><td><span class="mono">${esc(b.ip)}</span>${b.country ? ` <span class="faint">· ${esc(b.country)}</span>` : ""}</td>
+        <td>${esc(String(b.reason || "").split(",").map((k) => ATTACK_KIND[k] || k).join(", "))}</td><td class="num">${b.n || ""}</td>
+        <td>${b.until > d.now ? `<span class="pill bad">bis ${esc(timeOnly(b.until).slice(0, 5))}</span>` : `<span class="faint">${esc(dateTime(b.ts))}</span>`}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">Keine Sperren. ${s.workerAttempts} abgewiesene Zugriffe im Zeitraum.</div>`;
+    return card("Vom Worker gesperrte IPs", body, { flush: true, sub: "Zu viele abgewiesene Zugriffe" });
   }
 
-  // Score over time: one series, line with a crosshair tooltip.
-  function scoreSvg(points, width) {
-    const W = Math.max(280, Math.round(width)), H = 170, L = 34, B = 24, T = 10, R = 8;
-    const t0 = points[0].t, t1 = Math.max(points[points.length - 1].t, t0 + 86400);
-    const x = (t) => L + ((W - L - R) * (t - t0)) / (t1 - t0);
-    const y = (v) => T + (H - T - B) * (1 - v / 100);
-    const path = points.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
-    let svg = `<g class="grid">${[0, 50, 100].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`).join("")}</g>`;
-    svg += `<g class="axis">${[0, 50, 100].map((v) => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}`;
-    svg += `<text x="${L}" y="${H - 6}">${esc(dayShort(t0))}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${esc(dayShort(points[points.length - 1].t))}</text></g>`;
-    svg += `<path d="${path}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-    const last = points[points.length - 1];
-    svg += `<circle cx="${x(last.t)}" cy="${y(last.v)}" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/>`;
-    svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--line-strong)" stroke-width="1" visibility="hidden"/>`;
-    svg += `<circle class="cross-dot" r="4" fill="var(--s1)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>`;
-    svg += `<rect class="hit-all" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
-    return { svg: `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf des Sicherheitswerts">${svg}</svg>`, x, y };
+  function secLogCard(d, filter) {
+    const all = (d.secevents || []).filter((e) => filter === "all" || (SEC_GROUPS[filter] || []).includes(e.type));
+    const evs = all.slice(0, view.secLimit);
+    const rows = evs.length ? evs.map((e) => {
+      const det = [e.geo, e.detail && e.detail.name, e.detail && e.detail.count ? `${e.detail.count}×` : ""].filter(Boolean).join(" · ");
+      return `<tr><td class="t">${esc(dateTime(e.ts))}</td><td><span class="tag dotted" style="--c:${SEC_COLOR[e.type] || "var(--gray)"}">${esc(SEC_LABELS[e.type] || e.type)}</span></td>
+        <td>${e.user ? `<span class="name">${esc(e.user)}</span>` : `<span class="faint">–</span>`}</td><td class="mono">${esc(e.ip || "–")}</td><td class="hide-sm muted">${esc(det)}</td></tr>`;
+    }).join("") : `<tr><td colspan="5" class="empty">Keine Ereignisse.</td></tr>`;
+    return `<section class="card"><div class="card-head"><h2>Anmeldungen und Konten</h2><span class="faint small">${all.length} Einträge</span></div>
+      <div class="toolbar">${seg([["all", "Alle"], ["failed", "Fehlversuche"], ["logins", "Anmeldungen"], ["accounts", "Konten & Tokens"]], filter, "data-seclog")}</div>
+      <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Ereignis</th><th>Benutzer</th><th>IP</th><th class="hide-sm">Ort / Details</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${all.length > evs.length ? `<div class="more"><button class="btn sm" data-secmore>Weitere ${Math.min(50, all.length - evs.length)} anzeigen</button></div>` : ""}</section>`;
   }
 
   function scoreCard(sec, d) {
     const since = d.now - d.days * 86400;
     const points = ((sec && sec.history) || []).map((h) => ({ t: Date.parse(`${h.date}T12:00:00Z`) / 1000, v: h.score })).filter((p) => p.t >= since - 86400);
     if (sec) points.push({ t: d.now, v: sec.score });
-    const body = points.length >= 2
-      ? `<div class="chart" id="score-chart"></div>`
-      : `<div class="muted" style="margin-top:14px">Der Verlauf erscheint nach einigen Audits.</div>`;
-    return { html: `<section class="card"><div class="chart-title">Verlauf des Sicherheitswerts</div><div class="muted small">Ein Wert pro Tag (letztes Audit des Tages)</div>${body}</section>`, points };
-  }
-
-  function bindScore(points) {
-    const box = document.getElementById("score-chart");
-    if (!box || points.length < 2) return;
-    const { svg, x, y } = scoreSvg(points, box.clientWidth);
-    box.innerHTML = svg;
-    const el = box.querySelector("svg");
-    const cross = el.querySelector(".cross");
-    const dot = el.querySelector(".cross-dot");
-    let tip = null;
-    el.addEventListener("mousemove", (ev) => {
-      const rb = el.getBoundingClientRect();
-      const mx = ((ev.clientX - rb.left) / rb.width) * el.viewBox.baseVal.width;
-      const p = points.reduce((best, q) => (Math.abs(x(q.t) - mx) < Math.abs(x(best.t) - mx) ? q : best), points[0]);
-      cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
-      dot.setAttribute("cx", x(p.t)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
-      if (!tip) { tip = document.createElement("div"); tip.className = "tip"; box.appendChild(tip); }
-      tip.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${esc(weekday(p.t))}</div><div class="tip-row"><i style="background:var(--s1)"></i>Sicherheitswert<b>${Math.round(p.v)}</b></div>`;
-      tip.style.left = `${Math.min(rb.width - 80, Math.max(80, (x(p.t) / el.viewBox.baseVal.width) * rb.width))}px`;
-      tip.style.top = `${(y(p.v) / el.viewBox.baseVal.height) * rb.height}px`;
-    });
-    el.addEventListener("mouseleave", () => {
-      cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden");
-      if (tip) { tip.remove(); tip = null; }
-    });
-  }
-
-  const EXPOSURE_COLOR = { ok: "var(--good)", info: "var(--idle)", warning: "var(--warning)", critical: "var(--critical)" };
-  const EXPOSURE_LABEL = { ok: "OK", info: "Hinweis", warning: "Warnung", critical: "Kritisch" };
-
-  function exposureCard(ex) {
-    const results = (ex && ex.results) || [];
-    return `<section class="card"><div class="chart-title">Außenprüfung</div>
-      <div class="muted small">Prüft alle 6 Stunden die öffentliche Adresse von Home Assistant von außen.</div>
-      ${results.length ? results.map((r) => `
-        <div class="exp">
-          <div class="exp-head"><span class="mono">${esc(r.url.replace(/^https?:\/\//, ""))}</span><span class="grow"></span>
-            <span class="muted small">${esc(rel(Math.floor(ex.checked / 1000)))}${r.colo ? ` · über ${esc(r.colo)}` : ""}</span></div>
-          ${r.checks.map((c) => `<div class="exp-row"><span class="chip" style="--c:${EXPOSURE_COLOR[c.level] || "var(--idle)"}">${EXPOSURE_LABEL[c.level] || c.level}</span><span>${esc(c.text)}</span></div>`).join("")}
-        </div>`).join("")
-        : `<div class="muted" style="margin-top:14px">Noch keine Adresse geprüft. Bastion übergibt die externe URL aus HA oder die Adresse aus den Worker-Einstellungen.</div>`}
-    </section>`;
+    const body = points.length >= 2 ? `<div class="chart" id="score-chart" style="margin-top:0"></div>` : `<div class="empty">Der Verlauf erscheint nach einigen Audits.</div>`;
+    return { html: card("Verlauf des Sicherheitswerts", body, { sub: "Ein Wert pro Tag (letztes Audit des Tages)" }), points };
   }
 
   function renderSecurity(d) {
@@ -885,35 +967,24 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     const maxDay = niceMax(Math.max(1, ...s.days.map((r) => r.ha + r.worker)));
     const opts = { max: maxDay, ticks: [0, maxDay / 4, maxDay / 2, (3 * maxDay) / 4, maxDay].map((v) => Math.round(v * 100) / 100), tick: (t) => String(t), label: "Fehlversuche pro Tag" };
     return {
-      html: `
-        ${securityHero(sec)}
-        ${rangeRow(d)}
-        <div class="tiles">
-          ${tile("Fehlversuche", String(s.failed), sec ? `${sec.failed_24h} in den letzten 24 h` : "", s.failed > 0)}
-          ${tile("Anmeldungen", String(s.logins), s.newIps ? `${s.newIps} von neuen IPs` : "keine neuen IPs")}
-          ${tile("Gesperrt", String(s.banned), s.brute ? `${s.brute}× Brute-Force-Verdacht` : "von HA und Bastion", s.brute > 0)}
-          ${tile("Konten & Tokens", String(s.accounts), "Änderungen im Zeitraum")}
-          ${tile("Worker", String(s.workerAttempts), s.blockedActive.length ? `${s.blockedActive.length} IP gesperrt` : "abgewiesene Zugriffe", s.workerAttempts > 0)}
+      html: `${securityHero(d)}
+        <div class="grid two mt">${findingsCard(sec)}${exposureCard(d.exposure)}</div>
+        ${rangeRow("Zeitraum")}
+        <div class="grid kpis mt">
+          ${kpi("Fehlversuche", ICON.ban, String(s.failed), sec ? `${sec.failed_24h} in den letzten 24 h` : "", s.failed > 0)}
+          ${kpi("Anmeldungen", ICON.user, String(s.logins), s.newIps ? `${s.newIps} von neuen IPs` : "keine neuen IPs")}
+          ${kpi("Gesperrt", ICON.lock, String(s.banned), s.brute ? `${s.brute}× Brute-Force-Verdacht` : "von HA und Bastion", s.brute > 0)}
+          ${kpi("Konten & Tokens", ICON.key, String(s.accounts), "Änderungen im Zeitraum")}
+          ${kpi("Worker", ICON.globe, String(s.workerAttempts), s.blockedActive.length ? `${s.blockedActive.length} IP gesperrt` : "abgewiesene Zugriffe", s.workerAttempts > 0)}
         </div>
-        <div class="grid2" style="margin-top:14px">
-          ${stackCard({ id: "failed-chart", title: "Fehlversuche pro Tag", sub: "", rows: s.days, series: SEC_SERIES, fmt: (n) => String(n), showTable: view.secTable, toggle: "sec" })}
-          ${sourcesCard(s)}
-        </div>
-        <div class="grid2" style="margin-top:14px">${score.html}${exposureCard(d.exposure)}</div>
-        <div class="grid2" style="margin-top:14px">${findingsCard(sec)}${blockedCard(d, s)}</div>
-        <h2>Anmeldungen und Konten</h2>
-        ${secLogView(d, view.secLog)}`,
+        <div class="grid two mt">${stackCard({ id: "failed-chart", title: "Fehlversuche pro Tag", sub: "Home Assistant und Worker", rows: s.days, series: SEC_SERIES, fmt: (n) => String(n), showTable: view.secTable, toggle: "sec" })}${sourcesCard(s)}</div>
+        <div class="grid two mt">${score.html}${blockedCard(d, s)}</div>
+        <div class="mt">${secLogCard(d, view.secLog)}</div>`,
       bind: () => {
         bindStack("failed-chart", s.days, SEC_SERIES, opts, (n) => String(n));
         bindScore(score.points);
       },
     };
-  }
-
-  function rangeRow(d) {
-    const range = (n, l) => `<button class="${view.days === n ? "on" : ""}" data-days="${n}">${l}</button>`;
-    return `<div class="filters"><div class="seg">${range(7, "7 Tage")}${range(30, "30 Tage")}${range(90, "90 Tage")}${range(365, "1 Jahr")}</div>
-      <span class="grow"></span><span class="stamp">Aktualisiert ${esc(timeOnly(d.now))}</span></div>`;
   }
 
   // ---------------------------------------------------------- dashboard
@@ -923,8 +994,10 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     try {
       view.data = await api(`/api/summary?days=${view.days}`);
       TZ = (view.data.hb && view.data.hb.tz) || TZ;
-      document.getElementById("instance").textContent = `Security Operations · ${(view.data.hb && view.data.hb.instance) || "Home Assistant"}`;
-      document.getElementById("who").textContent = view.data.user || "";
+      document.getElementById("instance").textContent = (view.data.hb && view.data.hb.instance) || "Bastion";
+      const who = view.data.user || "";
+      document.getElementById("who").textContent = who;
+      document.getElementById("avatar").textContent = (who[0] || "B").toUpperCase();
       renderDashboard();
     } catch (err) {
       app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
@@ -934,38 +1007,16 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
   function renderDashboard() {
     const d = view.data;
     const tab = location.hash === "#sicherheit" ? "security" : "alarm";
-    const openCount = d.security ? d.security.open : 0;
-    const alarmBadge = d.hb && (d.hb.state === "triggered" || d.hb.state === "pending") ? `<span class="badge" style="--c:var(--critical)">AKTIV</span>` : "";
-    const secBadge = openCount ? `<span class="badge" style="--c:${d.security.counts.critical ? "var(--critical)" : "var(--warning)"}">${openCount}</span>` : "";
-    const tabs = `<nav class="dtabs" aria-label="Bereiche"><a href="#" class="${tab === "alarm" ? "on" : ""}" data-tab="alarm">Überwachung${alarmBadge}</a><a href="#sicherheit" class="${tab === "security" ? "on" : ""}" data-tab="security">Sicherheit${secBadge}</a></nav>`;
-    renderSysbar(d);
-    let bind = () => {};
-    if (tab === "security") {
-      const sec = renderSecurity(d);
-      app.innerHTML = tabs + sec.html;
-      bind = sec.bind;
-    } else {
-      const a = analyse(d);
-      const k = a.kpi;
-      app.innerHTML = `${tabs}
-        ${heroView(d)}
-        ${rangeRow(d)}
-        <div class="tiles">
-          ${tile("Alarme", String(k.alarms), k.acked ? `${k.acked} quittiert` : "", k.alarms > 0)}
-          ${tile("Vorwarnungen", String(k.pending), `${k.defused} rechtzeitig entschärft`)}
-          ${tile("Scharf", `${Math.round(k.armedShare * 100)} %`, "der Zeit im Zeitraum")}
-          ${tile("Quittierzeit", k.ackMedian == null ? "–" : duration(k.ackMedian), "Median bis zur Bestätigung")}
-          ${tile("Funkstille", String(k.outages), k.outageSec ? `insgesamt ${duration(k.outageSec)}` : "keine Ausfälle", k.outages > 0)}
-          ${tile("Falsche Codes", String(k.wrong), k.shots ? `${k.shots} Kamerabilder gespeichert` : "")}
-        </div>
-        <div class="grid2" style="margin-top:14px">${stackCard({ id: "armed-chart", title: "Scharf-Zeit pro Tag", rows: a.days, series: MODE_SERIES, totals: a.totals, fmt: hours, showTable: view.table, toggle: "armed" })}${triggersCard(a)}</div>
-        <h2>Vorfälle</h2>
-        ${a.incidents.length ? `<div class="incidents">${a.incidents.slice(0, 24).map(incidentCard).join("")}</div>` : `<div class="card muted">Keine Vorfälle im Zeitraum.</div>`}
-        <h2>Protokoll</h2>
-        ${logView(d, view.log)}`;
-      bind = () => bindStack("armed-chart", a.days, MODE_SERIES, ARMED_OPTS, hours);
-    }
-    bind();
+    document.querySelectorAll("[data-nav]").forEach((el) => el.classList.toggle("active", el.dataset.nav === tab));
+    document.getElementById("title").textContent = tab === "security" ? "Sicherheit" : "Alarmanlage";
+    const hb = d.hb;
+    document.getElementById("badge-alarm").textContent = hb && (hb.state === "triggered" || hb.state === "pending" || hb.offline) ? "!" : "";
+    const urgent = d.security ? (d.security.counts.critical || 0) + (d.security.counts.high || 0) : 0;
+    document.getElementById("badge-sec").textContent = urgent ? String(urgent) : "";
+    document.getElementById("updated").textContent = `Aktualisiert ${timeOnly(d.now).slice(0, 5)}`;
+    const page = tab === "security" ? renderSecurity(d) : renderAlarm(d);
+    app.innerHTML = page.html;
+    page.bind();
     app.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { view.days = Number(b.dataset.days); loadDashboard(); }));
     app.querySelectorAll("[data-log]").forEach((b) => b.addEventListener("click", () => { view.log = b.dataset.log; view.logLimit = 25; renderDashboard(); }));
     app.querySelectorAll("[data-seclog]").forEach((b) => b.addEventListener("click", () => { view.secLog = b.dataset.seclog; view.secLimit = 25; renderDashboard(); }));
@@ -974,6 +1025,7 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
       else view.table = !view.table;
       renderDashboard();
     }));
+    app.querySelectorAll("tr[data-href]").forEach((tr) => tr.addEventListener("click", () => { location.href = tr.dataset.href; }));
     const more = app.querySelector("[data-more]");
     if (more) more.addEventListener("click", () => { view.logLimit += 50; renderDashboard(); });
     const secMore = app.querySelector("[data-secmore]");
@@ -982,11 +1034,12 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
 
   // ------------------------------------------------------------ incident
   async function loadIncident(id, token) {
+    if (token) document.body.classList.add("bare");
     const q = token ? `?t=${encodeURIComponent(token)}` : "";
     try {
       const d = await api(`/api/incident/${id}${q}`);
       TZ = d.tz || TZ;
-      if (d.instance) document.getElementById("instance").textContent = `Security Operations · ${d.instance}`;
+      if (d.instance) document.getElementById("instance").textContent = d.instance;
       renderIncident(d, token);
     } catch (err) {
       app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
@@ -997,71 +1050,30 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     const ev = d.events;
     const trig = ev.find((e) => e.event === "triggered");
     const first = ev.find((e) => e.event === "pending" || e.event === "triggered") || ev[0];
-    const color = trig ? "var(--critical)" : "var(--warning)";
+    const ack = ev.find((e) => e.event === "acknowledged");
+    const dis = ev.find((e) => e.event === "disarmed");
     const start = ev.length ? ev[0].ts : null;
+    document.getElementById("title").textContent = `Fall #${d.incident.slice(0, 8).toUpperCase()}`;
+    document.querySelectorAll("[data-nav]").forEach((el) => el.classList.toggle("active", el.dataset.nav === "alarm"));
     app.innerHTML = `
-      ${token ? "" : `<a class="back" href="/">‹ Zurück zur Übersicht</a>`}
-      <section class="card hero ${trig ? "alarm" : ""}" style="--state:${color}">
-        ${core(color, "")}
-        <div class="hero-main">
-          <div class="eyebrow">Fall #${esc(d.incident.slice(0, 8).toUpperCase())}</div>
-          <div class="hero-state" style="color:${color}">${trig ? "Alarm" : "Vorwarnung"}</div>
-          <dl class="kv">
-            <div><dt>Auslöser</dt><dd>${esc(first ? where(first) || LABELS[first.event] : "—")}</dd></div>
-            <div><dt>Beginn</dt><dd>${start ? esc(fmt(start, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })) : "—"}</dd></div>
-            <div><dt>Ereignisse</dt><dd>${ev.length}</dd></div>
-            <div><dt>Bilder</dt><dd>${d.snapshots.length}</dd></div>
-          </dl>
-        </div>
-      </section>
-      <h2>Ablauf</h2>
-      <section class="card"><ul class="timeline">${ev.map((e) => `<li style="--c:${EV_COLOR[e.event] || "var(--idle)"}"><span class="t">${esc(timeOnly(e.ts))}</span><span class="d"></span>
-        <span><b>${esc(LABELS[e.event] || e.event)}</b>${where(e) ? ` · ${esc(where(e))}` : ""}${e.user ? ` · ${esc(e.user)}` : ""}${e.mode && MODES[e.mode] && e.event !== "acknowledged" ? ` <span class="muted">· ${MODES[e.mode]}</span>` : ""}</span></li>`).join("") || `<li class="muted">Keine Ereignisse.</li>`}</ul></section>
-      <h2>Kamerabilder</h2>
-      ${d.snapshots.length ? `<div class="gallery">${d.snapshots.map((s) => `<figure class="shot" data-shot="${s.id}"><div class="ph">lädt …</div>
-        <figcaption><span>${esc(s.camera || "Kamera")}</span><span class="grow"></span><span>${esc(timeOnly(s.ts))}</span></figcaption></figure>`).join("")}</div>`
-        : `<div class="card muted">Keine Kamerabilder zu diesem Vorfall.</div>`}`;
+      ${token ? "" : `<div class="row mb" style="margin-bottom:12px"><a class="btn sm" href="/">${ICON.back}Übersicht</a></div>`}
+      ${hero({
+        tone: trig ? "down" : "warn", icon: ICON.alert,
+        title: esc(`${trig ? "Alarm" : "Vorwarnung"} · ${first ? where(first) || LABELS[first.event] : "Vorfall"}`),
+        sub: esc(start ? fmt(start, { weekday: "long", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""),
+        stats: [
+          { v: String(ev.length), l: "Ereignisse" },
+          { v: String(d.snapshots.length), l: "Kamerabilder" },
+          { v: ack ? ack.user || "Pushover" : "–", l: "Quittiert" },
+          { v: dis && start ? duration(dis.ts - start) : "–", l: "Bis unscharf", cls: dis ? "ok" : "" },
+        ],
+      })}
+      <div class="mt">${card("Ablauf", `<ul class="timeline">${ev.map((e) => `<li><span class="t">${esc(timeOnly(e.ts))}</span><span class="dot" style="--c:${EV_COLOR[e.event] || "var(--gray)"}"></span>
+        <span><b>${esc(LABELS[e.event] || e.event)}</b>${where(e) ? ` · ${esc(where(e))}` : ""}${e.user ? ` · ${esc(e.user)}` : ""}${e.mode && MODES[e.mode] && e.event !== "acknowledged" ? ` <span class="faint">· ${MODES[e.mode]}</span>` : ""}</span></li>`).join("") || `<li class="faint">Keine Ereignisse.</li>`}</ul>`, { flush: true })}</div>
+      <div class="mt">${card("Kamerabilder", d.snapshots.length ? `<div class="gallery">${d.snapshots.map((s) => `<figure class="shot" data-shot="${s.id}"><div class="ph">lädt …</div>
+        <figcaption><span>${esc(s.camera || "Kamera")}</span><span class="grow"></span><span>${esc(timeOnly(s.ts))}</span></figcaption></figure>`).join("")}</div>` : `<div class="empty">Keine Kamerabilder zu diesem Vorfall.</div>`, { flush: true })}</div>`;
     loadShots(d, token);
-    const bar = document.getElementById("sysbar");
-    if (bar) bar.innerHTML = sysItem("Ansicht", "VORFALL", trig ? "var(--critical)" : "var(--warning)") + sysItem("Zugang", token ? "LINK-TOKEN" : "ACCESS", "var(--good)");
   }
-
-  async function loadShots(d, token) {
-    for (const s of d.snapshots) {
-      const fig = app.querySelector(`[data-shot="${s.id}"]`);
-      if (!fig) continue;
-      try {
-        const q = new URLSearchParams({ i: d.incident });
-        if (token) q.set("t", token);
-        const img = await api(`/api/img/${s.id}?${q}`);
-        const el = document.createElement("img");
-        el.alt = `${img.camera || "Kamera"} ${timeOnly(img.ts)}`;
-        el.src = `data:${img.type};base64,${img.data}`;
-        fig.querySelector(".ph").replaceWith(el);
-        fig.addEventListener("click", () => {
-          const box = document.createElement("div");
-          box.className = "lightbox";
-          box.innerHTML = `<img alt="" src="${el.src}">`;
-          box.addEventListener("click", () => box.remove());
-          document.body.appendChild(box);
-        });
-      } catch {
-        fig.querySelector(".ph").textContent = "nicht verfügbar";
-      }
-    }
-  }
-
-  // -------------------------------------------------------------- clock
-  function tickClock() {
-    const now = Date.now() / 1000;
-    const t = document.getElementById("clock-time");
-    const dd = document.getElementById("clock-date");
-    if (t) t.textContent = fmt(now, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    if (dd) dd.textContent = fmt(now, { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).replace(",", "");
-  }
-  tickClock();
-  setInterval(tickClock, 1000);
-  setInterval(() => { if (view.data && !document.hidden) renderSysbar(view.data); }, 15000);
 
   // -------------------------------------------------------------- route
   const m = location.pathname.match(/^\/i\/([a-f0-9]{8,32})$/);
@@ -1073,7 +1085,7 @@ footer .led { margin-right: 8px; vertical-align: 1px; }
     setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
     let resizeTimer = null;
     window.addEventListener("hashchange", () => { if (view.data) renderDashboard(); });
-    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (view.data && !view.table) renderDashboard(); }, 150); });
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (view.data) renderDashboard(); }, 150); });
   }
 })();
 </script>
