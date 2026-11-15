@@ -50,7 +50,7 @@
       },
       "git": {
         "title": "Git-Versionierung",
-        "description": "Privates Repository für die Konfiguration. SSH: Im nächsten Schritt wird ein Deploy-Key erzeugt. HTTPS: Token mit Contents lesen/schreiben nur für dieses Repo. Token hinterlegt: {token_state}, Passphrase hinterlegt: {passphrase_state}. Geheime Felder leer lassen, um sie zu behalten.",
+        "description": "Privates GitHub-Repository für die Konfiguration. SSH: Im nächsten Schritt wird ein Deploy-Key erzeugt. HTTPS: Fine-grained Token mit Contents lesen/schreiben nur für dieses Repo. Secrets werden immer mit der Passphrase verschlüsselt, sie gehört in den Passwortmanager. Token hinterlegt: {token_state}, Passphrase hinterlegt: {passphrase_state}. Geheime Felder leer lassen, um sie zu behalten.",
         "data": {
           "git_enabled": "Git-Sync aktivieren",
           "git_url": "Repository-URL (SSH wie git@github.com:user/repo.git oder HTTPS)",
@@ -59,8 +59,7 @@
           "git_username": "Benutzername (HTTPS, optional)",
           "git_token": "Zugriffstoken (HTTPS)",
           "regenerate_key": "Neuen SSH-Schlüssel erzeugen",
-          "git_passphrase": "Passphrase zur Verschlüsselung der Secrets",
-          "clear_passphrase": "Passphrase entfernen (Secrets werden dann nicht mehr gesichert)",
+          "git_passphrase": "Passphrase zur Verschlüsselung der Secrets (Pflicht, mind. 12 Zeichen)",
           "git_areas": "Inhalte",
           "git_esphome_path": "ESPHome-Verzeichnis (Standard: /config/esphome)",
           "git_z2m_path": "Zigbee2MQTT-Datenverzeichnis (Standard: /config/zigbee2mqtt)",
@@ -124,7 +123,9 @@
       "protocol_error": "Git-Protokollfehler.",
       "repo_public": "Das Repository ist öffentlich. Bastion pusht nur in private Repositories.",
       "repo_unverified": "Bastion konnte nicht prüfen, ob das Repository privat ist. Bitte in den Einstellungen bestätigen.",
-      "https_required": "Die Worker-URL muss HTTPS verwenden."
+      "https_required": "Die Worker-URL muss HTTPS verwenden.",
+      "passphrase_required": "Passphrase erforderlich: Secrets werden immer verschlüsselt gesichert.",
+      "passphrase_too_short": "Die Passphrase muss mindestens 12 Zeichen haben."
     }
   },
   "selector": {
@@ -168,9 +169,15 @@
   },
   "entity": {
     "sensor": {
-      "security_score": { "name": "Sicherheitswert" },
-      "open_findings": { "name": "Offene Befunde" },
-      "failed_logins_24h": { "name": "Fehlgeschlagene Anmeldungen (24 h)" },
+      "security_score": {
+        "name": "Sicherheitswert"
+      },
+      "open_findings": {
+        "name": "Offene Befunde"
+      },
+      "failed_logins_24h": {
+        "name": "Fehlgeschlagene Anmeldungen (24 h)"
+      },
       "git_status": {
         "name": "Git-Status",
         "state": {
@@ -181,17 +188,31 @@
           "blocked": "Blockiert"
         }
       },
-      "git_last_commit": { "name": "Letzter Commit" }
+      "git_last_commit": {
+        "name": "Letzter Commit"
+      }
     },
     "binary_sensor": {
-      "critical_findings": { "name": "Kritische Befunde" },
-      "sabotage": { "name": "Sabotageverdacht" },
-      "anomaly": { "name": "Anomalie {entity}" }
+      "critical_findings": {
+        "name": "Kritische Befunde"
+      },
+      "sabotage": {
+        "name": "Sabotageverdacht"
+      },
+      "anomaly": {
+        "name": "Anomalie {entity}"
+      }
     },
     "button": {
-      "run_audit": { "name": "Audit ausführen" },
-      "git_commit": { "name": "Konfiguration jetzt sichern" },
-      "external_scan": { "name": "Externe Prüfung ausführen" }
+      "run_audit": {
+        "name": "Audit ausführen"
+      },
+      "git_commit": {
+        "name": "Konfiguration jetzt sichern"
+      },
+      "external_scan": {
+        "name": "Externe Prüfung ausführen"
+      }
     }
   },
   "issues": {
@@ -213,32 +234,56 @@
       "name": "Konfiguration sichern",
       "description": "Committet und pusht die Konfiguration sofort.",
       "fields": {
-        "message": { "name": "Nachricht", "description": "Optionale Commit-Nachricht." }
+        "message": {
+          "name": "Nachricht",
+          "description": "Optionale Commit-Nachricht."
+        }
       }
     },
     "git_restore": {
       "name": "Konfiguration wiederherstellen",
       "description": "Stellt Dateien aus einem Commit wieder her. Der aktuelle Stand wird vorher committet.",
       "fields": {
-        "commit": { "name": "Commit", "description": "Vollständige Commit-SHA." },
-        "areas": { "name": "Bereiche", "description": "Nur diese Bereiche (leer = alle)." },
-        "paths": { "name": "Pfade", "description": "Nur diese Repo-Pfade, z. B. homeassistant/automations.yaml." },
-        "restart": { "name": "Neustart", "description": "Home Assistant danach neu starten (nötig für .storage)." }
+        "commit": {
+          "name": "Commit",
+          "description": "Vollständige Commit-SHA."
+        },
+        "areas": {
+          "name": "Bereiche",
+          "description": "Nur diese Bereiche (leer = alle)."
+        },
+        "paths": {
+          "name": "Pfade",
+          "description": "Nur diese Repo-Pfade, z. B. homeassistant/automations.yaml."
+        },
+        "restart": {
+          "name": "Neustart",
+          "description": "Home Assistant danach neu starten (nötig für .storage)."
+        }
       }
     },
     "dismiss_finding": {
       "name": "Befund ausblenden",
       "description": "Blendet einen Befund aus oder wieder ein.",
       "fields": {
-        "finding_id": { "name": "Befund-ID", "description": "ID des Befunds." },
-        "dismissed": { "name": "Ausgeblendet", "description": "False blendet den Befund wieder ein." }
+        "finding_id": {
+          "name": "Befund-ID",
+          "description": "ID des Befunds."
+        },
+        "dismissed": {
+          "name": "Ausgeblendet",
+          "description": "False blendet den Befund wieder ein."
+        }
       }
     },
     "accept_integrity": {
       "name": "Integritäts-Baseline übernehmen",
       "description": "Übernimmt die aktuellen Dateien in custom_components und www als bekannt gut.",
       "fields": {
-        "domain": { "name": "Integration", "description": "Nur diese Integration, „www“ oder leer für alle." }
+        "domain": {
+          "name": "Integration",
+          "description": "Nur diese Integration, „www“ oder leer für alle."
+        }
       }
     },
     "reset_git_host_key": {

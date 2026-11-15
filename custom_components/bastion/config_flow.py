@@ -27,6 +27,7 @@ import probatio
 from .audit import CHECK_GROUPS
 from .const import (
     ALL_AREAS,
+    AREA_ADDONS,
     CONF_ANOMALY_ACTIONS,
     CONF_ANOMALY_ENTITIES,
     CONF_ANOMALY_LOGIN_TIME,
@@ -84,6 +85,7 @@ from .gitsync.remote import RemoteError, generate_ssh_keypair, parse_remote, saf
 _LOGGER = logging.getLogger(__name__)
 
 SEVERITIES = ["critical", "high", "medium", "low"]
+MIN_PASSPHRASE = 12
 KEEP = "keep_existing"
 
 
@@ -139,6 +141,14 @@ class BastionOptionsFlow(OptionsFlow):
         self._git: dict[str, Any] = {}
 
     @property
+    def _supervisor(self) -> bool:
+        """Add-ons only exist with Supervisor (not on Container installs)."""
+        return "hassio" in self.hass.config.components
+
+    def _areas(self) -> list[str]:
+        return [a for a in ALL_AREAS if a != AREA_ADDONS or self._supervisor]
+
+    @property
     def _opts(self) -> dict[str, Any]:
         return {**DEFAULT_OPTIONS, **(self.config_entry.options or {})}
 
@@ -185,7 +195,7 @@ class BastionOptionsFlow(OptionsFlow):
                     7, 3650, unit="d"
                 ),
                 probatio.Optional(CONF_DISABLED_CHECKS, default=opts[CONF_DISABLED_CHECKS]): _select(
-                    list(CHECK_GROUPS), "check_group", multiple=True
+                    [g for g in CHECK_GROUPS if g != "supervisor" or self._supervisor], "check_group", multiple=True
                 ),
                 probatio.Optional(CONF_GITHUB_TOKEN, default=""): _PASSWORD,
                 probatio.Optional("clear_github_token", default=False): BooleanSelector(),
@@ -235,8 +245,6 @@ class BastionOptionsFlow(OptionsFlow):
             for secret_key in (CONF_GIT_TOKEN, CONF_GIT_PASSPHRASE):
                 if not git.get(secret_key):
                     git[secret_key] = opts.get(secret_key, "")
-            if git.pop("clear_passphrase", False):
-                git[CONF_GIT_PASSPHRASE] = ""
             if git[CONF_GIT_PASSPHRASE] != opts.get(CONF_GIT_PASSPHRASE) or not opts.get(CONF_GIT_SALT):
                 git[CONF_GIT_SALT] = new_salt() if git[CONF_GIT_PASSPHRASE] else ""
             else:
@@ -248,6 +256,11 @@ class BastionOptionsFlow(OptionsFlow):
                 git[CONF_GIT_HOST_KEY] = opts.get(CONF_GIT_HOST_KEY, "")
             if not git.get(CONF_GIT_ENABLED):
                 return self._save(git)
+            # Secrets are always backed up encrypted, so a passphrase is mandatory.
+            if not git[CONF_GIT_PASSPHRASE]:
+                errors[CONF_GIT_PASSPHRASE] = "passphrase_required"
+            elif len(git[CONF_GIT_PASSPHRASE]) < MIN_PASSPHRASE:
+                errors[CONF_GIT_PASSPHRASE] = "passphrase_too_short"
             try:
                 spec = parse_remote(git[CONF_GIT_URL])
                 git[CONF_GIT_BRANCH] = safe_branch(git.get(CONF_GIT_BRANCH) or "main")
@@ -288,10 +301,9 @@ class BastionOptionsFlow(OptionsFlow):
                 probatio.Optional(CONF_GIT_TOKEN, default=""): _PASSWORD,
                 probatio.Optional("regenerate_key", default=False): BooleanSelector(),
                 probatio.Optional(CONF_GIT_PASSPHRASE, default=""): _PASSWORD,
-                probatio.Optional("clear_passphrase", default=False): BooleanSelector(),
-                probatio.Required(CONF_GIT_AREAS, default=opts[CONF_GIT_AREAS]): _select(
-                    ALL_AREAS, "git_area", multiple=True
-                ),
+                probatio.Required(
+                    CONF_GIT_AREAS, default=[a for a in opts[CONF_GIT_AREAS] if a in self._areas()]
+                ): _select(self._areas(), "git_area", multiple=True),
                 probatio.Optional(CONF_GIT_ESPHOME_PATH, default=opts[CONF_GIT_ESPHOME_PATH]): _TEXT,
                 probatio.Optional(CONF_GIT_Z2M_PATH, default=opts[CONF_GIT_Z2M_PATH]): _TEXT,
                 probatio.Optional(CONF_GIT_EXTRA_PATHS, default=opts[CONF_GIT_EXTRA_PATHS]): _TEXT_LIST,

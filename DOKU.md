@@ -5,7 +5,7 @@ Admin- und Wartungsdoku.
 ## Voraussetzungen
 
 - Home Assistant ≥ 2026.10 (Container, HA OS oder Supervised). Add-on-Prüfungen und Add-on-Sicherung gibt es nur mit Supervisor.
-- Für Git: ein **privates** Repository (GitHub, Gitea/Forgejo, GitLab) mit Deploy-Key mit Schreibrecht oder einem Token, das nur für dieses Repo Contents lesen/schreiben darf.
+- Für Git: ein **privates** GitHub-Repository mit Deploy-Key mit Schreibrecht (empfohlen) oder ein Fine-grained Token, das nur für dieses Repo Contents lesen/schreiben darf. Andere Git-Server per SSH oder HTTPS funktionieren ebenfalls.
 - Optional: Cloudflare-Account für den Probe-Worker.
 - Python-Abhängigkeiten installiert HA automatisch: `dulwich`, `paramiko`.
 
@@ -43,7 +43,7 @@ Dann in den Git-Optionen `/z2m` und `/esphome` eintragen. Zum Wiederherstellen m
 2. Bastion → Konfigurieren → **Git-Versionierung**:
    - URL: `git@github.com:<user>/<repo>.git` (SSH) oder `https://…` (Token)
    - Anmeldung: **SSH-Deploy-Key** (empfohlen)
-   - **Passphrase** setzen. Ohne sie werden Dateien mit Secrets nicht gesichert.
+   - **Passphrase** setzen (Pflicht, mindestens 12 Zeichen). Alle Secrets werden damit verschlüsselt gesichert.
 3. Im nächsten Schritt den angezeigten **Public Key** im Repo als Deploy-Key **mit Schreibrecht** eintragen (GitHub: Settings → Deploy keys).
 4. Verbindungstest: Fingerprint des Servers mit dem vom Anbieter veröffentlichten vergleichen. Für github.com prüft Bastion zusätzlich gegen die von GitHub veröffentlichten Fingerprints.
 5. Speichern. Ist das Repo leer, macht Bastion sofort die erste Sicherung. Enthält das Repo schon einen Stand (zum Beispiel bei einer Neuinstallation), wartet Bastion auf die erste Änderung. So lässt sich vorher wiederherstellen.
@@ -59,7 +59,7 @@ Dann in den Git-Optionen `/z2m` und `/esphome` eintragen. Zum Wiederherstellen m
 | Inventar | `bastion/inventory/` | HA-Version, Custom-Integrationen mit Version, Dashboard-Ressourcen |
 | ESPHome | `esphome/` | `*.yaml`, `secrets.yaml` verschlüsselt |
 | Zigbee2MQTT | `zigbee2mqtt/` | `configuration.yaml`, `devices.yaml`, `groups.yaml`, `database.db`. Verschlüsselt: `secret.yaml`, `coordinator_backup.json` |
-| Add-ons | `addons/` | Optionen pro Add-on (nur Supervisor, immer verschlüsselt) |
+| Add-ons | `addons/` | Optionen pro Add-on (nur Supervisor, immer verschlüsselt). Bei Container-Installationen ausgeblendet |
 | Extra | `extra/<label>/` | Frei konfigurierte Pfade |
 
 Nie gesichert, auch nicht verschlüsselt: `.storage/auth*`, `onboarding`, `cloud`, `mobile_app`, `core.uuid`, `core.restore_state`.
@@ -131,7 +131,7 @@ Der Worker baut eine TCP-Verbindung zur IP des Aufrufers auf (`CF-Connecting-IP`
 | Git-Status `blocked` | Panel → Git, Befund „Repo ist öffentlich“ oder „Hostkey geändert“ | Repo auf privat stellen bzw. Fingerprint prüfen und Hostkey zurücksetzen |
 | Git-Status `pending`, Befund „privat nicht überprüfbar“ | Self-hosted ohne anonym erreichbares HTTPS | In den Git-Optionen bestätigen, dass das Repo privat ist |
 | `auth_failed` | Deploy-Key ohne Schreibrecht oder Token abgelaufen | Key mit „Allow write access“ eintragen, Token erneuern |
-| Befund „Dateien mit Secrets nicht gesichert“ | Keine Passphrase gesetzt | Passphrase in den Git-Optionen setzen |
+| Befund „Dateien mit Secrets nicht gesichert“ | Passphrase fehlt (z. B. alte Konfiguration) | Passphrase in den Git-Optionen setzen |
 | Restore meldet „decrypt“ | Falsche oder geänderte Passphrase | Passphrase der Zeit des Commits verwenden |
 | Restore: UI-Konfiguration unverändert | `.storage` wird erst beim Neustart eingespielt | HA neu starten. Der Befund „Wiederherstellung wartet auf Neustart“ zeigt den offenen Stand |
 | Viele Befunde „Klartext-Zugangsdaten“ | Werte stehen direkt in YAML | Nach `secrets.yaml` verschieben und mit `!secret` referenzieren |

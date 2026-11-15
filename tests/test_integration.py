@@ -69,6 +69,43 @@ async def test_config_flow(hass: HomeAssistant) -> None:
     assert entry.options["anomaly_sensitivity"] == 4.0
 
 
+async def test_git_options_require_passphrase(hass: HomeAssistant) -> None:
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    base = {
+        "git_enabled": True,
+        "git_url": "git@github.com:me/config.git",
+        "git_branch": "main",
+        "git_auth": "ssh",
+        "git_areas": ["config", "storage"],
+        "git_debounce_seconds": 120,
+        "git_daily_time": "03:17:00",
+        "git_author_name": "HA",
+        "git_author_email": "ha@example.invalid",
+        "git_allow_unverified_private": False,
+    }
+    for passphrase, error in (("", "passphrase_required"), ("short", "passphrase_too_short")):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "git"})
+        schema = result["data_schema"].schema
+        assert "clear_passphrase" not in {str(k) for k in schema}
+        areas = next(v for k, v in schema.items() if str(k) == "git_areas")
+        assert "addons" not in areas.config["options"]  # no Supervisor in Container installs
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {**base, "git_passphrase": passphrase}
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["errors"] == {"git_passphrase": error}
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "git"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {**base, "git_passphrase": "a long enough passphrase"}
+    )
+    assert result["step_id"] == "git_key"
+    assert result["description_placeholders"]["public_key"].startswith("ssh-ed25519 ")
+
+
 async def test_setup_and_audit(hass: HomeAssistant, tmp_path, aioclient_mock, hass_ws_client) -> None:
     advisory = {
         "ghsa_id": "GHSA-test-0001",

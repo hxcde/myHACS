@@ -50,7 +50,7 @@
       },
       "git": {
         "title": "Git versioning",
-        "description": "Private repository for the configuration. SSH: a deploy key is generated in the next step. HTTPS: token with contents read/write for this repository only. Token stored: {token_state}, passphrase stored: {passphrase_state}. Leave secret fields empty to keep them.",
+        "description": "Private GitHub repository for the configuration. SSH: a deploy key is generated in the next step. HTTPS: fine-grained token with contents read/write for this repository only. Secrets are always encrypted with the passphrase; keep it in your password manager. Token stored: {token_state}, passphrase stored: {passphrase_state}. Leave secret fields empty to keep them.",
         "data": {
           "git_enabled": "Enable git sync",
           "git_url": "Repository URL (SSH like git@github.com:user/repo.git, or HTTPS)",
@@ -59,8 +59,7 @@
           "git_username": "Username (HTTPS, optional)",
           "git_token": "Access token (HTTPS)",
           "regenerate_key": "Generate a new SSH key",
-          "git_passphrase": "Encryption passphrase for secrets",
-          "clear_passphrase": "Remove passphrase (secrets are no longer backed up)",
+          "git_passphrase": "Encryption passphrase for secrets (required, min. 12 characters)",
           "git_areas": "Content",
           "git_esphome_path": "ESPHome directory (default: /config/esphome)",
           "git_z2m_path": "Zigbee2MQTT data directory (default: /config/zigbee2mqtt)",
@@ -124,7 +123,9 @@
       "protocol_error": "Git protocol error.",
       "repo_public": "The repository is public. Bastion only pushes to private repositories.",
       "repo_unverified": "Bastion could not verify that the repository is private. Confirm it in the settings.",
-      "https_required": "The worker URL must use HTTPS."
+      "https_required": "The worker URL must use HTTPS.",
+      "passphrase_required": "A passphrase is required: secrets are always backed up encrypted.",
+      "passphrase_too_short": "The passphrase must have at least 12 characters."
     }
   },
   "selector": {
@@ -168,9 +169,15 @@
   },
   "entity": {
     "sensor": {
-      "security_score": { "name": "Security score" },
-      "open_findings": { "name": "Open findings" },
-      "failed_logins_24h": { "name": "Failed logins (24 h)" },
+      "security_score": {
+        "name": "Security score"
+      },
+      "open_findings": {
+        "name": "Open findings"
+      },
+      "failed_logins_24h": {
+        "name": "Failed logins (24 h)"
+      },
       "git_status": {
         "name": "Git status",
         "state": {
@@ -181,17 +188,31 @@
           "blocked": "Blocked"
         }
       },
-      "git_last_commit": { "name": "Last commit" }
+      "git_last_commit": {
+        "name": "Last commit"
+      }
     },
     "binary_sensor": {
-      "critical_findings": { "name": "Critical findings" },
-      "sabotage": { "name": "Sabotage suspicion" },
-      "anomaly": { "name": "Anomaly {entity}" }
+      "critical_findings": {
+        "name": "Critical findings"
+      },
+      "sabotage": {
+        "name": "Sabotage suspicion"
+      },
+      "anomaly": {
+        "name": "Anomaly {entity}"
+      }
     },
     "button": {
-      "run_audit": { "name": "Run audit" },
-      "git_commit": { "name": "Back up configuration now" },
-      "external_scan": { "name": "Run external check" }
+      "run_audit": {
+        "name": "Run audit"
+      },
+      "git_commit": {
+        "name": "Back up configuration now"
+      },
+      "external_scan": {
+        "name": "Run external check"
+      }
     }
   },
   "issues": {
@@ -213,32 +234,56 @@
       "name": "Back up configuration",
       "description": "Commits and pushes the configuration now.",
       "fields": {
-        "message": { "name": "Message", "description": "Optional commit message." }
+        "message": {
+          "name": "Message",
+          "description": "Optional commit message."
+        }
       }
     },
     "git_restore": {
       "name": "Restore configuration",
       "description": "Restores files from a commit. The current state is committed first.",
       "fields": {
-        "commit": { "name": "Commit", "description": "Full commit SHA." },
-        "areas": { "name": "Areas", "description": "Only these areas (empty = all)." },
-        "paths": { "name": "Paths", "description": "Only these repository paths, e.g. homeassistant/automations.yaml." },
-        "restart": { "name": "Restart", "description": "Restart Home Assistant afterwards (required for .storage)." }
+        "commit": {
+          "name": "Commit",
+          "description": "Full commit SHA."
+        },
+        "areas": {
+          "name": "Areas",
+          "description": "Only these areas (empty = all)."
+        },
+        "paths": {
+          "name": "Paths",
+          "description": "Only these repository paths, e.g. homeassistant/automations.yaml."
+        },
+        "restart": {
+          "name": "Restart",
+          "description": "Restart Home Assistant afterwards (required for .storage)."
+        }
       }
     },
     "dismiss_finding": {
       "name": "Dismiss finding",
       "description": "Hides a finding or shows it again.",
       "fields": {
-        "finding_id": { "name": "Finding ID", "description": "ID of the finding." },
-        "dismissed": { "name": "Dismissed", "description": "False shows the finding again." }
+        "finding_id": {
+          "name": "Finding ID",
+          "description": "ID of the finding."
+        },
+        "dismissed": {
+          "name": "Dismissed",
+          "description": "False shows the finding again."
+        }
       }
     },
     "accept_integrity": {
       "name": "Accept integrity baseline",
       "description": "Accepts the current files of custom_components and www as known good.",
       "fields": {
-        "domain": { "name": "Integration", "description": "Only this integration, 'www' or empty for all." }
+        "domain": {
+          "name": "Integration",
+          "description": "Only this integration, 'www' or empty for all."
+        }
       }
     },
     "reset_git_host_key": {
