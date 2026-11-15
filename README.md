@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/bastion/brand/dark_logo@2x.png">
+    <img src="custom_components/bastion/brand/logo@2x.png" alt="Bastion" height="96">
+  </picture>
+</p>
+
 # Bastion
 
 Home-Assistant-Integration für Sicherheit und Konfigurationsschutz:

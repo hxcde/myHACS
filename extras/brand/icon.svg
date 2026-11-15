@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 20 220 220" width="256" height="256">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f8cff"/>
+      <stop offset="1" stop-color="#103d8c"/>
+    </linearGradient>
+    <linearGradient id="hole" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dbe8ff"/>
+    </linearGradient>
+    <mask id="shape">
+      <path d="M48 24 H84 V52 H110 V24 H146 V52 H172 V24 H208 V150 C208 192 172 220 128 236 C84 220 48 192 48 150 Z"
+            fill="#fff" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <!-- Bastion: crenellated tower that turns into a shield -->
+  <path d="M48 24 H84 V52 H110 V24 H146 V52 H172 V24 H208 V150 C208 192 172 220 128 236 C84 220 48 192 48 150 Z"
+        fill="url(#body)" stroke="url(#body)" stroke-width="8" stroke-linejoin="round"/>
+  <!-- shaded right half -->
+  <rect x="128" y="0" width="140" height="256" fill="#000" opacity="0.14" mask="url(#shape)"/>
+  <!-- wall line -->
+  <path d="M54 66 H202" stroke="#ffffff" stroke-opacity="0.22" stroke-width="5" stroke-linecap="round"/>
+  <!-- keyhole -->
+  <circle cx="128" cy="122" r="24" fill="url(#hole)"/>
+  <path d="M117 134 L110 184 Q109 190 115 190 H141 Q147 190 146 184 L139 134 Z" fill="url(#hole)"/>
+</svg>

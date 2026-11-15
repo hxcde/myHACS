@@ -42,8 +42,10 @@ custom_components/bastion/
     stats.py             Welford-Statistik, Sensor-Modell, Stunden-Histogramm (ohne HA-Abhängigkeit)
     engine.py            Sampling, Login-/Aktions-Anomalien, Sabotage, Outbound
   frontend/bastion-panel.js   Panel (Tabs: Übersicht, Anmeldungen, Git, Anomalien, Extern)
+  brand/                 Icon und Logo (hell/dunkel), lädt HA ab 2026 direkt aus der Integration
   strings.json, translations/{en,de}.json, services.yaml, manifest.json
 extras/cloudflare-worker/     Worker für die externe Port-Prüfung
+extras/brand/                 Quelle des Logos: icon.svg, render.js (Playwright) und build.py (Zuschnitt und Größen)
 tests/                        pytest (reine Logik, HA-Integration, SSH Ende-zu-Ende)
 hacs.json                     Marketplace-Metadaten
 ```
