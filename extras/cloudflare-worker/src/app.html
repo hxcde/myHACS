@@ -1160,7 +1160,8 @@ td .name { font-weight: 600; }
         <td class="hide-sm">${esc(x.email || "")}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">Keine Zugriffe im Zeitraum.</div>`;
     const total = (d.sessions || []).length;
-    return card("Dashboard-Zugriffe", body, { flush: true, sub: "Sitzungen hinter Cloudflare Access", right: `<span class="faint small">${total}</span>` });
+    const only = (d.countries || []).length ? ` · nur aus ${d.countries.join(", ")}` : "";
+    return card("Dashboard-Zugriffe", body, { flush: true, sub: `Sitzungen hinter Cloudflare Access${only}`, right: `<span class="faint small">${total}</span>` });
   }
 
   function canaryCard(d) {

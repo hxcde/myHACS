@@ -770,3 +770,34 @@ test("history import also runs when a live outage was recorded first", async () 
   assert.deepEqual(sum.outages.map((o) => o.kind), ["network", "restart"]);
   assert.equal(sum.outages[0].end - sum.outages[0].start, 1200);
 });
+
+test("ALLOWED_COUNTRIES limits browser access, Home Assistant and Pushover stay reachable", async () => {
+  const env = makeEnv({ ...ACCESS, ALLOWED_COUNTRIES: "DE" });
+  const jwt = await accessSetup();
+  const token = await jwt({ aud: ["aud123"], iss: "https://team.cloudflareaccess.com", exp: Math.floor(Date.now() / 1000) + 600, email: "owner@example.com" });
+  const from = (req, country) => {
+    Object.defineProperty(req, "cf", { value: country ? { country } : {} });
+    return req;
+  };
+  const page = (country, path = "/") => worker.fetch(from(new Request(`${ORIGIN}${path}`, { headers: { "cf-access-jwt-assertion": token } }), country), env);
+  assert.equal((await worker.fetch(from(signed("/heartbeat", HB), "NL"), env)).status, 200, "signed heartbeat from anywhere");
+  assert.equal((await page("DE")).status, 200);
+  const fr = await page("FR");
+  assert.equal(fr.status, 403);
+  assert.match(await fr.text(), /nur aus DE/);
+  assert.equal((await page(null)).status, 403, "unknown country");
+  assert.equal((await page("T1", "/api/summary")).status, 403, "Tor");
+  assert.equal((await page("US", "/manifest.webmanifest")).status, 403);
+  const token2 = await incidentToken(env, "abcdef12");
+  assert.equal((await worker.fetch(from(new Request(`https://w.example/i/abcdef12?t=${token2}`), "US"), env)).status, 403);
+  // Pushover's servers are abroad: the callback is not filtered (it fails on the token here)
+  const cb = await worker.fetch(from(new Request("https://w.example/pushover/wrong", { method: "POST", body: "receipt=x" }), "US"), env);
+  assert.equal(cb.status, 401);
+  // decoys are detected before the country filter
+  const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoyMDE1MzYwMDAwfQ.KaNVmRcojoJzmGKYgNfrjNoac1wAstoec4V2wn-R6JY";
+  const decoy = await worker.fetch(from(new Request("https://w.example/api/states", { headers: { authorization: `Bearer ${TOKEN}` } }), "RU"), env);
+  assert.equal(decoy.status, 401);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM canary_hits").first()).n, 1);
+  const sum = await (await page("DE", "/api/summary")).json();
+  assert.deepEqual(sum.countries, ["DE"]);
+});

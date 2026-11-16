@@ -33,6 +33,8 @@
 //   ATTACK_BLOCK_AFTER   default 10 rejected requests of one IP in 20 min -> block
 //   ATTACK_BLOCK_MINUTES default 60
 //   ACCESS_ALERT         "new" (default: push for a new device or country), "all", "off"
+//   ALLOWED_COUNTRIES    optional, e.g. "DE": dashboard, incident pages and app files only from these
+//                        countries. Signed requests of Home Assistant and Pushover callbacks stay open.
 // D1 binding: DB
 
 import { connect } from "cloudflare:sockets";
@@ -45,7 +47,7 @@ import * as remote from "./remote.js";
 import { trackAccess } from "./sessions.js";
 import * as store from "./store.js";
 import * as uptime from "./uptime.js";
-import { clientIp, hmacHex, json, nowS, timingSafeEqual, writeBudget } from "./util.js";
+import { clientIp, geo, hmacHex, json, nowS, timingSafeEqual, writeBudget } from "./util.js";
 
 const DEFAULT_PORTS = [
   21, 22, 23, 80, 139, 443, 445, 1880, 1883, 2375, 2376, 3000, 3389, 5000,
@@ -771,6 +773,7 @@ async function apiSummary(env, url, user) {
     attempts: await store.attemptsSince(env, since),
     blocked: await store.blockedList(env, since),
     exposure: await store.getState(env, "exposure"),
+    countries: allowedCountries(env),
     outages: await store.outagesSince(env, since),
     uptime_since: await store.getState(env, "uptime_since"),
     sessions: await store.sessionsSince(env, since),
@@ -843,6 +846,26 @@ async function handleSigned(request, env, url, ctx, fn) {
   return response || fn(env, data);
 }
 
+// Country filter for everything people open in a browser. Home Assistant's requests are
+// signed and Pushover's callback carries a secret token, so they stay reachable: a wrong
+// geolocation of the home connection must never silence the dead man's switch.
+const OPEN_POST = /^\/(heartbeat|alert|snapshot|backfill|commands|remote|probe)$|^\/pushover\//;
+
+export function allowedCountries(env) {
+  return String(env.ALLOWED_COUNTRIES || "").toUpperCase().split(/[\s,;]+/).filter((c) => /^[A-Z0-9]{2}$/.test(c));
+}
+
+function countryBlocked(request, env, url) {
+  const allowed = allowedCountries(env);
+  if (!allowed.length || (request.method === "POST" && OPEN_POST.test(url.pathname))) return null;
+  const country = geo(request).country.toUpperCase();
+  if (allowed.includes(country)) return null;
+  return new Response(`Zugriff nur aus ${allowed.join(", ")} erlaubt.`, {
+    status: 403,
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -851,6 +874,8 @@ export default {
       // Decoys first: whatever the path, a decoy token or URL is never legitimate.
       const decoy = await detectCanary(request, env, url);
       if (decoy) return await canaryResponse(request, env, ctx, url, decoy);
+      const geoBlock = countryBlocked(request, env, url);
+      if (geoBlock) return geoBlock;
       if (request.method === "GET" || request.method === "HEAD") return await handleGet(request, env, url, ctx);
       if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
       if (path.startsWith("/api/")) return await handleDashboardPost(request, env, url, ctx);

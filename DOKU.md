@@ -232,6 +232,13 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Tab „Verfügbarkeit“: Verfügbarkeit im Zeitraum (gesamt und ohne geplante Neustarts), Ampel pro Tag (ab 90 Tagen pro Woche), Ausfallminuten pro Tag und die Liste aller Ausfälle mit Ursache.
 - Ausfälle von vor dieser Version übernimmt der Worker einmalig aus dem Protokoll („Wieder erreichbar“). Gemessen wird ab dem ersten Lebenszeichen, die Dauer ist auf ein Intervall genau.
 
+**Nur bestimmte Länder (`ALLOWED_COUNTRIES`):**
+- Variable im Worker, z. B. `DE` oder `DE,AT`. Dann öffnen Dashboard, Vorfallseiten (auch der Link aus dem Push) und App-Dateien nur aus diesen Ländern, alles andere bekommt 403. Unbekanntes Land und Tor zählen als gesperrt. Leer = keine Einschränkung.
+- Offen bleiben die signierten Anfragen von HA (Lebenszeichen, Alarme, Bilder, Befehle) und der Pushover-Rückruf. Eine falsche Geolokalisierung des Heimanschlusses darf den Totmannschalter nicht abschalten, die Signatur schützt diese Wege ohnehin.
+- Köder werden vor dem Länderfilter erkannt, ihre Benutzung aus dem Ausland wird also weiter gemeldet.
+- Auf Reisen: Mobilfunk-Roaming in der EU nutzt meist eine deutsche IP, fremdes WLAN nicht. Dann ist das Dashboard gesperrt, Pushs kommen trotzdem.
+- Zusätzlich lässt sich in der Access-Anwendung des Dashboards eine Regel „Require → Country“ setzen, dann sperrt Cloudflare schon vor dem Login.
+
 **Zugriffsprotokoll:**
 - Jeder Aufruf des Dashboards wird pro Gerät (Konto + Browser/System) und IP als Sitzung gespeichert, mit Land und Stadt. 30 Minuten ohne Aufruf beenden eine Sitzung.
 - Neues Gerät oder neues Land eines Kontos: Meldung mit hoher Priorität und Eintrag im HA-Anmelde-Protokoll (`dashboard_access`). `ACCESS_ALERT=all` meldet jede Sitzung, `off` keine.
