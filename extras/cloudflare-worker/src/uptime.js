@@ -72,6 +72,7 @@ const KIND_FROM_TEXT = [
 ];
 
 // Outages from before this table existed, taken from the event log (runs once).
+// Outages recorded live before the import cover their own time; only older events are taken over.
 export async function ensureHistory(env) {
   if (await store.getState(env, "uptime_since")) return;
   const events = await store.eventsSince(env, 0, 10000);
@@ -79,19 +80,18 @@ export async function ensureHistory(env) {
   const hb = await store.getState(env, "hb");
   const stored = await store.firstStored(env);
   const first = Math.min(nowS(), ...own.map((e) => e.ts), hb ? Math.floor(hb.received / 1000) : nowS(), stored || nowS());
-  const { n } = await store.outageTotal(env);
-  if (!n) {
-    for (const e of events) {
-      if (e.event !== "online" && e.event !== "restart") continue;
-      const cause = (e.detail && e.detail.cause) || "";
-      const kind = (KIND_FROM_TEXT.find(([re]) => re.test(cause)) || [null, "network"])[1];
-      const minutes = (e.detail && Number(e.detail.minutes)) || 0;
-      await store.addOutage(env, { start: e.ts - minutes * 60, end: e.ts, kind: e.event === "restart" && kind === "network" ? "restart" : kind, cause });
-    }
-    if (hb && hb.offline && !hb.outage_id) {
-      hb.outage_id = await onOffline(env, hb, hb.offline_notified);
-      await store.setState(env, "hb", hb);
-    }
+  const live = (await store.outageTotal(env)).first;
+  for (const e of events) {
+    if (e.event !== "online" && e.event !== "restart") continue;
+    if (live != null && e.ts >= live) continue;
+    const cause = (e.detail && e.detail.cause) || "";
+    const kind = (KIND_FROM_TEXT.find(([re]) => re.test(cause)) || [null, "network"])[1];
+    const minutes = (e.detail && Number(e.detail.minutes)) || 0;
+    await store.addOutage(env, { start: e.ts - minutes * 60, end: e.ts, kind: e.event === "restart" && kind === "network" ? "restart" : kind, cause });
+  }
+  if (hb && hb.offline && !hb.outage_id) {
+    hb.outage_id = await onOffline(env, hb, hb.offline_notified);
+    await store.setState(env, "hb", hb);
   }
   await store.setState(env, "uptime_since", first);
 }

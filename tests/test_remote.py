@@ -287,3 +287,16 @@ async def test_remote_websocket(hass: HomeAssistant, alarm, aioclient_mock, hass
     assert res["result"]["config"]["remote"]["reminder_minutes"] == 30
     await client.send_json({"id": 3, "type": "bastion/alarm/save", "config": {"remote": {"persons": ["light.x"]}}})
     assert not (await client.receive_json())["success"]
+
+
+async def test_reminder_finds_persons_created_later(hass: HomeAssistant, alarm) -> None:  # noqa: F811
+    await alarm.async_update_config({"remote": {"reminder": True, "reminder_minutes": 10}})
+    presence = alarm.bastion.presence
+    presence.setup()  # no person entities yet (startup order)
+    hass.states.async_set("person.anna", "not_home", {"friendly_name": "Anna"})
+    await hass.async_block_till_done()
+    _fire(hass, 11 * 60)
+    await hass.async_block_till_done()
+    reminders = [e for e in alarm.log if e["type"] == "unarmed"]
+    assert len(reminders) == 1 and reminders[0]["persons"] == ["Anna"]
+    presence.unload()

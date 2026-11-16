@@ -755,3 +755,18 @@ test("reminder push links to the dashboard action", async () => {
   assert.equal(po.length, 1);
   assert.ok(decoded(po[0]).includes("seit 20 Min.") && decoded(po[0]).includes("Jetzt scharf schalten"));
 });
+
+test("history import also runs when a live outage was recorded first", async () => {
+  const env = makeEnv(ACCESS);
+  const d = await dashboard(env);
+  await worker.fetch(signed("/heartbeat", HB), env);
+  const ts = Math.floor(Date.now() / 1000) - 7200;
+  await env.DB.prepare("INSERT INTO events (ts, event, detail) VALUES (?, 'online', ?)")
+    .bind(ts, JSON.stringify({ minutes: 20, cause: "Home Assistant lief durch – Internet oder Netzwerk war unterbrochen." }))
+    .run();
+  // a restart reaches the worker before the cron job or the dashboard ran the import
+  await worker.fetch(signed("/heartbeat", { ...HB, started: 2000 }), env);
+  const sum = await (await d.get("/api/summary?days=7")).json();
+  assert.deepEqual(sum.outages.map((o) => o.kind), ["network", "restart"]);
+  assert.equal(sum.outages[0].end - sum.outages[0].start, 1200);
+});

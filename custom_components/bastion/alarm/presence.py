@@ -14,7 +14,11 @@ from datetime import datetime
 from homeassistant.const import STATE_HOME, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.event import async_call_later, async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_state_added_domain,
+    async_track_state_change_event,
+)
 
 from .engine import DISARMED, SIGNAL_ALARM
 
@@ -52,6 +56,9 @@ class PresenceReminder:
         if not self.cfg.get("reminder"):
             return
         self._persons = self.persons()
+        if not self.cfg.get("persons"):
+            # All persons: also those that appear later (startup order, newly created persons).
+            self._unsubs.append(async_track_state_added_domain(self.hass, "person", self._person_added))
         if not self._persons:
             return
         self._unsubs.append(async_track_state_change_event(self.hass, self._persons, self._check))
@@ -76,6 +83,11 @@ class PresenceReminder:
         return bool(states) and all(
             s is not None and s.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE, STATE_HOME) for s in states
         )
+
+    @callback
+    def _person_added(self, event) -> None:
+        if event.data["entity_id"] not in self._persons:
+            self.setup()
 
     @callback
     def _check(self, *_args) -> None:
