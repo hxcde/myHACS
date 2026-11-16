@@ -14,6 +14,7 @@
     "media_source",
     "mobile_app",
     "mqtt",
+    "network",
     "recorder",
     "webhook"
   ],

@@ -134,8 +134,23 @@ def _arp_lookup(ip: str) -> bool:
     return False
 
 
+async def _resolve(hass: HomeAssistant, host: str) -> str:
+    """IPv4 address of a host name (the name itself if it cannot be resolved)."""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            infos = await hass.loop.getaddrinfo(host, None, family=socket.AF_INET, type=socket.SOCK_STREAM)
+        except OSError:
+            return host
+        if infos:
+            return str(infos[0][4][0])
+    return host
+
+
 async def async_probe(hass: HomeAssistant, host: str) -> str | None:
     """Name of the first check that found the device, None if it is silent."""
+    host = await _resolve(hass, host)
     onlink = _onlink(host, await _local_networks(hass))
     results = await asyncio.gather(*(_tcp_alive(host, port, onlink) for port in PROBE_PORTS))
     if any(results):

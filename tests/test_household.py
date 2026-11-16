@@ -249,3 +249,39 @@ async def test_person_needs_ip_or_tracker(hass: HomeAssistant, alarm, hass_ws_cl
     assert any(t["entity_id"] == "device_tracker.unifi_phone" for t in res["result"]["trackers"])
     assert not any(t["entity_id"].startswith("device_tracker.bastion") for t in res["result"]["trackers"])
     alarm.bastion.household.unload()
+
+
+async def test_hostnames_are_resolved_before_the_subnet_check(hass: HomeAssistant) -> None:
+    import ipaddress  # noqa: PLC0415
+    import socket  # noqa: PLC0415
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from custom_components.bastion.alarm import household as hh  # noqa: PLC0415
+
+    async def getaddrinfo(host, *_args, **_kwargs):
+        assert host == "phone.lan"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.20", 0))]
+
+    async def no(*_args):
+        return False
+
+    async def nets(_hass):
+        return [ipaddress.IPv4Network("192.168.1.0/24")]
+
+    seen = []
+
+    async def tcp(host, _port, onlink):
+        seen.append((host, onlink))
+        return False
+
+    with (
+        patch.object(hass.loop, "getaddrinfo", getaddrinfo),
+        patch.object(hh, "_tcp_alive", tcp),
+        patch.object(hh, "_icmp_alive", no),
+        patch.object(hh, "_local_networks", nets),
+        patch.object(hh, "_arp_poke", lambda _ip: None),
+        patch.object(hh, "_arp_lookup", lambda ip: ip == "192.168.1.20"),
+        patch.object(hh, "ARP_SETTLE", 0),
+    ):
+        assert await hh.async_probe(hass, "phone.lan") == "arp"
+    assert seen and all(s == ("192.168.1.20", True) for s in seen)
