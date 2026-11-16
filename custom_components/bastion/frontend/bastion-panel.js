@@ -42,11 +42,29 @@ const I18N = {
       open_title: "Offene Sensoren",
       open_text: "Diese Sensoren sind offen. Trotzdem scharf schalten? Sie werden überbrückt, bis sie wieder schließen.",
       force: "Trotzdem scharf schalten",
-      sections: { rooms: "Räume & Sensoren", modes: "Modi & Zeiten", actions: "Aktionen", sounds: "Töne", codes: "Codes", worker: "Cloud-Worker" },
+      sections: { rooms: "Räume & Sensoren", people: "Personen", modes: "Modi & Zeiten", actions: "Aktionen", sounds: "Töne", codes: "Codes", worker: "Cloud-Worker" },
       import_areas: "Räume aus HA-Bereichen übernehmen",
       add_room: "Raum hinzufügen",
       room_name: "Name",
       room_icon: "Icon (mdi:…)",
+      choose_icon: "Icon wählen",
+      icon_search: "Suchen, z. B. Küche, Bad, bed …",
+      icon_custom: "Anderes MDI-Icon",
+      icon_apply: "Übernehmen",
+      people: "Personen",
+      people_help: "Personen im Haushalt mit der IP-Adresse ihres Handys. Bastion prüft alle 30 Sekunden, ob das Handy im Heimnetz antwortet, und erkennt so, wer zuhause ist. Daraus entstehen device_tracker-Entitäten (für HA-Personen nutzbar) und „Jemand zuhause“. Die Erinnerung „niemand zuhause“ nutzt diese Personen.",
+      person_name: "Name",
+      people_add: "Person hinzufügen",
+      people_new: "neu – speichern",
+      people_home: "zuhause",
+      people_away: "weg",
+      people_unknown: "wird ermittelt",
+      people_test: "Prüfen",
+      people_seen: "Zuletzt gesehen",
+      people_found: "Antwortet",
+      people_not_found: "Keine Antwort. Ist das Handy im WLAN und die IP richtig?",
+      people_away_minutes: "Als weg nach (Minuten ohne Antwort)",
+      people_hint: "Tipps: Im Router für jedes Handy eine feste IP vergeben (DHCP-Reservierung). Am iPhone für das Heim-WLAN „Private WLAN-Adresse“ auf „Fest“ oder „Aus“ stellen, bei Android „Zufällige MAC“ aus, sonst wechselt die Adresse. Handys schlafen: Darum gilt jemand erst nach der eingestellten Zeit ohne Antwort als weg.",
       delete: "Löschen",
       add_sensor: "Sensor hinzufügen …",
       type: { instant: "Sofort", delayed: "Verzögert", always: "Immer (24 h)" },
@@ -120,7 +138,7 @@ const I18N = {
       reminder_enabled: "Erinnern, wenn niemand zuhause ist",
       reminder_minutes: "Nach Minuten",
       persons: "Personen",
-      persons_all: "Leer = alle Personen",
+      persons_all: "Leer = Personen aus „Personen“ (Handy-IP), sonst alle Personen von Home Assistant",
       add_person: "Person hinzufügen …",
       extra_events: { unarmed: "Niemand zuhause, nicht scharf" },
       offsite: "Protokoll außer Haus",
@@ -300,11 +318,29 @@ const I18N = {
       open_title: "Open sensors",
       open_text: "These sensors are open. Arm anyway? They are bypassed until they close again.",
       force: "Arm anyway",
-      sections: { rooms: "Rooms & sensors", modes: "Modes & timing", actions: "Actions", sounds: "Sounds", codes: "Codes", worker: "Cloud worker" },
+      sections: { rooms: "Rooms & sensors", people: "People", modes: "Modes & timing", actions: "Actions", sounds: "Sounds", codes: "Codes", worker: "Cloud worker" },
       import_areas: "Create rooms from HA areas",
       add_room: "Add room",
       room_name: "Name",
       room_icon: "Icon (mdi:…)",
+      choose_icon: "Choose icon",
+      icon_search: "Search, e.g. kitchen, bath, bed …",
+      icon_custom: "Other MDI icon",
+      icon_apply: "Apply",
+      people: "People",
+      people_help: "People of the household with the IP address of their phone. Every 30 seconds Bastion checks whether the phone answers in the home network and so knows who is home. This creates device_tracker entities (usable for HA persons) and 'Someone home'. The 'nobody home' reminder uses these people.",
+      person_name: "Name",
+      people_add: "Add person",
+      people_new: "new – save",
+      people_home: "home",
+      people_away: "away",
+      people_unknown: "detecting",
+      people_test: "Check",
+      people_seen: "Last seen",
+      people_found: "Answers",
+      people_not_found: "No answer. Is the phone on the WLAN and the IP correct?",
+      people_away_minutes: "Away after (minutes without answer)",
+      people_hint: "Tips: give every phone a fixed IP in the router (DHCP reservation). On iPhone set 'Private Wi-Fi address' for the home network to 'Fixed' or 'Off', on Android turn off 'Randomized MAC', otherwise the address changes. Phones sleep: someone only counts as away after the set time without answer.",
       delete: "Delete",
       add_sensor: "Add sensor …",
       type: { instant: "Instant", delayed: "Delayed", always: "Always (24 h)" },
@@ -378,7 +414,7 @@ const I18N = {
       reminder_enabled: "Remind when nobody is home",
       reminder_minutes: "After minutes",
       persons: "People",
-      persons_all: "Empty = all people",
+      persons_all: "Empty = people from 'People' (phone IP), else all Home Assistant persons",
       add_person: "Add person …",
       extra_events: { unarmed: "Nobody home, not armed" },
       offsite: "Off-site log",
@@ -564,6 +600,32 @@ function esc(value) {
     .replace(/'/g, "&#39;");
 }
 const icon = (name, color) => `<ha-icon icon="${esc(name)}"${color ? ` style="color:${color}"` : ""}></ha-icon>`;
+
+// Icons for rooms, with German and English search words.
+const ROOM_ICONS = [
+  ["door", "tür flur eingang door hall"], ["door-open", "tür offen eingang"], ["door-sliding", "schiebetür terrasse"], ["door-closed-lock", "haustür abgeschlossen"],
+  ["home", "haus home"], ["home-outline", "haus"], ["home-floor-0", "erdgeschoss eg"], ["home-floor-1", "obergeschoss og"], ["home-floor-2", "dachgeschoss"],
+  ["home-floor-b", "keller basement"], ["home-roof", "dach dachboden"], ["stairs", "treppe stairs"], ["stairs-up", "treppenhaus"], ["elevator", "aufzug"],
+  ["sofa", "wohnzimmer sofa couch living"], ["sofa-outline", "wohnzimmer"], ["television", "fernseher tv wohnzimmer"], ["fireplace", "kamin"],
+  ["bed", "schlafzimmer bett bedroom"], ["bed-king-outline", "schlafzimmer"], ["bed-single", "gästezimmer gast"], ["bunk-bed", "kinderzimmer"],
+  ["teddy-bear", "kinderzimmer kinder kids"], ["human-child", "kind kinder"], ["baby-carriage", "baby"],
+  ["stove", "küche herd kitchen"], ["fridge", "küche kühlschrank"], ["silverware-fork-knife", "esszimmer essen dining"], ["chef-hat", "küche kochen"],
+  ["coffee", "kaffee küche"], ["countertop", "küche"], ["dishwasher", "spülmaschine"], ["washing-machine", "waschküche wäsche laundry"], ["tumble-dryer", "trockner wäsche"],
+  ["shower", "bad dusche bathroom"], ["bathtub", "bad badewanne"], ["toilet", "wc toilette gäste"], ["paper-roll", "wc"],
+  ["desk", "büro arbeitszimmer office"], ["laptop", "büro"], ["monitor", "büro computer"], ["bookshelf", "bibliothek bücher"], ["library", "bibliothek"],
+  ["briefcase", "arbeit büro"], ["printer", "drucker"], ["gamepad-variant", "spielzimmer gaming"], ["music", "musik"], ["guitar-acoustic", "musikzimmer"],
+  ["dumbbell", "fitness sport gym"], ["yoga", "sport yoga"], ["window-closed-variant", "fenster"], ["window-open-variant", "fenster offen"],
+  ["window-shutter", "rollladen"], ["curtains", "vorhang"], ["wardrobe-outline", "ankleide schrank"], ["hanger", "garderobe"], ["tshirt-crew", "ankleide kleidung"],
+  ["shoe-formal", "garderobe schuhe"], ["garage", "garage"], ["garage-variant", "garage"], ["gate", "tor einfahrt"], ["car", "auto carport"], ["car-side", "carport"],
+  ["bicycle", "fahrrad keller"], ["motorbike", "motorrad"], ["tools", "werkstatt werkzeug"], ["hammer-wrench", "werkstatt"], ["toolbox", "werkstatt"],
+  ["package-variant", "abstellraum lager"], ["warehouse", "lager halle"], ["archive", "abstellraum archiv"], ["server", "technik serverraum"],
+  ["router-wireless", "technik netzwerk"], ["water", "hauswirtschaft wasser"], ["radiator", "heizung heizungsraum"], ["solar-panel", "solar"],
+  ["flower", "garten blumen garden"], ["tree", "garten baum"], ["pine-tree", "garten"], ["grass", "garten rasen"], ["balcony", "balkon"],
+  ["greenhouse", "gewächshaus"], ["barn", "scheune schuppen"], ["fence", "zaun grundstück"], ["grill", "terrasse grill"], ["umbrella-beach", "terrasse"],
+  ["pool", "pool schwimmbad"], ["hot-tub", "whirlpool wellness"], ["mailbox", "briefkasten"], ["cctv", "kamera überwachung"], ["shield-home", "sicherheit"],
+  ["lightbulb", "licht"], ["lamp", "lampe"], ["ceiling-light", "deckenlicht"], ["floor-lamp", "stehlampe"],
+  ["paw", "haustier tiere"], ["dog", "hund"], ["cat", "katze"], ["fish", "aquarium fisch"], ["account", "person zimmer"], ["account-group", "familie"],
+].map(([name, words]) => [`mdi:${name}`, `${name.replace(/-/g, " ")} ${words}`]);
 
 function toDate(value) {
   if (!value) return null;
@@ -1258,6 +1320,9 @@ class BastionPanel extends HTMLElement {
             ${icon(ic)}<span class="mode-name">${esc(a.modes[key])}</span><span class="mode-hint">${esc(a.mode_hint[key])}</span>
           </button>`).join("")}
       </div>
+      ${(this._alarm.household || []).length ? `
+      <h2>${icon("mdi:account-group")}${esc(a.people)}</h2>
+      <div class="people-strip">${this._alarm.household.map((p) => `<span class="chip big" ${p.home ? `style="--c:${GOOD}"` : ""}>${icon(p.home ? "mdi:home-account" : p.home === false ? "mdi:home-export-outline" : "mdi:help-circle-outline", p.home ? GOOD : undefined)}${esc(p.name)}<span class="muted small">${esc(p.home ? a.people_home : p.home === false ? a.people_away : a.people_unknown)}</span></span>`).join("")}</div>` : ""}
       <h2>${icon("mdi:floor-plan")}${esc(a.rooms)}</h2>
       ${rooms.length === 0 ? `<div class="card empty">${icon("mdi:floor-plan")}<div>${esc(a.no_rooms)}</div></div>` : `
       <div class="room-grid">
@@ -1374,6 +1439,7 @@ class BastionPanel extends HTMLElement {
     const sections = Object.keys(a.sections);
     let body = "";
     if (this._section === "rooms") body = this._settingsRooms(d);
+    else if (this._section === "people") body = this._settingsPeople(d);
     else if (this._section === "modes") body = this._settingsModes(d);
     else if (this._section === "actions") body = this._settingsActions(d);
     else if (this._section === "sounds") body = this._settingsSounds(d);
@@ -1387,6 +1453,53 @@ class BastionPanel extends HTMLElement {
       ${this._head("settings", actions)}
       <div class="segmented">${sections.map((key) => `<button class="seg-item ${this._section === key ? "on" : ""}" data-section="${key}">${esc(a.sections[key])}</button>`).join("")}</div>
       ${body}`;
+  }
+
+  _iconPanel(current) {
+    const a = this.t.alarm;
+    return `
+      <div class="icon-panel">
+        <input class="input" data-icon-search placeholder="${esc(a.icon_search)}" autocomplete="off">
+        <div class="icon-grid">${ROOM_ICONS.map(([name, words]) => `<button class="icon-opt ${name === current ? "on" : ""}" data-icon-set="${name}" data-words="${esc(words)}" title="${esc(name)}">${icon(name)}</button>`).join("")}</div>
+        <div class="icon-custom">
+          <span class="label">${esc(a.icon_custom)}</span>
+          <input class="input mono" data-icon-custom value="${esc(current)}" placeholder="mdi:…">
+          <button class="btn small" data-icon-apply>${esc(a.icon_apply)}</button>
+        </div>
+      </div>`;
+  }
+
+  _settingsPeople(d) {
+    const a = this.t.alarm;
+    const live = Object.fromEntries((this._alarm.household || []).map((p) => [p.id, p]));
+    const chip = (p) => {
+      const st = p.id ? live[p.id] : null;
+      if (!st) return `<span class="chip tiny">${esc(a.people_new)}</span>`;
+      if (st.home === true) return `<span class="chip tiny" style="--c:${GOOD}">${icon("mdi:home-account", GOOD)}${esc(a.people_home)}</span>`;
+      if (st.home === false) return `<span class="chip tiny">${icon("mdi:home-export-outline")}${esc(a.people_away)}</span>`;
+      return `<span class="chip tiny">${esc(a.people_unknown)}</span>`;
+    };
+    return `
+      <section class="card">
+        <div class="muted small">${esc(a.people_help)}</div>
+        <div class="people">${d.people.map((p, i) => {
+          const st = p.id ? live[p.id] : null;
+          const probe = this._probe && this._probe.i === i ? `<div class="person-seen ${this._probe.ok ? "" : "warn-text"}">${esc(this._probe.text)}</div>` : "";
+          return `<div class="person-row">
+            <span class="room-icon">${icon("mdi:account")}</span>
+            <input class="input" data-person-name="${i}" value="${esc(p.name)}" placeholder="${esc(a.person_name)}">
+            <input class="input mono" data-person-ip="${i}" value="${esc(p.ip)}" placeholder="192.168.1.20" autocomplete="off">
+            ${chip(p)}
+            <button class="btn small" data-person-test="${i}">${icon("mdi:radar")}${esc(a.people_test)}</button>
+            <button class="btn small ghost danger" data-person-delete="${i}" aria-label="${esc(a.delete)}">${icon("mdi:delete-outline")}</button>
+            ${st && st.last_seen ? `<div class="person-seen muted">${esc(a.people_seen)} ${esc(this.rel(st.last_seen))}${st.method ? ` · ${esc(st.method)}` : ""}</div>` : ""}
+            ${probe}
+          </div>`;
+        }).join("")}</div>
+        <div class="actionbar"><button class="btn" data-action="person-add">${icon("mdi:account-plus")}${esc(a.people_add)}</button></div>
+        <label class="field"><span>${esc(a.people_away_minutes)}</span><input class="input" type="number" min="2" max="60" data-presence-minutes value="${esc(d.presence.away_minutes)}"></label>
+        <div class="muted small">${esc(a.people_hint)}</div>
+      </section>`;
   }
 
   _candidateOptions(exclude) {
@@ -1410,11 +1523,11 @@ class BastionPanel extends HTMLElement {
       ${d.rooms.map((room, ri) => `
         <section class="card edit-room">
           <div class="room-edit-head">
-            <span class="room-icon">${icon(room.icon || "mdi:door")}</span>
+            <button class="room-icon icon-pick ${this._iconFor === ri ? "on" : ""}" data-icon-pick="${ri}" title="${esc(a.choose_icon)}" aria-label="${esc(a.choose_icon)}">${icon(room.icon || "mdi:door")}<span class="pick-caret">${icon("mdi:chevron-down")}</span></button>
             <input class="input grow" data-room-name="${ri}" value="${esc(room.name)}" placeholder="${esc(a.room_name)}">
-            <input class="input icon-input" data-room-icon="${ri}" value="${esc(room.icon || "")}" placeholder="${esc(a.room_icon)}">
             <button class="btn small ghost danger" data-room-delete="${ri}">${icon("mdi:delete-outline")}${esc(a.delete)}</button>
           </div>
+          ${this._iconFor === ri ? this._iconPanel(room.icon || "mdi:door") : ""}
           ${room.sensors.map((e) => {
             const cfg = { modes: ["home", "night", "away"], type: "delayed", bypass: false, ...(d.sensors[e] || {}) };
             const haName = this._hass.states[e]?.attributes?.friendly_name || e;
@@ -1693,6 +1806,8 @@ class BastionPanel extends HTMLElement {
       require_code_arm: cfg.require_code_arm, sabotage_triggers: cfg.sabotage_triggers, actions: cfg.actions,
       worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled, cameras: cfg.worker.cameras || [], snapshots: cfg.worker.snapshots ?? 3, public_url: cfg.worker.public_url || "" },
       remote: { enabled: false, disarm: false, reminder: false, reminder_minutes: 20, persons: [], ...(cfg.remote || {}) },
+      people: (cfg.people || []).map((x) => ({ ...x })),
+      presence: { away_minutes: 10, ...(cfg.presence || {}) },
       sounds: { players: [], volume: 0.9, notice_volume: 0.5, triggered: "", pending: "", arming: "", armed: "", disarmed: "", ...(cfg.sounds || {}) },
     }));
     this._alarmView = "settings";
@@ -1771,7 +1886,36 @@ class BastionPanel extends HTMLElement {
     on('[data-action="room-add"]', () => { d.rooms.push({ name: `${this.t.alarm.rooms} ${d.rooms.length + 1}`, icon: "mdi:door", sensors: [] }); this._render(); });
     on('[data-action="room-import"]', () => { this._importAreas(); this._render(); });
     on("[data-room-name]", (el) => { d.rooms[+el.dataset.roomName].name = el.value; }, "input");
-    on("[data-room-icon]", (el) => { d.rooms[+el.dataset.roomIcon].icon = el.value.trim(); }, "change");
+    // icon picker
+    on("[data-icon-pick]", (el) => {
+      const ri = +el.dataset.iconPick;
+      this._iconFor = this._iconFor === ri ? null : ri;
+      this._render();
+      const search = this.shadowRoot.querySelector("[data-icon-search]");
+      if (search) search.focus();
+    });
+    on("[data-icon-search]", (el) => {
+      const q = el.value.trim().toLowerCase();
+      root.querySelectorAll("[data-icon-set]").forEach((b) => { b.hidden = Boolean(q) && !b.dataset.words.includes(q); });
+    }, "input");
+    on("[data-icon-search]", (el, ev) => { if (ev.key === "Escape") { this._iconFor = null; this._render(); } }, "keydown");
+    on("[data-icon-set]", (el) => { if (this._iconFor != null) { d.rooms[this._iconFor].icon = el.dataset.iconSet; this._iconFor = null; this._render(); } });
+    on("[data-icon-apply]", () => {
+      const value = (root.querySelector("[data-icon-custom]")?.value || "").trim();
+      if (this._iconFor != null && /^mdi:[a-z0-9-]+$/.test(value)) { d.rooms[this._iconFor].icon = value; this._iconFor = null; this._render(); }
+    });
+    // people
+    on("[data-person-name]", (el) => { d.people[+el.dataset.personName].name = el.value; }, "input");
+    on("[data-person-ip]", (el) => { d.people[+el.dataset.personIp].ip = el.value.trim(); }, "input");
+    on('[data-action="person-add"]', () => { d.people.push({ name: "", ip: "" }); this._render(); });
+    on("[data-person-delete]", (el) => { d.people.splice(+el.dataset.personDelete, 1); this._probe = null; this._render(); });
+    on("[data-presence-minutes]", (el) => { d.presence.away_minutes = Math.max(2, Math.min(60, Number(el.value) || 10)); }, "input");
+    on("[data-person-test]", (el) => this._action(async () => {
+      const i = +el.dataset.personTest;
+      const a = this.t.alarm;
+      const r = await this._ws("bastion/alarm/presence_test", { address: d.people[i].ip || "" });
+      this._probe = { i, ok: r.found, text: r.found ? `${a.people_found} (${r.method})` : a.people_not_found };
+    }));
     on("[data-room-delete]", (el) => {
       const room = d.rooms.splice(+el.dataset.roomDelete, 1)[0];
       room.sensors.forEach((e) => delete d.sensors[e]);
@@ -1881,15 +2025,19 @@ class BastionPanel extends HTMLElement {
       this._notify(result.result.ok ? this.t.alarm.test_ok.replace("{channels}", (result.result.channels || []).join(", ") || "—") : `${this.t.error}: ${result.result.error}`);
     }));
     // codes
-    on('[data-action="code-add"]', () => this._action(async () => {
+    // Read inputs before _action: it re-renders and the fields start empty again.
+    on('[data-action="code-add"]', () => {
       const name = root.getElementById("code-name").value;
       const code = root.getElementById("code-value").value;
-      this._alarm = await this._ws("bastion/alarm/code", { name, code });
-      this._notify(this.t.alarm.saved);
-    }));
+      this._action(async () => {
+        this._alarm = await this._ws("bastion/alarm/code", { name, code });
+        this._notify(this.t.alarm.saved);
+      });
+    });
     on("[data-code-delete]", (el) => this._action(async () => { this._alarm = await this._ws("bastion/alarm/code", { delete: el.dataset.codeDelete }); }));
     // save
     on('[data-action="alarm-save"]', () => this._action(async () => {
+      d.people = d.people.filter((x) => x.name.trim() && x.ip.trim());
       this._alarm = await this._ws("bastion/alarm/save", { config: d });
       this._notify(this.t.alarm.saved);
     }));
@@ -1962,13 +2110,15 @@ class BastionPanel extends HTMLElement {
       this._logins = await this._ws("bastion/logins");
       this._data = await this._ws("bastion/overview");
     }));
-    on('[data-action="commit"]', () => this._action(async () => {
+    on('[data-action="commit"]', () => {
       const message = root.getElementById("commit-message")?.value || undefined;
-      const result = await this._ws("bastion/git/commit", message ? { message } : {});
-      this._notify(result.committed ? `✔ ${result.summary || ""}` : result.push_error ? `${this.t.error}: ${result.push_error}` : "✔");
-      this._data = await this._ws("bastion/overview");
-      this._git = await this._ws("bastion/git/history", { refresh: false });
-    }));
+      this._action(async () => {
+        const result = await this._ws("bastion/git/commit", message ? { message } : {});
+        this._notify(result.committed ? `✔ ${result.summary || ""}` : result.push_error ? `${this.t.error}: ${result.push_error}` : "✔");
+        this._data = await this._ws("bastion/overview");
+        this._git = await this._ws("bastion/git/history", { refresh: false });
+      });
+    });
     on('[data-action="refresh-git"]', () => this._action(async () => { this._git = await this._ws("bastion/git/history", { refresh: true }); }));
     on('[data-action="select-commit"]', (el) => this._action(async () => {
       this._commit = el.dataset.sha;
@@ -2346,8 +2496,32 @@ const STYLE = `
   .edit-room { padding:18px; }
   .room-edit-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
   .room-edit-head .input { height:40px; font-size:15px; }
+  .icon-pick { position:relative; border:1px solid transparent; cursor:pointer; padding:0; font:inherit; }
+  .icon-pick:hover, .icon-pick.on { border-color: var(--accent); }
+  .icon-pick .pick-caret { position:absolute; right:-5px; bottom:-5px; width:16px; height:16px; border-radius:50%; display:grid; place-items:center;
+    background: var(--surface); border:1px solid var(--line); color: var(--secondary-text-color); --mdc-icon-size:12px; }
+  .icon-panel { margin:10px 0 6px; padding:12px; border:1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+  .icon-panel > .input { width:100%; }
+  .icon-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap:4px; max-height:232px; overflow:auto; margin:10px 0; }
+  .icon-opt { height:42px; border-radius:10px; border:1px solid transparent; background:transparent; color: var(--primary-text-color); cursor:pointer; display:grid; place-items:center; }
+  .icon-opt:hover { background: var(--surface); border-color: var(--line); }
+  .icon-opt.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .icon-opt[hidden] { display:none; }
+  .icon-custom { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .icon-custom .input { width:200px; }
+  .person-row { display:grid; grid-template-columns: 38px minmax(120px, 1fr) 190px 112px auto auto; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
+  .person-row > .chip { justify-self:start; }
+  .person-row:first-child { border-top:0; }
+  .person-seen { grid-column: 2 / -1; font-size:12px; margin-top:-4px; }
+  .warn-text { color: ${SEV.medium.color}; }
+  .people-strip { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
+  .people-strip .chip .muted { margin-left:4px; }
+  @media (max-width: 640px) {
+    .person-row { grid-template-columns: 38px minmax(0, 1fr); }
+    .person-row > .input, .person-row > .chip, .person-row > .btn { grid-column: 2; justify-self: start; }
+    .person-row > .input { justify-self: stretch; }
+  }
   .room-edit-head .input:first-of-type { font-weight:600; }
-  .icon-input { width:180px; }
   .exposure { margin-top:14px; padding:12px 14px; border-radius: var(--radius); background: var(--surface-2); }
   .exposure-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
   .exposure-row { display:flex; align-items:flex-start; gap:8px; padding:4px 0; font-size:14px; }

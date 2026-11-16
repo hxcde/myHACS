@@ -1,6 +1,7 @@
 """Reminder: everybody left, but the alarm is still disarmed.
 
-Watches the chosen person entities (all persons if none are chosen). When none
+Watches the chosen person entities; without a choice the people of the Bastion
+household (phone in the home network), else all persons. When none
 of them is home for the configured time while the alarm is disarmed, the alarm
 log gets an "unarmed" entry: it is pushed to the phones and via the worker,
 with a link that arms the alarm from the dashboard (passkey) when remote
@@ -21,15 +22,18 @@ from homeassistant.helpers.event import (
 )
 
 from .engine import DISARMED, SIGNAL_ALARM
+from .household import SIGNAL_HOUSEHOLD
 
 
 class PresenceReminder:
     """Fires engine.record_unarmed once per absence."""
 
-    def __init__(self, hass: HomeAssistant, engine) -> None:
+    def __init__(self, hass: HomeAssistant, engine, household=None) -> None:
         """Init."""
         self.hass = hass
         self.engine = engine
+        self.household = household
+        self.source = "persons"
         self._persons: list[str] = []
         self._unsubs: list[CALLBACK_TYPE] = []
         self._timer: CALLBACK_TYPE | None = None
@@ -55,6 +59,14 @@ class PresenceReminder:
         self.unload()
         if not self.cfg.get("reminder"):
             return
+        if not self.cfg.get("persons") and self.household is not None and self.household.people:
+            self.source = "household"
+            self._persons = []
+            self._unsubs.append(async_dispatcher_connect(self.hass, SIGNAL_HOUSEHOLD, self._check))
+            self._unsubs.append(async_dispatcher_connect(self.hass, SIGNAL_ALARM, self._check))
+            self._check()
+            return
+        self.source = "persons"
         self._persons = self.persons()
         if not self.cfg.get("persons"):
             # All persons: also those that appear later (startup order, newly created persons).
@@ -79,6 +91,8 @@ class PresenceReminder:
 
     def all_away(self) -> bool:
         """True if every watched person is known and not home."""
+        if self.source == "household":
+            return self.household.all_away()
         states = [self.hass.states.get(p) for p in self._persons]
         return bool(states) and all(
             s is not None and s.state not in (STATE_UNKNOWN, STATE_UNAVAILABLE, STATE_HOME) for s in states
@@ -106,7 +120,7 @@ class PresenceReminder:
         if self.reminded or not self.all_away() or self.engine.state != DISARMED:
             return
         self.reminded = True
-        names = []
+        names = [p["name"] for p in self.household.people] if self.source == "household" else []
         for entity_id in self._persons:
             state = self.hass.states.get(entity_id)
             names.append((state.attributes.get("friendly_name") if state else None) or entity_id)

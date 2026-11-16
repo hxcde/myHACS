@@ -375,6 +375,14 @@ async function handleHeartbeat(request, env, url, ctx) {
     ip: clientIp(request),
     check_urls: checkUrls(data.check_urls),
     remote: data.remote && typeof data.remote === "object" ? { enabled: Boolean(data.remote.enabled), disarm: Boolean(data.remote.disarm) } : null,
+    // People of the household (names and home/away only, no addresses).
+    presence: Array.isArray(data.presence)
+      ? data.presence.slice(0, 20).filter((p) => p && typeof p === "object").map((p) => ({
+        name: String(p.name || "").slice(0, 40),
+        home: p.home === true ? true : p.home === false ? false : null,
+        since: typeof p.since === "string" ? p.since.slice(0, 40) : null,
+      }))
+      : null,
     offline: false,
     offline_notified: false,
   };
@@ -757,7 +765,7 @@ async function liveState(env) {
   const ex = await store.getState(env, "exposure");
   const pairing = await store.getState(env, "pairing");
   const parts = hb
-    ? [hb.state, hb.mode, hb.offline, (hb.open || []).join(","), (hb.unavailable || []).join(","), JSON.stringify(hb.remote || {}), hb.version]
+    ? [hb.state, hb.mode, hb.offline, (hb.open || []).join(","), (hb.unavailable || []).join(","), JSON.stringify(hb.remote || {}), hb.version, JSON.stringify(hb.presence || null)]
     : ["-"];
   const rev = [...parts, await store.marks(env), ex ? ex.checked : 0, pairing ? pairing.expires : 0].join("|");
   return { hb, rev: (await hmacHex("rev", rev)).slice(0, 16) };
@@ -781,7 +789,7 @@ async function apiSummary(env, url, user) {
     hb: hb && {
       state: hb.state, mode: hb.mode, armed: hb.armed, incident: hb.incident, instance: hb.instance, tz: hb.tz,
       open: hb.open, unavailable: hb.unavailable, received: Math.floor(hb.received / 1000), offline: hb.offline,
-      interval: hb.interval, version: hb.version,
+      interval: hb.interval, version: hb.version, presence: hb.presence || null,
     },
     before: await store.lastEventBefore(env, since),
     events: await store.eventsSince(env, since),

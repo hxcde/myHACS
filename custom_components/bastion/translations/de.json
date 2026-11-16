@@ -235,6 +235,9 @@
       },
       "canary": {
         "name": "Köder ausgelöst"
+      },
+      "anyone_home": {
+        "name": "Jemand zuhause"
       }
     },
     "button": {

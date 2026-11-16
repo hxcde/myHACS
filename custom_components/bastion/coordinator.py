@@ -19,6 +19,7 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .alarm.engine import AlarmEngine
+from .alarm.household import Household
 from .alarm.presence import PresenceReminder
 from .alarm.relay import AlarmRelay
 from .anomaly.engine import AnomalyEngine
@@ -89,7 +90,8 @@ class Bastion:
         self.git.decoy = self.canary.decoy_text
         self.alarm = AlarmEngine(hass, self)
         self.relay = AlarmRelay(hass, self.alarm)
-        self.presence = PresenceReminder(hass, self.alarm)
+        self.household = Household(hass, self.alarm)
+        self.presence = PresenceReminder(hass, self.alarm, self.household)
         self.alarm.on_event = self._on_alarm_event
         self.relay.on_exposure = self._on_exposure
         self.relay.on_notice = self._on_worker_notice
@@ -126,6 +128,7 @@ class Bastion:
         await self.alarm.async_setup()
         self.relay.version = str((await async_get_integration(self.hass, DOMAIN)).version or "")
         self.relay.setup()
+        self.household.setup()
         self.presence.setup()
         await self.canary.async_setup()
         await self.logins.async_setup()
@@ -182,6 +185,7 @@ class Bastion:
         self.responder.unload()
         self.canary.unload()
         self.presence.unload()
+        self.household.unload()
         self.relay.unload()
         await self.relay.async_stop()
         await self.alarm.async_unload()

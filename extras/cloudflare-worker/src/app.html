@@ -848,6 +848,15 @@ td .name { font-weight: 600; }
       add(open.length ? "warn" : "ok", "Sensoren", open.length ? `${open.length} offen` : "alle geschlossen", esc(open.join(", ")));
       const un = hb.unavailable || [];
       add(un.length ? "warn" : "ok", "Funk und Erreichbarkeit", un.length ? `${un.length} gestört` : "alle erreichbar", esc(un.join(", ")));
+      const people = hb.presence || [];
+      if (people.length) {
+        const home = people.filter((p) => p.home === true).map((p) => p.name);
+        const unknown = people.every((p) => p.home == null);
+        const nobody = !unknown && !home.length;
+        add(nobody && !isArmed(hb.state) ? "warn" : "ok", "Anwesenheit",
+          unknown ? "wird ermittelt" : home.length ? `${home.length} von ${people.length} zuhause` : "niemand zuhause",
+          esc(nobody ? (isArmed(hb.state) ? "Anlage ist scharf" : "Anlage ist unscharf") : home.join(", ")));
+      }
     }
     const sec = d.security;
     if (sec) {

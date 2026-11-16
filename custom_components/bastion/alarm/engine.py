@@ -101,6 +101,9 @@ def default_config() -> dict[str, Any]:
             "snapshots": 3,
             "public_url": "",
         },
+        # People of the household (phone IP for presence) and when a silent phone counts as away.
+        "people": [],
+        "presence": {"away_minutes": 10},
         # Remote control from the worker dashboard (passkey) and the "nobody home" reminder.
         "remote": {
             "enabled": False,

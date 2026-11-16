@@ -819,3 +819,15 @@ test("live endpoint: revision changes only when something new arrives", async ()
   const sessions = (await env.DB.prepare("SELECT COUNT(*) AS n FROM sessions").first()).n;
   assert.equal(sessions, 1, "live polls are not logged as visits");
 });
+
+test("household presence reaches the dashboard without addresses", async () => {
+  const env = makeEnv(ACCESS);
+  const d = await dashboard(env);
+  const presence = [{ name: "Anna", home: true, since: "2026-11-16T10:00:00+00:00", ip: "192.168.1.20" }, { name: "Ben", home: false }];
+  await worker.fetch(signed("/heartbeat", { ...HB, presence }), env);
+  const sum = await (await d.get("/api/summary")).json();
+  assert.deepEqual(sum.hb.presence, [{ name: "Anna", home: true, since: "2026-11-16T10:00:00+00:00" }, { name: "Ben", home: false, since: null }]);
+  const rev = sum.rev;
+  await worker.fetch(signed("/heartbeat", { ...HB, presence: [{ name: "Anna", home: false }, { name: "Ben", home: false }] }), env);
+  assert.notEqual((await (await d.get("/api/live")).json()).rev, rev, "someone left: the dashboard reloads");
+});

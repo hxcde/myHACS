@@ -235,6 +235,9 @@
       },
       "canary": {
         "name": "Decoy triggered"
+      },
+      "anyone_home": {
+        "name": "Someone home"
       }
     },
     "button": {
