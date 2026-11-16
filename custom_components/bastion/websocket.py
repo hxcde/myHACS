@@ -19,6 +19,7 @@ from homeassistant.helpers import (
 import probatio
 
 from .alarm.engine import MODES, NOTIFY_EVENTS, SENSOR_TYPES, SUPPORTED_DOMAINS, AlarmError
+from .alarm.household import async_probe, valid_address
 from .alarm.sounds import BUILTIN, SOUND_KEYS, async_media_files
 from .const import ALL_AREAS
 from .texts import alarm_error_text
@@ -345,6 +346,22 @@ _SOUND = probatio.Any(
     probatio.In([f"bastion:{name}" for name in BUILTIN]),
     probatio.All(str, probatio.Length(max=500), probatio.Match(r"^(media-source://|https?://)\S+$")),
 )
+
+
+def _address(value: Any) -> str:
+    value = str(value).strip()
+    if not valid_address(value):
+        raise probatio.Invalid("IP-Adresse im Heimnetz oder Hostname")
+    return value
+
+
+_PERSON = probatio.Schema(
+    {
+        probatio.Optional("id"): probatio.All(str, probatio.Match(r"^[a-f0-9]{6,16}$")),
+        probatio.Required("name"): probatio.All(str, probatio.Strip, probatio.Length(min=1, max=40)),
+        probatio.Required("ip"): _address,
+    }
+)
 _ALARM_CONFIG = probatio.Schema(
     {
         probatio.Optional("rooms"): [_ROOM],
@@ -376,6 +393,10 @@ _ALARM_CONFIG = probatio.Schema(
                     str, probatio.Strip, probatio.Length(max=200), probatio.Match(r"^(https?://[^\s/@]+(/\S*)?)?$")
                 ),
             }
+        ),
+        probatio.Optional("people"): probatio.All([_PERSON], probatio.Length(max=20)),
+        probatio.Optional("presence"): probatio.Schema(
+            {probatio.Optional("away_minutes"): probatio.All(probatio.Coerce(int), probatio.Range(min=2, max=60))}
         ),
         probatio.Optional("remote"): probatio.Schema(
             {
@@ -460,6 +481,7 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         "cameras": cameras,
         "players": players,
         "persons": persons,
+        "household": bastion.household.summary(),
         "sounds_builtin": list(BUILTIN),
         "relay": {
             "enabled": relay.enabled,
@@ -505,8 +527,11 @@ async def ws_alarm_save(hass, connection, msg) -> None:
         return
     for room in config.get("rooms", []):
         room.setdefault("id", f"r_{secrets.token_hex(3)}")
+    for person in config.get("people", []):
+        person.setdefault("id", secrets.token_hex(4))
     await bastion.alarm.async_update_config(config)
     bastion.relay.setup()
+    bastion.household.setup()
     bastion.presence.setup()
     connection.send_result(msg["id"], _alarm_payload(hass, bastion))
 
@@ -626,6 +651,23 @@ async def ws_alarm_remote(hass, connection, msg) -> None:
     connection.send_result(msg["id"], result)
 
 
+@websocket_api.websocket_command(
+    {probatio.Required("type"): "bastion/alarm/presence_test", probatio.Required("address"): str}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_presence_test(hass, connection, msg) -> None:
+    """Check once whether a phone answers in the home network."""
+    if _guard(connection, msg) is None:
+        return
+    address = msg["address"].strip()
+    if not valid_address(address):
+        connection.send_error(msg["id"], "invalid", "IP-Adresse im Heimnetz oder Hostname")
+        return
+    method = await async_probe(hass, address)
+    connection.send_result(msg["id"], {"found": method is not None, "method": method})
+
+
 @websocket_api.websocket_command({probatio.Required("type"): "bastion/alarm/media"})
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -686,6 +728,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_alarm_code,
         ws_alarm_worker,
         ws_alarm_remote,
+        ws_alarm_presence_test,
         ws_alarm_media,
         ws_alarm_sound,
     ):

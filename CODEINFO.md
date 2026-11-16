@@ -29,6 +29,7 @@ custom_components/bastion/
   websocket.py           Websocket-API für das Panel (require_admin)
   panel.py               Registrierung des Seitenleisten-Panels
   sensor.py / binary_sensor.py / button.py / entity.py   Entities
+  device_tracker.py      Ein ScannerEntity pro Person des Haushalts (folgt Änderungen der Liste)
   diagnostics.py         Diagnose ohne Secrets
   audit/                 Prüfgruppen
     access.py            Benutzer, MFA, Admins, Tokens, trusted_networks
@@ -42,7 +43,8 @@ custom_components/bastion/
     engine.py            Zustandsmaschine (disarmed/arming/armed_*/pending/triggered), Räume, Sensoren, Codes (scrypt), Aktionen
     relay.py             Worker-Anbindung (HMAC-SHA256): Lebenszeichen mit Kontext, Ereignisse, Kamerabilder, Quittierungen,
                          Meldungen des Workers (notices), Fernbefehle abholen/prüfen/ausführen, Passkey-Verwaltung (/remote)
-    presence.py          Erinnerung „niemand zuhause, nicht scharf“ (person.*-Zustände, einmal pro Abwesenheit)
+    presence.py          Erinnerung „niemand zuhause, nicht scharf“ (Haushalt oder person.*, einmal pro Abwesenheit)
+    household.py         Personen im Haushalt: Handy-IP alle 30 s prüfen (TCP, ICMP, ARP), zuhause/weg mit Wartezeit
     sounds.py            Töne auf Medienplayern: Schleifen (Alarm/Countdown), Einmal-Töne, Lautstärke sichern/wiederherstellen
   alarm_control_panel.py Alarm-Entität (Aus/Zuhause/Nacht/Abwesend/Panik)
   gitsync/

@@ -31,11 +31,13 @@ from typing import Any
 import aiohttp
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from ..const import EVENT_SECURITY, SEVERITY_WEIGHT
 from .engine import AlarmError
+from .household import SIGNAL_HOUSEHOLD
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,6 +127,9 @@ class AlarmRelay:
         self._cmd_results: list[dict[str, Any]] = []
         self._polling = False
         self._unsub_fast: CALLBACK_TYPE | None = None
+        self._unsub_household: CALLBACK_TYPE | None = None
+        self._presence_beat = 0.0
+        self._zones_sent: str | None = None
         self.last_commands: list[dict[str, Any]] = []
 
     @property
@@ -161,6 +166,7 @@ class AlarmRelay:
         self._unsub = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK))
         self._unsub_security = self.hass.bus.async_listen(EVENT_SECURITY, self._on_security_event)
         self._unsub_backfill = async_call_later(self.hass, BACKFILL_DELAY, self._start_backfill)
+        self._unsub_household = async_dispatcher_connect(self.hass, SIGNAL_HOUSEHOLD, self._on_household)
         self._spawn(self._async_heartbeat())
 
     def unload(self) -> None:
@@ -177,6 +183,9 @@ class AlarmRelay:
         if self._unsub_fast is not None:
             self._unsub_fast()
             self._unsub_fast = None
+        if self._unsub_household is not None:
+            self._unsub_household()
+            self._unsub_household = None
         for task in list(self._tasks):
             task.cancel()
 
@@ -345,6 +354,17 @@ class AlarmRelay:
             logins.record("worker_attack", data)
         self.hass.bus.async_fire(EVENT_SECURITY, {"type": "worker_attack", **data})
 
+    @callback
+    def _on_household(self) -> None:
+        """Someone came or left: tell the dashboard soon (at most every 20 s)."""
+        if time.monotonic() - self._presence_beat > 20:
+            self._presence_beat = time.monotonic()
+            self._spawn(self._async_heartbeat())
+
+    def _presence(self) -> list[dict[str, Any]] | None:
+        household = getattr(self._bastion, "household", None)
+        return household.worker_payload() if household is not None and household.people else None
+
     def _heartbeat_payload(self, *, stopping: bool = False) -> dict[str, Any]:
         return {
             "ts": int(time.time()),
@@ -359,6 +379,8 @@ class AlarmRelay:
             "notices_seen": sorted(self._notices_seen),
             "check_urls": self.check_urls(),
             "remote": {"enabled": bool(self.remote.get("enabled")), "disarm": bool(self.remote.get("disarm"))},
+            "presence": self._presence(),
+            "zones": self.engine.zones(),
         }
 
     def check_urls(self) -> list[str]:
@@ -368,8 +390,14 @@ class AlarmRelay:
 
     async def _async_tick(self, _now: datetime | None = None) -> None:
         due = time.monotonic() - self._last_beat >= self.interval - TICK / 2
-        if due or self.engine.state in ACTIVE_STATES:
+        # A door opened or a sensor dropped out: the dashboard shows it within one tick.
+        zones = hashlib.sha256(json.dumps(self.engine.zones(), sort_keys=True).encode()).hexdigest()
+        changed = self._zones_sent is not None and zones != self._zones_sent
+        if due or changed or self.engine.state in ACTIVE_STATES:
+            self._zones_sent = zones
             await self._async_heartbeat()
+        elif self._zones_sent is None:
+            self._zones_sent = zones
         if self.remote_enabled:
             await self.async_poll_commands()
 

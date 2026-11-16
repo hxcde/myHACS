@@ -106,7 +106,7 @@ ESPHome und Z2M: Zigbee2MQTT vor dem Wiederherstellen stoppen, sonst überschrei
 Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_control_panel.bastion_alarmanlage` (Name je nach Systemsprache). Die Entität funktioniert mit allen HA-Alarmkarten und Automationen.
 
 **Einrichten (Alarmanlage → Einstellungen):**
-1. **Räume & Sensoren:** Räume anlegen oder „Räume aus HA-Bereichen übernehmen“. Dabei werden Tür-, Fenster-, Bewegungs-, Rauch-, Wasser- und Manipulationssensoren den Bereichen zugeordnet und sinnvoll vorbelegt. Pro Sensor gibt es folgende Einstellungen:
+1. **Räume & Sensoren:** Räume anlegen oder „Räume aus HA-Bereichen übernehmen“. Das Icon wählt man per Klick auf das Raum-Symbol (Suche auf Deutsch und Englisch, jedes andere MDI-Icon per Name). Dabei werden Tür-, Fenster-, Bewegungs-, Rauch-, Wasser- und Manipulationssensoren den Bereichen zugeordnet und sinnvoll vorbelegt. Pro Sensor gibt es folgende Einstellungen:
    - **Modi:** In welchen Modi (Zuhause, Nacht, Abwesend) der Sensor überwacht wird.
    - **Typ:**
      - *Sofort:* löst sofort aus.
@@ -130,8 +130,9 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
 5. **Codes:** Codes werden nur als scrypt-Hash gespeichert. Sobald ein Code existiert, verlangt das Unscharfschalten einen Code. Nach 5 falschen Eingaben sperrt die Anlage die Eingabe für 5 Minuten. Während eines Alarms oder einer Vorwarnung verlangt auch jedes Umschalten einen Code, damit niemand die Sirene durch Scharfschalten stummschalten kann.
 6. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Pushover, Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist, leitet Alarme unabhängig von HA weiter und bewahrt Protokoll und Kamerabilder außer Haus auf. Unter „Protokoll außer Haus“ die Kameras wählen, deren Bilder bei Vorwarnung und Alarm hochgeladen werden.
 
-7. **Fernsteuerung** (Cloud-Worker, unten): „Fernsteuerung erlauben“ schaltet Scharf- und Unscharfschalten aus dem Worker-Dashboard frei, „Auch unscharf schalten erlauben“ zusätzlich das Unscharfschalten. Passkeys koppeln und entfernen geht nur hier (siehe Cloud-Worker → Fernsteuerung).
-8. **Erinnerung „niemand zuhause“:** Sind alle gewählten Personen (leer = alle `person.*`) weg und die Anlage ist unscharf, kommt nach der eingestellten Zeit (Standard 20 Min.) eine Erinnerung aufs Handy und über den Worker. Mit Fernsteuerung öffnet der Link das Dashboard mit „Abwesend scharf schalten?“, bestätigt per Passkey. Eine Erinnerung pro Abwesenheit, sie setzt sich zurück, sobald jemand heimkommt. Im Protokoll steht sie als „Niemand zuhause, nicht scharf“.
+7. **Personen (Anwesenheit):** Personen im Haushalt mit der IP-Adresse ihres Handys anlegen. Bastion prüft alle 30 Sekunden ohne besondere Rechte, ob das Handy im Heimnetz antwortet (TCP, Ping, ARP-Tabelle). Erscheint es, gilt die Person sofort als zuhause. Als weg gilt sie erst nach der eingestellten Zeit ohne Antwort (Standard 10 Minuten), weil Handys schlafen. „Prüfen“ testet eine Adresse sofort. Es entstehen `device_tracker.bastion_<name>` (lassen sich HA-Personen zuordnen) und `binary_sensor.bastion_jemand_zuhause`, außerdem das Event `bastion_presence` bei Kommen und Gehen. Erlaubt sind private IP-Adressen und Hostnamen. Damit es zuverlässig klappt: im Router eine feste IP pro Handy vergeben, am iPhone „Private WLAN-Adresse“ für das Heim-WLAN auf „Fest“ oder „Aus“, bei Android „Zufällige MAC“ aus. Das Dashboard zeigt nur Namen und zuhause/weg, keine Adressen.
+8. **Fernsteuerung** (Cloud-Worker, unten): „Fernsteuerung erlauben“ schaltet Scharf- und Unscharfschalten aus dem Worker-Dashboard frei, „Auch unscharf schalten erlauben“ zusätzlich das Unscharfschalten. Passkeys koppeln und entfernen geht nur hier (siehe Cloud-Worker → Fernsteuerung).
+9. **Erinnerung „niemand zuhause“:** Sind alle gewählten Personen (leer = die Personen aus Punkt 7, sonst alle `person.*`) weg und die Anlage ist unscharf, kommt nach der eingestellten Zeit (Standard 20 Min.) eine Erinnerung aufs Handy und über den Worker. Mit Fernsteuerung öffnet der Link das Dashboard mit „Abwesend scharf schalten?“, bestätigt per Passkey. Eine Erinnerung pro Abwesenheit, sie setzt sich zurück, sobald jemand heimkommt. Im Protokoll steht sie als „Niemand zuhause, nicht scharf“.
 
 **Vorfälle:** Vorwarnung und anschließender Alarm bilden einen Vorfall mit eigener ID. Er endet mit dem Unscharf- oder erneuten Scharfschalten. Alle Protokolleinträge und Kamerabilder des Vorfalls tragen diese ID.
 
@@ -205,7 +206,7 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Bei unscharfer Anlage werden Ausfälle nur protokolliert (`ALERT_WHEN_DISARMED=1` meldet auch diese).
 
 **Dashboard (hinter Cloudflare Access):**
-- Tab „Alarmanlage“: Status, Fernsteuerung (wenn in HA erlaubt), Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Tab „Alarmanlage“: Status mit Modus-Knöpfen (schaltbar mit Fernsteuerung), Systemstatus, Anwesenheit, Zonen (Räume und Sensoren mit bereit/offen/gestört und ob sie gerade überwacht sind; HA meldet Änderungen innerhalb von 15 Sekunden), Ereignisprotokoll, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
 - Tab „Verfügbarkeit“: siehe unten.
 - Tab „Sicherheit“: siehe unten.
 - Einrichten:
@@ -213,6 +214,7 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
   2. Zero Trust → Access → Applications → Self-hosted, Domain wie oben, Policy mit den erlaubten E-Mail-Adressen.
   3. Den „Application Audience (AUD) Tag“ der Anwendung kopieren.
   4. Im Worker die Variablen `DASHBOARD_HOST` (die Domain), `ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) und `ACCESS_AUD` setzen.
+- Live: Das Dashboard fragt alle 10 Sekunden einen kleinen Stand ab und lädt nur bei Änderungen neu, ohne dass man neu laden muss. Oben rechts zeigt „LIVE“ mit Uhrzeit, dass die Verbindung steht.
 - Als App installierbar (PWA): im Browser „Zum Startbildschirm“ (iPhone: Teilen → Zum Home-Bildschirm, Android/Chrome/Edge: Installieren). Der Service Worker speichert nichts auf dem Gerät, ohne Netz erscheint nur ein Offline-Hinweis. Nach Ablauf der Access-Sitzung öffnet die App den Access-Login und kehrt danach zurück.
 - Der Worker prüft das Access-Token selbst (Signatur, Audience, Aussteller, Ablauf). Über die workers.dev-Adresse ist das Dashboard nicht erreichbar. HA spricht weiter über die workers.dev-Adresse, sie liegt nicht hinter Access.
 
@@ -306,6 +308,7 @@ Der Worker baut eine TCP-Verbindung zur IP des Aufrufers auf (`CF-Connecting-IP`
 | Kamerabilder fehlen im Vorfall | Log: „snapshot … too large“ oder Kamera-Fehler | Kamera liefert auch verkleinert mehr als ~1 MB. Kleineren Stream bzw. Snapshot-Auflösung wählen |
 | Dashboard zeigt 404 | Aufruf über workers.dev, `ACCESS_AUD`/`ACCESS_TEAM_DOMAIN` fehlen oder Domain passt nicht zu `DASHBOARD_HOST` | Über die Access-Domain aufrufen, Variablen prüfen |
 | Worker meldet `ALARM_SECRET not set` | Secret fehlt im Worker | Secret setzen, Wert aus Bastion → Cloud-Worker |
+| Person bleibt „weg“, obwohl zuhause | Handy wechselt die IP (private WLAN-Adresse) oder schläft länger als die eingestellte Zeit | Feste IP im Router, private Adresse fürs Heim-WLAN aus, Zeit erhöhen. „Prüfen“ zeigt, welcher Test antwortet |
 | Passkey koppeln: „Kein Kopplungscode aktiv“ | Code abgelaufen (10 Min.), schon benutzt oder nach 5 Fehlversuchen ungültig | In HA neuen Code erzeugen |
 | Dashboard zeigt keine Fernsteuerung | „Fernsteuerung erlauben“ in HA aus oder noch nicht gespeichert, HA hat seitdem kein Lebenszeichen geschickt | Einstellung speichern, ein Intervall warten |
 | Befehl „Nicht abgeholt“ | HA offline oder Worker-URL/Secret in HA falsch | Cloud-Worker → Testen. Befehle gelten 90 Sekunden |

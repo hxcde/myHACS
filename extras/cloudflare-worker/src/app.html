@@ -124,7 +124,7 @@ main { padding: 20px 24px 48px; max-width: 1280px; min-width: 0; margin-inline: 
 .mt { margin-top: 16px; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; min-height: 48px; border-bottom: 1px solid var(--border); }
-.card-head h2 { font-size: 14px; font-weight: 600; }
+.card-head h2 { font-size: 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); }
 .card-head .sub { font-size: 12px; color: var(--text-2); font-weight: 400; margin-top: 1px; }
 .card-body { padding: 16px; }
 .card-body.flush { padding: 0; }
@@ -285,7 +285,7 @@ td .name { font-weight: 600; }
 .fact b { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fact span { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); min-height: 48px; }
-.side-head h3 { font-size: 13px; font-weight: 600; }
+.side-head h3 { font-size: 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); }
 .checks { list-style: none; margin: 0; padding: 0; }
 .checks li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 16px; }
 .checks li + li { border-top: 1px solid var(--border); }
@@ -298,6 +298,86 @@ td .name { font-weight: 600; }
 .lvl-ok { --c: var(--green); --c-soft: var(--green-soft); }
 .lvl-warn { --c: var(--orange); --c-soft: var(--orange-soft); }
 .lvl-bad { --c: var(--red); --c-soft: var(--red-soft); }
+
+/* Zonen */
+.zones { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0; }
+.zone-room { padding: 12px 16px 10px; box-shadow: -1px -1px 0 0 var(--border); min-width: 0; }
+.zone-room h4 { font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.zone-room h4 .faint { font-weight: 500; font-size: 11px; margin-left: auto; letter-spacing: .04em; text-transform: uppercase; }
+.zone { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 14px; gap: 8px; align-items: center; padding: 4px 0; font-size: 13px; }
+.zone .zn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zone .zs { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+.zone.open .zs { color: var(--orange); } .zone.unavailable .zs { color: var(--text-3); }
+.zone .zw svg.icon { width: 13px; height: 13px; color: var(--text-3); }
+.zone.watched .zw svg.icon { color: var(--primary); }
+.zone .dot { width: 8px; height: 8px; }
+.zones-wrap { overflow: hidden; border-radius: 0 0 var(--radius) var(--radius); }
+
+/* Ereignisprotokoll (Leitstelle) */
+.log { list-style: none; margin: 0; padding: 0; }
+.log .day { padding: 8px 16px 6px; font-size: 11px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); background: var(--panel-2); border-bottom: 1px solid var(--border); }
+.log .ev { display: grid; grid-template-columns: 64px 3px 26px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 16px; border-bottom: 1px solid var(--border); }
+.log .ev:last-child { border-bottom: 0; }
+.log .ev.link { cursor: pointer; } .log .ev.link:hover { background: var(--hover); }
+.ev-time { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ev-bar { align-self: stretch; border-radius: 2px; background: var(--c); }
+.log .fi { width: 26px; height: 26px; border-radius: 7px; }
+.log .fi svg.icon { width: 14px; height: 14px; }
+.ev-cat { font-size: 10.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+
+/* Runde Alarm-Konsole */
+.console { border-radius: 22px; }
+.console-main { align-items: center; text-align: center; gap: 18px; padding: 26px 24px 20px; }
+.dial { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.dial-text h2 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.dial-text p { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+.orb-xl { width: 124px; height: 124px; animation: dial-breathe 6s ease-in-out infinite; }
+.orb-xl .orb-b { filter: blur(14px); }
+.orb-xl svg.icon { width: 44px; height: 44px; stroke-width: 1.9; }
+@keyframes dial-breathe {
+  0%, 100% { box-shadow: inset 0 0 0 .5px rgb(255 255 255 / 16%), 0 0 0 10px color-mix(in srgb, var(--orb-c) 9%, transparent), 0 0 0 22px color-mix(in srgb, var(--orb-c) 5%, transparent), 0 18px 46px -14px color-mix(in srgb, var(--orb-c) 55%, transparent); }
+  50% { box-shadow: inset 0 0 0 .5px rgb(255 255 255 / 16%), 0 0 0 14px color-mix(in srgb, var(--orb-c) 11%, transparent), 0 0 0 30px color-mix(in srgb, var(--orb-c) 5%, transparent), 0 22px 56px -14px color-mix(in srgb, var(--orb-c) 65%, transparent); }
+}
+.modes { display: flex; justify-content: center; gap: 18px 26px; flex-wrap: wrap; margin-top: 6px; }
+.mode-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: 0; padding: 0; color: var(--text-2); font: inherit; cursor: pointer; min-width: 72px; }
+.mode-btn .ring { width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; background: var(--chip-bg); border: 1px solid var(--border-strong);
+  transition: transform var(--t-fast) var(--ease), box-shadow .25s var(--ease), background .25s var(--ease); }
+.mode-btn .ring svg.icon { width: 24px; height: 24px; color: var(--text); }
+.mode-btn .ml { font-size: 13px; font-weight: 600; color: var(--text); }
+.mode-btn small { font-size: 11px; color: var(--text-3); margin-top: -3px; }
+.mode-btn:not([disabled]):hover .ring { transform: translateY(-2px); box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--text) 60%, transparent); }
+.mode-btn:not([disabled]):active .ring { transform: scale(.96); }
+.mode-btn.current .ring { border-color: transparent; background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--hero-c) 70%, #fff 30%), var(--hero-c));
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--hero-c) 18%, transparent), 0 10px 26px -10px var(--hero-c); }
+.mode-btn.current .ring svg.icon { color: #fff; }
+.mode-btn.current small { color: var(--hero-c); font-weight: 600; }
+.mode-btn[disabled] { cursor: default; }
+.mode-btn.static:not(.current) { opacity: .5; }
+.console-main .notice { width: 100%; text-align: left; border-radius: 14px; }
+.console-main > .faint { max-width: 520px; }
+.console-main .tags { justify-content: center; }
+.console .facts { width: 100%; gap: 10px; border-top: 0; padding-top: 4px; }
+.console .fact { border: 0 !important; padding: 10px 14px !important; border-radius: 16px; text-align: left;
+  background: color-mix(in srgb, var(--chip-bg) 65%, transparent); }
+.console-side { border-radius: 0 22px 22px 0; }
+.checks .ci { width: 22px; height: 22px; }
+.console-side .checks { flex: 1; display: flex; flex-direction: column; }
+.console-side .checks li { flex: 1; }
+.tag-chip { border-radius: 999px; }
+
+/* Lage-Chips in der Konsole */
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; font-weight: 500;
+  background: var(--chip-bg); color: var(--text); white-space: nowrap; }
+.tag-chip .dot { width: 7px; height: 7px; }
+.tag-chip.away { color: var(--text-3); }
+.tag-chip.warn { background: var(--orange-soft); color: var(--orange); font-weight: 600; }
+.tags-label { font-size: 11px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; align-self: center; }
+
+/* Uhr */
+.updated b { font-weight: 650; letter-spacing: .08em; font-size: 11px; color: var(--green); }
+.updated.stale b { color: var(--text-3); }
+.updated .clock { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; color: var(--text-2); }
 
 /* Ereignisliste */
 .feed { list-style: none; margin: 0; padding: 0; }
@@ -363,10 +443,13 @@ td .name { font-weight: 600; }
 @media (max-width: 900px) {
   .grid.two, .grid.even { grid-template-columns: minmax(0, 1fr); } .hide-md { display: none; }
   .console { grid-template-columns: minmax(0, 1fr); }
-  .console-side { border-left: 0; border-top: 1px solid var(--border); }
+  .console-side { border-left: 0; border-top: 1px solid var(--border); border-radius: 0 0 22px 22px; }
 }
 @media (max-width: 640px) {
   :root { font-size: 15px; --radius: 14px; }
+  .log .ev { grid-template-columns: 52px 3px minmax(0, 1fr); gap: 10px; }
+  .card-head { flex-wrap: wrap; row-gap: 8px; }
+  .log .ev .fi, .log .ev .ev-cat { display: none; }
   .sidebar { inset: auto 0 0 0; width: auto; height: calc(58px + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom); flex-direction: row; align-items: stretch;
     border-right: 0; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(18px) saturate(160%); }
   .brand, .sidebar .spacer, .side-user, .nav-section { display: none; }
@@ -383,7 +466,12 @@ td .name { font-weight: 600; }
   .sidebar { padding-top: 0; }
   .updated .ut { display: none; }
   .state h2 { font-size: 19px; }
-  .console-main { padding: 16px; }
+  .console-main { padding: 20px 14px 16px; }
+  .orb-xl { width: 104px; height: 104px; }
+  .modes { gap: 14px 10px; }
+  .mode-btn { min-width: 64px; }
+  .mode-btn .ring { width: 56px; height: 56px; }
+  .console-side { border-radius: 0 0 22px 22px; }
   .ctl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid.kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   main { padding: 12px 12px 28px; }
@@ -615,7 +703,8 @@ td .name { font-weight: 600; }
   };
 
   function orb(tone, icon, large = true) {
-    return `<div class="orb orb-${tone}${large ? " orb-lg" : ""}" aria-hidden="true"><div class="orb-in"><span class="orb-b b1"></span><span class="orb-b b2"></span><span class="orb-b b3"></span></div>${icon}</div>`;
+    const size = large === "xl" ? " orb-xl" : large ? " orb-lg" : "";
+    return `<div class="orb orb-${tone}${size}" aria-hidden="true"><div class="orb-in"><span class="orb-b b1"></span><span class="orb-b b2"></span><span class="orb-b b3"></span></div>${icon}</div>`;
   }
 
   function hero({ tone, icon, title, sub, stats, side }) {
@@ -848,6 +937,15 @@ td .name { font-weight: 600; }
       add(open.length ? "warn" : "ok", "Sensoren", open.length ? `${open.length} offen` : "alle geschlossen", esc(open.join(", ")));
       const un = hb.unavailable || [];
       add(un.length ? "warn" : "ok", "Funk und Erreichbarkeit", un.length ? `${un.length} gestört` : "alle erreichbar", esc(un.join(", ")));
+      const people = hb.presence || [];
+      if (people.length) {
+        const home = people.filter((p) => p.home === true).map((p) => p.name);
+        const unknown = people.every((p) => p.home == null);
+        const nobody = !unknown && !home.length;
+        add(nobody && !isArmed(hb.state) ? "warn" : "ok", "Anwesenheit",
+          unknown ? "wird ermittelt" : home.length ? `${home.length} von ${people.length} zuhause` : "niemand zuhause",
+          esc(nobody ? (isArmed(hb.state) ? "Anlage ist scharf" : "Anlage ist unscharf") : home.join(", ")));
+      }
     }
     const sec = d.security;
     if (sec) {
@@ -878,7 +976,7 @@ td .name { font-weight: 600; }
       const usable = live && (k !== "disarm" || r.disarm) && !hb.offline && !remoteUi.busy;
       const state = k === current ? (pending ? STATE_VIEW[hb.state][0] : "Aktiv") : k === "disarm" ? "Ausschalten" : "Scharf";
       const attrs = usable ? `data-remote="${k}"` : `disabled aria-disabled="true"`;
-      return `<button class="btn ctl ${k === current ? "current" : ""} ${usable ? "" : "static"}" ${attrs}>${ICON[a.icon]}<span>${esc(a.label)}</span><small>${esc(state)}</small></button>`;
+      return `<button class="mode-btn ${k === current ? "current" : ""} ${usable ? "" : "static"}" ${attrs} title="${esc(`${a.label}: ${state}`)}"><span class="ring">${ICON[a.icon]}</span><span class="ml">${esc(a.label)}</span><small>${esc(state)}</small></button>`;
     }).join("");
     let note = "";
     if (!r.enabled) {
@@ -891,8 +989,25 @@ td .name { font-weight: 600; }
     const msg = remoteUi.msg ? `<div class="notice ${remoteUi.tone}" style="margin:0">${esc(remoteUi.msg)}${remoteUi.force ? `<br><button class="btn sm" data-remote-force="${remoteUi.force}">Trotzdem scharf schalten</button>` : ""}</div>` : "";
     return `${intent ? `<div class="notice warn" style="margin:0">Aus der Erinnerung: <b>${esc(ACTIONS[intent].label)}</b> scharf schalten?<br>
         <button class="btn sm primary" data-remote="${intent}" ${remoteUi.busy ? "disabled" : ""}>Mit Passkey bestätigen</button><button class="btn sm" data-remote-dismiss>Nein</button></div>` : ""}
-      <div class="ctl-grid">${tiles}</div>${msg}
+      <div class="modes">${tiles}</div>${msg}
       ${note ? `<div class="faint small">${note}</div>` : ""}`;
+  }
+
+  // Who is home and which zones are open, right below the controls.
+  function consoleTags(d) {
+    const hb = d.hb || {};
+    const people = hb.presence || [];
+    const open = ((hb.zones || []).filter((z) => z.state === "open")).map((z) => z.name);
+    const broken = ((hb.zones || []).filter((z) => z.state === "unavailable")).map((z) => z.name);
+    const rows = [];
+    if (people.length) {
+      rows.push(`<div class="tags"><span class="tags-label">Anwesend</span>${people.map((p) => `<span class="tag-chip ${p.home ? "" : "away"}">
+        <span class="dot" style="--c:${p.home ? "var(--good)" : p.home === false ? "var(--gray)" : "var(--border-strong)"}"></span>${esc(p.name)}</span>`).join("")}</div>`);
+    }
+    if (open.length || broken.length) {
+      rows.push(`<div class="tags"><span class="tags-label">Nicht bereit</span>${open.map((n) => `<span class="tag-chip warn">${esc(n)} offen</span>`).join("")}${broken.map((n) => `<span class="tag-chip">${esc(n)} gestört</span>`).join("")}</div>`);
+    }
+    return rows.join("");
   }
 
   function consoleCard(d, a) {
@@ -917,12 +1032,15 @@ td .name { font-weight: 600; }
     const pillTone = sit.key === "normal" ? "ok" : sit.key === "critical" ? "bad" : "warn";
     return `<section class="card console hero-${tone}">
       <div class="console-main">
-        <div class="state">${orb(tone, icon)}<div class="grow"><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(label)}</h2>${sub ? `<p>${esc(sub)}</p>` : ""}</div></div>
+        <div class="dial">${orb(tone, icon, "xl")}<div class="dial-text"><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(label)}</h2>${sub ? `<p>${esc(sub)}</p>` : ""}</div></div>
         ${controls(d)}
+        ${consoleTags(d)}
         <div class="facts">
           <div class="fact"><b>${lastAlarm ? ago(lastAlarm.ts) : "keiner"}</b><span>Letzter Alarm</span></div>
           <div class="fact"><b>${esc(hours(armedToday))}</b><span>Scharf heute</span></div>
-          <div class="fact"><b>${esc(hb && hb.version ? hb.version : "–")}</b><span>Bastion-Version</span></div>
+          ${hb && hb.zones && hb.zones.length
+            ? `<div class="fact"><b>${hb.zones.filter((z) => z.watched).length} / ${hb.zones.length}</b><span>Zonen überwacht</span></div>`
+            : `<div class="fact"><b>${esc(hb && hb.version ? hb.version : "–")}</b><span>Bastion-Version</span></div>`}
         </div>
       </div>
       <div class="console-side">
@@ -933,13 +1051,59 @@ td .name { font-weight: 600; }
     </section>`;
   }
 
+  const ZONE_STATE = { closed: "bereit", open: "offen", unavailable: "gestört" };
+  const ZONE_DOT = { closed: "var(--good)", open: "var(--warning)", unavailable: "var(--gray)" };
+
+  function zonesCard(d) {
+    const zones = (d.hb && d.hb.zones) || [];
+    if (!zones.length) return "";
+    const rooms = new Map();
+    for (const z of zones) {
+      if (!rooms.has(z.room)) rooms.set(z.room, []);
+      rooms.get(z.room).push(z);
+    }
+    const open = zones.filter((z) => z.state === "open").length;
+    const broken = zones.filter((z) => z.state === "unavailable").length;
+    const watched = zones.filter((z) => z.watched).length;
+    const pills = [`<span class="pill">${watched} überwacht</span>`, open ? `<span class="pill warn">${open} offen</span>` : "", broken ? `<span class="pill">${broken} gestört</span>` : ""].join("");
+    const body = `<div class="zones-wrap"><div class="zones">${[...rooms].map(([room, list]) => {
+      const issues = list.filter((z) => z.state !== "closed").length;
+      return `<div class="zone-room"><h4>${esc(room || "Ohne Raum")}<span class="faint">${issues ? `${issues} von ${list.length} nicht bereit` : `${list.length} bereit`}</span></h4>
+        ${list.map((z) => `<div class="zone ${z.state}${z.watched ? " watched" : ""}" title="${esc(`${z.name}: ${ZONE_STATE[z.state]}${z.watched ? ", überwacht" : ""}${z.type === "always" ? " (immer aktiv)" : ""}`)}">
+          <span class="dot" style="--c:${ZONE_DOT[z.state]}"></span><span class="zn">${esc(z.name)}</span><span class="zs">${ZONE_STATE[z.state]}</span>
+          <span class="zw">${z.watched ? ICON.lock : ""}</span></div>`).join("")}</div>`;
+    }).join("")}</div></div>`;
+    return card("Zonen", body, { flush: true, sub: "Räume und Sensoren · Schloss = überwacht", right: `<div class="pills">${pills}</div>` });
+  }
+
+  const evCategory = (e) => (GROUPS.alarm.includes(e.event) ? "Alarm" : GROUPS.ops.includes(e.event) ? "Bedienung" : ["attack", "canary", "passkey_added", "passkey_removed", "exposure"].includes(e.event) ? "Sicherheit" : "System");
+
+  function dayLabel(ts, now) {
+    const k = dayKey(ts);
+    if (k === dayKey(now)) return "Heute";
+    if (k === dayKey(now - 86400)) return "Gestern";
+    return fmt(ts, { weekday: "long", day: "2-digit", month: "2-digit" });
+  }
+
+  function logList(evs, now) {
+    let day = "";
+    return `<ul class="log">${evs.map((e) => {
+      const label = dayLabel(e.ts, now);
+      const head = label !== day ? `<li class="day">${esc(label)}</li>` : "";
+      day = label;
+      const color = EV_COLOR[e.event] || "var(--gray)";
+      return `${head}<li class="ev${e.incident ? " link" : ""}"${e.incident ? ` data-href="/i/${esc(e.incident)}"` : ""} title="${esc(rel(e.ts))}">
+        <span class="ev-time">${esc(timeOnly(e.ts))}</span><span class="ev-bar" style="--c:${color}"></span>
+        <span class="fi" style="--c:${color}">${ICON[EV_ICON[e.event]] || ICON.bell}</span>
+        <div style="min-width:0"><div class="ft">${esc(LABELS[e.event] || e.event)}</div>${evDetail(e) ? `<div class="fs">${esc(evDetail(e))}</div>` : ""}</div>
+        <span class="ev-cat">${esc(evCategory(e))}</span></li>`;
+    }).join("")}</ul>`;
+  }
+
   function feedCard(d) {
-    const evs = [...d.events].reverse().slice(0, 8);
-    const body = evs.length ? `<ul class="feed">${evs.map((e) => `<li${e.incident ? ` class="link" data-href="/i/${esc(e.incident)}"` : ""}>
-        <span class="fi" style="--c:${EV_COLOR[e.event] || "var(--gray)"}">${ICON[EV_ICON[e.event]] || ICON.bell}</span>
-        <div style="min-width:0"><div class="ft">${esc(LABELS[e.event] || e.event)}</div><div class="fs">${esc(evDetail(e) || dateTime(e.ts))}</div></div>
-        <span class="fw">${ago(e.ts)}</span></li>`).join("")}</ul>` : `<div class="empty">Noch keine Ereignisse.</div>`;
-    return card("Letzte Ereignisse", body, { flush: true, right: d.events.length > 8 ? `<button class="btn sm" data-scroll="log">Alle ${d.events.length}</button>` : "" });
+    const evs = [...d.events].reverse().slice(0, 10);
+    const body = evs.length ? logList(evs, d.now) : `<div class="empty">Noch keine Ereignisse.</div>`;
+    return card("Ereignisprotokoll", body, { flush: true, right: d.events.length > 10 ? `<button class="btn sm" data-scroll="log">Alle ${d.events.length}</button>` : "" });
   }
 
   function incidentsMini(list) {
@@ -970,6 +1134,7 @@ td .name { font-weight: 600; }
     const remote = remoteCard(d);
     return {
       html: `${consoleCard(d, a)}
+        ${zonesCard(d) ? `<div class="mt">${zonesCard(d)}</div>` : ""}
         ${side.length ? `<div class="grid two mt">${feedCard(d)}<div class="col">${side.join("")}</div></div>` : `<div class="mt">${feedCard(d)}</div>`}
         ${rangeRow("Auswertung")}
         <div class="grid kpis mt">
@@ -1491,10 +1656,18 @@ td .name { font-weight: 600; }
   // --------------------------------------------------------------- live
   // Every 10 s a small request; the full data is only reloaded when something changed.
   function setLive(ok) {
+    view.live = ok;
     const el = document.getElementById("updated");
     el.classList.toggle("stale", !ok);
     const at = view.liveOk ? timeOnly(Math.floor(view.liveOk / 1000)).slice(0, 5) : "–";
-    el.innerHTML = `<span class="live-dot"></span><span class="ut">${ok ? `Live · ${esc(at)}` : `Keine Verbindung · Stand ${esc(at)}`}</span>`;
+    el.innerHTML = ok
+      ? `<span class="live-dot"></span><span class="ut"><b>LIVE</b> <span class="clock" id="clock">${esc(timeOnly(Math.floor(Date.now() / 1000)))}</span></span>`
+      : `<span class="live-dot"></span><span class="ut"><b>OFFLINE</b> Stand ${esc(at)}</span>`;
+  }
+
+  function tickClock() {
+    const el = document.getElementById("clock");
+    if (el && view.live) el.textContent = timeOnly(Math.floor(Date.now() / 1000));
   }
 
   function tickTimes() {
@@ -1628,6 +1801,7 @@ td .name { font-weight: 600; }
   } else {
     loadDashboard();
     setInterval(liveTick, 10000);
+    setInterval(() => { if (!document.hidden) tickClock(); }, 1000);
     setInterval(() => { if (!document.hidden) tickTimes(); }, 15000);
     // Long-term numbers (days, shares) drift slowly: full reload every 5 minutes as well.
     setInterval(() => { if (idle()) loadDashboard(); }, 300000);
