@@ -8,6 +8,11 @@ there, and Pushover acknowledgements come back with the heartbeat response.
 
 Signature: hex(HMAC-SHA256(secret, f"{timestamp}.{body}")) in
 X-Bastion-Signature, timestamp in X-Bastion-Timestamp (replay window 5 min).
+
+Remote control: with remote control on, Home Assistant fetches commands from
+the worker (every 15 s, every 2 s while someone is about to send one). A
+command carries the worker's signature, expires after 90 seconds and is only
+run once; disarming needs its own permission.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -29,6 +35,7 @@ from homeassistant.helpers.event import async_call_later, async_track_time_inter
 from homeassistant.util import dt as dt_util
 
 from ..const import EVENT_SECURITY, SEVERITY_WEIGHT
+from .engine import AlarmError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,9 +51,15 @@ RELAY_EVENTS = (
     "arm_failed",
     "wrong_code",
     "sensor_unavailable",
+    "unarmed",
 )
 ACTIVE_STATES = ("pending", "triggered")
 TICK = 15
+FAST_POLL = 2
+COMMAND_MAX_AGE = 180
+COMMAND_ID = re.compile(r"^[a-f0-9]{16}$")
+# Messages the worker forwards; types that come from the worker are not echoed back to it.
+WORKER_TYPES = ("worker_attack", "dashboard_access", "passkey_added")
 SNAPSHOT_INTERVAL = 5
 MAX_SNAPSHOT = 1_400_000  # base64 characters
 SECURITY_RESEND = 1800  # seconds: overview is sent on change, at least this often
@@ -63,6 +76,13 @@ PROCESS_START = int(time.time())
 def sign(secret: str, timestamp: str, body: bytes) -> str:
     """Signature the worker verifies."""
     return hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+
+
+def command_signature(secret: str, cmd: dict[str, Any]) -> str:
+    """Signature of a remote command (same value as the worker computes)."""
+    force = 1 if cmd.get("force") else 0
+    msg = f"command.{cmd.get('id')}.{cmd.get('action')}.{cmd.get('mode') or ''}.{force}.{cmd.get('ts')}.{cmd.get('by') or ''}"
+    return hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
 
 
 def incident_token(secret: str, incident: str) -> str:
@@ -97,6 +117,15 @@ class AlarmRelay:
         self._unsub_backfill: CALLBACK_TYPE | None = None
         self.backfill_result: dict[str, Any] | None = None
         self.on_exposure = None
+        self.on_notice = None
+        self.dashboard_url: str | None = None
+        self._notices_seen: set[int] = set()
+        self._notices_done: set[int] = set()
+        self._cmd_done: dict[str, float] = {}
+        self._cmd_results: list[dict[str, Any]] = []
+        self._polling = False
+        self._unsub_fast: CALLBACK_TYPE | None = None
+        self.last_commands: list[dict[str, Any]] = []
 
     @property
     def cfg(self) -> dict[str, Any]:
@@ -107,6 +136,16 @@ class AlarmRelay:
     def enabled(self) -> bool:
         """True if a worker is configured."""
         return bool(self.cfg.get("enabled") and self.cfg.get("url") and self.cfg.get("secret"))
+
+    @property
+    def remote(self) -> dict[str, Any]:
+        """Remote control settings."""
+        return self.engine.config.get("remote") or {}
+
+    @property
+    def remote_enabled(self) -> bool:
+        """True if commands are fetched from the worker."""
+        return self.enabled and bool(self.remote.get("enabled"))
 
     @property
     def interval(self) -> int:
@@ -135,6 +174,9 @@ class AlarmRelay:
         if self._unsub_backfill is not None:
             self._unsub_backfill()
             self._unsub_backfill = None
+        if self._unsub_fast is not None:
+            self._unsub_fast()
+            self._unsub_fast = None
         for task in list(self._tasks):
             task.cancel()
 
@@ -191,7 +233,7 @@ class AlarmRelay:
     def _security_event(entry: dict[str, Any]) -> dict[str, Any] | None:
         """Compact login/security event for the worker (ids and tokens stay at home)."""
         kind = str(entry.get("type") or "")
-        if not kind or kind == "worker_attack":
+        if not kind or kind in WORKER_TYPES or entry.get("source") == "worker":
             return None
         when = dt_util.parse_datetime(str(entry.get("time") or "")) or dt_util.utcnow()
         ip = entry.get("ip")
@@ -314,7 +356,9 @@ class AlarmRelay:
             "version": self.version,
             "stopping": stopping,
             "acks_seen": sorted(self._acks_seen),
+            "notices_seen": sorted(self._notices_seen),
             "check_urls": self.check_urls(),
+            "remote": {"enabled": bool(self.remote.get("enabled")), "disarm": bool(self.remote.get("disarm"))},
         }
 
     def check_urls(self) -> list[str]:
@@ -326,12 +370,15 @@ class AlarmRelay:
         due = time.monotonic() - self._last_beat >= self.interval - TICK / 2
         if due or self.engine.state in ACTIVE_STATES:
             await self._async_heartbeat()
+        if self.remote_enabled:
+            await self.async_poll_commands()
 
     async def _async_heartbeat(self) -> None:
         if not self.enabled:
             return
         self._last_beat = time.monotonic()
         sent_seen = set(self._acks_seen)
+        sent_notices = set(self._notices_seen)
         extra, sent_hash, sent_events = self._security_payload()
         try:
             result = await self._async_post("/heartbeat", {**self._heartbeat_payload(), **extra})
@@ -342,10 +389,14 @@ class AlarmRelay:
         self.last_ok = dt_util.utcnow().isoformat()
         self.last_error = None
         self._acks_seen -= sent_seen
+        self._notices_seen -= sent_notices
         if sent_hash:
             self._sec_hash, self._sec_sent = sent_hash, time.monotonic()
         del self._sec_queue[:sent_events]
+        if isinstance(result.get("dashboard"), str) and result["dashboard"].startswith("https://"):
+            self.dashboard_url = result["dashboard"].rstrip("/")
         self._handle_acks(result.get("acks") or [])
+        self._handle_notices(result.get("notices") or [])
         self._handle_attack(result.get("attack"))
         if isinstance(result.get("exposure"), dict) and self.on_exposure is not None:
             self.on_exposure(result["exposure"])
@@ -364,6 +415,102 @@ class AlarmRelay:
         if len(self._acks_done) > 200:
             self._acks_done = set(sorted(self._acks_done)[-100:])
 
+    def _handle_notices(self, notices: list[dict[str, Any]]) -> None:
+        """Decoy uses, dashboard logins and new passkeys reported by the worker."""
+        for notice in notices[:20]:
+            if not isinstance(notice, dict) or not isinstance(notice.get("id"), int):
+                continue
+            self._notices_seen.add(notice["id"])
+            if notice["id"] in self._notices_done:
+                continue
+            self._notices_done.add(notice["id"])
+            data = notice.get("data") if isinstance(notice.get("data"), dict) else {}
+            if self.on_notice is not None:
+                self.on_notice(str(notice.get("type") or ""), data)
+        if len(self._notices_done) > 300:
+            self._notices_done = set(sorted(self._notices_done)[-150:])
+
+    # ------------------------------------------------------------ remote
+    async def async_poll_commands(self) -> None:
+        """Fetch remote commands (and report results of the last ones)."""
+        if self._polling or not self.remote_enabled:
+            return
+        self._polling = True
+        results = self._cmd_results[:10]
+        fast = False
+        try:
+            answer = await self._async_post("/commands", {"ts": int(time.time()), "done": results}, timeout=10)
+            del self._cmd_results[: len(results)]
+            fast = bool(answer.get("fast"))
+            for cmd in (answer.get("commands") or [])[:5]:
+                if isinstance(cmd, dict) and await self._async_run_command(cmd):
+                    fast = True
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug("Bastion command poll failed: %s", err)
+        finally:
+            self._polling = False
+        if (fast or self._cmd_results) and self._unsub_fast is None and self.remote_enabled:
+            self._unsub_fast = async_call_later(self.hass, FAST_POLL, self._fast_poll)
+
+    @callback
+    def _fast_poll(self, _now: datetime | None = None) -> None:
+        self._unsub_fast = None
+        self._spawn(self.async_poll_commands())
+
+    async def _async_run_command(self, cmd: dict[str, Any]) -> bool:
+        """Verify and run one command; returns True if it was new."""
+        cid = str(cmd.get("id") or "")
+        now = time.time()
+        self._cmd_done = {k: v for k, v in self._cmd_done.items() if now - v < 600}
+        if not COMMAND_ID.match(cid) or cid in self._cmd_done:
+            return False
+        self._cmd_done[cid] = now
+        action = cmd.get("action")
+        mode = cmd.get("mode")
+        by = str(cmd.get("by") or "")[:80]
+        error: str | None = None
+        detail: Any = None
+        if not hmac.compare_digest(command_signature(self.cfg["secret"], cmd), str(cmd.get("sig") or "")):
+            error = "signature"
+        elif not isinstance(cmd.get("ts"), int) or abs(now - cmd["ts"]) > COMMAND_MAX_AGE:
+            error = "stale"
+        elif not self.remote.get("enabled"):
+            error = "disabled"
+        elif action == "disarm" and not self.remote.get("disarm"):
+            error = "not_allowed"
+        elif action not in ("arm", "disarm"):
+            error = "invalid"
+        else:
+            user = f"Dashboard ({by})" if by else "Dashboard"
+            try:
+                if action == "arm":
+                    await self.engine.async_arm(str(mode), user=user, force=bool(cmd.get("force")), trusted=True)
+                else:
+                    await self.engine.async_disarm(user=user, trusted=True)
+            except AlarmError as err:
+                error, detail = err.reason, err.detail
+        if error in ("signature", "stale"):
+            _LOGGER.warning("Bastion rejected a remote command (%s)", error)
+        entry = {"id": cid, "ok": error is None, "error": error, "detail": detail}
+        self._cmd_results.append(entry)
+        self.last_commands = [
+            {**entry, "action": action, "mode": mode, "by": by, "time": dt_util.utcnow().isoformat()},
+            *self.last_commands,
+        ][:10]
+        return True
+
+    async def async_remote(self, op: str, **data: Any) -> dict[str, Any]:
+        """Pairing code and passkeys at the worker (for the panel)."""
+        if not self.enabled:
+            return {"ok": False, "error": "not configured"}
+        try:
+            answer = await self._async_post("/remote", {"ts": int(time.time()), "op": op, **data})
+        except (aiohttp.ClientError, TimeoutError) as err:
+            return {"ok": False, "error": str(err)[:200]}
+        if isinstance(answer.get("dashboard"), str) and answer["dashboard"].startswith("https://"):
+            self.dashboard_url = answer["dashboard"].rstrip("/")
+        return answer
+
     async def async_stop(self) -> None:
         """Planned shutdown: tell the worker, so a restart is not mistaken for sabotage."""
         if not self.enabled:
@@ -376,8 +523,10 @@ class AlarmRelay:
     @staticmethod
     def _alarm_event(kind: str, entry: dict[str, Any]) -> dict[str, Any]:
         """Alarm log entry as the worker stores it; the uid makes resending safe."""
-        detail = {k: entry[k] for k in ("target", "delay", "previous", "reason") if entry.get(k) not in (None, "")}
-        for key in ("bypassed", "sensors"):
+        detail = {
+            k: entry[k] for k in ("target", "delay", "previous", "reason", "minutes") if entry.get(k) not in (None, "")
+        }
+        for key in ("bypassed", "sensors", "persons"):
             if entry.get(key):
                 detail[key] = [str(x)[:60] for x in entry[key]][:20]
         when = dt_util.parse_datetime(str(entry.get("time") or "")) or dt_util.utcnow()

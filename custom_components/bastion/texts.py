@@ -1046,6 +1046,10 @@ ALARM_TEXTS = {
         "wrong_code": ("Falscher Alarm-Code", "Ein falscher Code wurde eingegeben{by}."),
         "sensor_unavailable": ("Sensor nicht erreichbar", "{name} ist bei scharfer Anlage nicht erreichbar."),
         "acknowledged": ("Alarm quittiert", "Bestätigt über Pushover{by}."),
+        "unarmed": (
+            "Niemand zuhause – Alarmanlage aus",
+            "Alle sind seit {minutes} Min. weg ({persons}), die Alarmanlage ist unscharf.",
+        ),
         "bypassed": " Überbrückt: {sensors}.",
         "by": " von {user}",
         "reasons": {
@@ -1075,6 +1079,10 @@ ALARM_TEXTS = {
         "wrong_code": ("Wrong alarm code", "A wrong code was entered{by}."),
         "sensor_unavailable": ("Sensor unavailable", "{name} is unavailable while armed."),
         "acknowledged": ("Alarm acknowledged", "Confirmed via Pushover{by}."),
+        "unarmed": (
+            "Nobody home – alarm is off",
+            "Everybody left {minutes} min ago ({persons}), the alarm is disarmed.",
+        ),
         "bypassed": " Bypassed: {sensors}.",
         "by": " by {user}",
         "reasons": {
@@ -1110,6 +1118,8 @@ def alarm_text(kind: str, language: str, entry: dict[str, Any]) -> tuple[str, st
         "reason": texts["reasons"].get(entry.get("reason") or "", entry.get("reason") or ""),
         "by": fmt(texts["by"], {"user": entry["user"]}) if entry.get("user") else "",
         "sensors": ", ".join(entry.get("sensors") or []),
+        "minutes": entry.get("minutes", ""),
+        "persons": ", ".join(entry.get("persons") or []),
         "bypassed": fmt(texts["bypassed"], {"sensors": ", ".join(entry["bypassed"])}) if entry.get("bypassed") else "",
     }
     title, message = texts[kind]

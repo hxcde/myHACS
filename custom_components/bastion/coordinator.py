@@ -19,6 +19,7 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .alarm.engine import AlarmEngine
+from .alarm.presence import PresenceReminder
 from .alarm.relay import AlarmRelay
 from .anomaly.engine import AnomalyEngine
 from .audit import AuditContext, async_run_audit
@@ -37,6 +38,7 @@ from .const import (
     CONF_REPORT_WEEKDAY,
     DOMAIN,
     EVENT_FINDING,
+    EVENT_SECURITY,
     SEVERITY_ORDER,
     SEVERITY_WEIGHT,
     SIGNAL_UPDATE,
@@ -87,8 +89,10 @@ class Bastion:
         self.git.decoy = self.canary.decoy_text
         self.alarm = AlarmEngine(hass, self)
         self.relay = AlarmRelay(hass, self.alarm)
+        self.presence = PresenceReminder(hass, self.alarm)
         self.alarm.on_event = self._on_alarm_event
         self.relay.on_exposure = self._on_exposure
+        self.relay.on_notice = self._on_worker_notice
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_DATA)
         self.data: dict[str, Any] = {}
         self.findings: list[Finding] = []
@@ -122,6 +126,7 @@ class Bastion:
         await self.alarm.async_setup()
         self.relay.version = str((await async_get_integration(self.hass, DOMAIN)).version or "")
         self.relay.setup()
+        self.presence.setup()
         await self.canary.async_setup()
         await self.logins.async_setup()
         await self.git.async_setup()
@@ -176,6 +181,7 @@ class Bastion:
         self.guard.uninstall()
         self.responder.unload()
         self.canary.unload()
+        self.presence.unload()
         self.relay.unload()
         await self.relay.async_stop()
         await self.alarm.async_unload()
@@ -347,13 +353,49 @@ class Bastion:
             self.hass.async_create_task(self.async_run_audit(notify=True), eager_start=False)
 
     @callback
+    def _on_worker_notice(self, kind: str, data: dict[str, Any]) -> None:
+        """Something the worker saw: decoy use, dashboard login from a new device, new passkey."""
+        geo = ", ".join(str(x) for x in (data.get("city"), data.get("country")) if x)
+        if kind == "canary":
+            via = "Worker-Webhook" if data.get("kind") == "webhook" else "Worker-Token"
+            ip = str(data.get("ip") or "?")[:64]
+            agent = str(data.get("agent") or "")[:200]
+            self.hass.async_create_task(self.canary.async_trigger(via, ip, agent, source="worker"), eager_start=True)
+            return
+        if kind == "dashboard_access":
+            entry = {
+                "user": str(data.get("email") or "")[:120],
+                "ip": str(data.get("ip") or "")[:64],
+                "geo": geo,
+                "device": str(data.get("device") or "")[:60],
+                "new_device": bool(data.get("new_device")),
+                "new_country": bool(data.get("new_country")),
+            }
+        elif kind == "passkey_added":
+            entry = {"user": str(data.get("email") or "")[:120], "name": str(data.get("name") or "")[:60]}
+        else:
+            return
+        self.logins.record(kind, entry)
+        self.hass.bus.async_fire(EVENT_SECURITY, {"type": kind, "source": "worker", **entry})
+        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+
+    def remote_link(self, action: str = "arm_away") -> str | None:
+        """Dashboard link that runs an action after the passkey check."""
+        if not self.relay.dashboard_url:
+            return None
+        if self.relay.remote_enabled:
+            return f"{self.relay.dashboard_url}/?do={action}"
+        return f"{self.relay.dashboard_url}/"
+
+    @callback
     def _on_alarm_event(self, kind: str, entry: dict[str, Any]) -> None:
         self.hass.async_create_task(self._async_alarm_event(kind, entry), eager_start=True)
 
     async def _async_alarm_event(self, kind: str, entry: dict[str, Any]) -> None:
         actions = self.alarm.config.get("actions") or {}
         notify_kind = "armed" if kind in ("arming", "rearmed") else kind
-        push = notify_kind in (actions.get("notify_events") or [])
+        # The reminder only exists when it is switched on, so it is always pushed.
+        push = kind == "unarmed" or notify_kind in (actions.get("notify_events") or [])
         if push and (texts := alarm_text(kind, self.hass.config.language, entry)) is not None:
             data = None
             mobile: dict[str, Any] = {}
@@ -362,6 +404,8 @@ class Bastion:
                 mobile["tag"] = ALARM_TAG
                 if url := self.relay.incident_url(entry.get("incident")):
                     mobile["url"] = mobile["clickAction"] = url
+            if kind == "unarmed" and (url := self.remote_link()):
+                mobile["url"] = mobile["clickAction"] = url
             if kind == "triggered" and actions.get("critical_push", True):
                 data = {
                     "push": {"sound": {"name": "default", "critical": 1, "volume": 1.0}},

@@ -269,6 +269,31 @@ td .name { font-weight: 600; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
 .loading, .error { padding: 80px 0; text-align: center; color: var(--text-2); }
 
+/* Fernsteuerung */
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.primary:hover { background: var(--primary-hover); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; transform: none; }
+.input { height: var(--h); padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: var(--panel); color: var(--text);
+  font: inherit; font-size: 16px; min-width: 0; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.ctl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.btn.ctl { flex-direction: column; height: auto; padding: 14px 8px 12px; gap: 4px; font-weight: 600; }
+.btn.ctl svg.icon { width: 22px; height: 22px; color: var(--primary); }
+.btn.ctl small { font-weight: 400; color: var(--text-2); font-size: 11px; }
+.btn.ctl.current { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); background: var(--primary-soft); }
+.notice { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-s); background: var(--panel-2); border: 1px solid var(--border); font-size: 13px; line-height: 1.5; }
+.notice.ok { background: var(--green-soft); border-color: transparent; }
+.notice.warn { background: var(--orange-soft); border-color: transparent; }
+.notice.bad { background: var(--red-soft); border-color: transparent; }
+.notice .btn { margin: 6px 6px 0 0; }
+.stack { display: grid; gap: 10px; }
+
+/* Verfügbarkeit */
+.strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; height: 34px; }
+.strip i { border-radius: 2px; background: var(--c, var(--chip-bg)); }
+.strip i:hover { outline: 2px solid var(--text); outline-offset: 1px; }
+.strip-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); margin-top: 6px; }
+.chart-legend.mt8 { margin-top: 10px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .sidebar { width: 60px; padding: 12px 8px; align-items: center; }
@@ -315,6 +340,7 @@ td .name { font-weight: 600; }
   <div class="nav-section">Überwachung</div>
   <nav>
     <a class="side-link" href="#" data-nav="alarm"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg><span class="label">Alarmanlage</span><span class="short">Alarm</span><span class="badge" id="badge-alarm"></span></a>
+    <a class="side-link" href="#verfuegbarkeit" data-nav="uptime"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="label">Verfügbarkeit</span><span class="short">Betrieb</span><span class="badge" id="badge-up"></span></a>
     <a class="side-link" href="#sicherheit" data-nav="security"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="label">Sicherheit</span><span class="short">Sicherheit</span><span class="badge" id="badge-sec"></span></a>
   </nav>
   <div class="spacer"></div>
@@ -339,16 +365,18 @@ td .name { font-weight: 600; }
     triggered: "Alarm", pending: "Vorwarnung", arming: "Wird scharf", armed: "Scharf", rearmed: "Wieder scharf",
     disarmed: "Unscharf", reset: "Zurückgesetzt", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code",
     sensor_unavailable: "Sensor nicht erreichbar", acknowledged: "Quittiert", offline: "Funkstille", online: "Wieder erreichbar", restart: "Neustart", attack: "Angriffsversuch am Worker",
+    exposure: "Außenprüfung", canary: "Köder benutzt", passkey_added: "Passkey gekoppelt", passkey_removed: "Passkey entfernt", unarmed: "Niemand zuhause, nicht scharf",
   };
   const EV_COLOR = {
     triggered: "var(--critical)", pending: "var(--warning)", wrong_code: "var(--serious)", arm_failed: "var(--serious)",
     offline: "var(--serious)", sensor_unavailable: "var(--warning)", disarmed: "var(--good)", online: "var(--good)", acknowledged: "var(--good)",
-    armed: "var(--accent)", arming: "var(--accent)", rearmed: "var(--accent)", attack: "var(--critical)",
+    armed: "var(--accent)", arming: "var(--accent)", rearmed: "var(--accent)", attack: "var(--critical)", canary: "var(--critical)",
+    passkey_added: "var(--warning)", passkey_removed: "var(--gray)", unarmed: "var(--warning)",
   };
   const GROUPS = {
     alarm: ["triggered", "pending", "acknowledged", "sensor_unavailable"],
-    ops: ["armed", "arming", "rearmed", "disarmed", "reset", "arm_failed", "wrong_code"],
-    system: ["offline", "online", "restart", "attack"],
+    ops: ["armed", "arming", "rearmed", "disarmed", "reset", "arm_failed", "wrong_code", "unarmed"],
+    system: ["offline", "online", "restart", "attack", "exposure", "canary", "passkey_added", "passkey_removed"],
   };
   let TZ = "Europe/Berlin";
 
@@ -375,6 +403,11 @@ td .name { font-weight: 600; }
     camera: '<svg class="icon" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
     check: '<svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
     back: '<svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
+    pulse: '<svg class="icon" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
+    power: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>',
+    moon: '<svg class="icon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>',
+    home: '<svg class="icon" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/></svg>',
+    bird: '<svg class="icon" viewBox="0 0 24 24"><path d="M16 7h.01M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.3-2.3L2 20"/><path d="m20 7 2 .5-2 .5M10 18v3M14 17.7V21"/></svg>',
   };
   const applyTheme = () => {
     if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
@@ -635,11 +668,170 @@ td .name { font-weight: 600; }
     return `<div class="row spread mt"><div class="section-title" style="margin:0">${esc(title)}</div>${seg([[7, "7 Tage"], [30, "30 Tage"], [90, "90 Tage"], [365, "1 Jahr"]].map(([k, l]) => [String(k), l]), String(view.days), "data-days")}</div>`;
   }
 
+  // ------------------------------------------------------ remote control
+  const ACTIONS = {
+    arm_away: { action: "arm", mode: "away", label: "Abwesend", icon: "shield" },
+    arm_home: { action: "arm", mode: "home", label: "Zuhause", icon: "home" },
+    arm_night: { action: "arm", mode: "night", label: "Nacht", icon: "moon" },
+    disarm: { action: "disarm", label: "Unscharf", icon: "power" },
+  };
+  const CMD_STATUS = { pending: ["Wartet", "warn"], delivered: ["Läuft", "warn"], done: ["Ausgeführt", "ok"], failed: ["Fehlgeschlagen", "bad"], expired: ["Nicht abgeholt", "bad"] };
+  const CMD_ERRORS = {
+    open_sensors: (x) => `Nicht scharf geschaltet, offen: ${[].concat(x || []).join(", ")}.`,
+    not_allowed: () => "In Home Assistant nicht erlaubt.",
+    disabled: () => "Die Fernsteuerung ist in Home Assistant ausgeschaltet.",
+    signature: () => "Home Assistant hat die Signatur abgelehnt (ALARM_SECRET prüfen).",
+    stale: () => "Der Befehl war zu alt (Uhrzeit von Home Assistant prüfen).",
+  };
+  const remoteUi = { busy: false, msg: "", tone: "", force: null, code: "", pairOpen: false, intent: new URLSearchParams(location.search).get("do") };
+  const hasWebAuthn = () => Boolean(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
+  const cmdLabel = (c) => (c.action === "disarm" ? "Unscharf" : `Scharf · ${MODES[c.mode] || c.mode}${c.force ? " (trotz offener Sensoren)" : ""}`);
+
+  const b64u = {
+    enc: (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+    dec: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)),
+  };
+
+  async function post(path, body) {
+    let r;
+    try {
+      r = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
+    } catch {
+      throw new Error("Keine Verbindung.");
+    }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `Fehler ${r.status}`);
+    return data;
+  }
+
+  function passkeyError(err) {
+    if (err && err.name === "NotAllowedError") return "Abgebrochen oder abgelaufen.";
+    if (err && err.name === "InvalidStateError") return "Dieser Passkey ist schon gekoppelt.";
+    return (err && err.message) || "Fehler";
+  }
+
+  function setRemote(msg, tone, extra = {}) {
+    Object.assign(remoteUi, { msg, tone, force: null, ...extra });
+    if (view.data) renderDashboard();
+  }
+
+  async function pairPasskey() {
+    remoteUi.busy = true;
+    setRemote("Passkey wird angelegt …", "");
+    try {
+      const opt = await post("/api/passkey/begin", { code: remoteUi.code });
+      const pk = opt.publicKey;
+      const cred = await navigator.credentials.create({ publicKey: {
+        ...pk, challenge: b64u.dec(pk.challenge), user: { ...pk.user, id: b64u.dec(pk.user.id) },
+        excludeCredentials: pk.excludeCredentials.map((c) => ({ ...c, id: b64u.dec(c.id) })),
+      } });
+      const res = await post("/api/passkey/finish", { challengeId: opt.challengeId, credential: {
+        id: cred.id, type: cred.type,
+        response: { clientDataJSON: b64u.enc(cred.response.clientDataJSON), attestationObject: b64u.enc(cred.response.attestationObject) },
+      } });
+      remoteUi.busy = false;
+      remoteUi.code = "";
+      remoteUi.pairOpen = false;
+      setRemote(`Passkey „${res.name}“ gekoppelt. Du kannst die Alarmanlage jetzt schalten.`, "ok");
+      loadDashboard();
+    } catch (err) {
+      remoteUi.busy = false;
+      setRemote(passkeyError(err), "bad");
+    }
+  }
+
+  async function sendCommand(key, force) {
+    const a = ACTIONS[key];
+    remoteUi.busy = true;
+    remoteUi.intent = null;
+    if (location.search) history.replaceState(null, "", location.pathname + location.hash);
+    setRemote(`${a.label}: Passkey bestätigen …`, "");
+    try {
+      const opt = await post("/api/command/begin", { action: a.action, mode: a.mode, force: Boolean(force) });
+      const pk = opt.publicKey;
+      const cred = await navigator.credentials.get({ publicKey: { ...pk, challenge: b64u.dec(pk.challenge), allowCredentials: pk.allowCredentials.map((c) => ({ ...c, id: b64u.dec(c.id) })) } });
+      const r = cred.response;
+      const res = await post("/api/command/finish", { challengeId: opt.challengeId, credential: {
+        id: cred.id, type: cred.type,
+        response: { clientDataJSON: b64u.enc(r.clientDataJSON), authenticatorData: b64u.enc(r.authenticatorData), signature: b64u.enc(r.signature), userHandle: r.userHandle ? b64u.enc(r.userHandle) : null },
+      } });
+      setRemote(`${res.label}: gesendet, Home Assistant übernimmt …`, "warn");
+      const started = Date.now();
+      while (Date.now() - started < 100000) {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        let st;
+        try { st = await api(`/api/command/${res.id}`); } catch { continue; }
+        if (st.status === "done") { remoteUi.busy = false; setRemote(`${st.label}: ausgeführt.`, "ok"); loadDashboard(); return; }
+        if (st.status === "failed") {
+          remoteUi.busy = false;
+          const err = st.result && st.result.error;
+          const text = (CMD_ERRORS[err] || ((x) => `Fehlgeschlagen: ${err || "unbekannt"}${x ? ` (${x})` : ""}.`))(st.result && st.result.detail);
+          setRemote(text, "bad", { force: err === "open_sensors" && a.action === "arm" ? key : null });
+          loadDashboard();
+          return;
+        }
+        if (st.status === "expired") break;
+      }
+      remoteUi.busy = false;
+      setRemote("Home Assistant hat den Befehl nicht abgeholt. Ist Home Assistant online?", "bad");
+    } catch (err) {
+      remoteUi.busy = false;
+      setRemote(passkeyError(err), "bad");
+    }
+  }
+
+  function pairForm(r) {
+    return `<div class="stack">
+      <div class="muted small">In Home Assistant unter <b>Bastion → Alarmanlage → Einstellungen → Cloud-Worker → Fernsteuerung</b> „Passkey koppeln“ wählen und den 8-stelligen Code hier eingeben. Der Passkey bleibt auf diesem Gerät bzw. in deinem Passwortmanager.</div>
+      <div class="row"><input class="input" id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="1234-5678" value="${esc(remoteUi.code)}" style="width:150px">
+        <button class="btn primary" data-pair ${remoteUi.busy ? "disabled" : ""}>${ICON.key}Passkey anlegen</button></div>
+      ${r.pairing ? `<div class="faint small">Ein Kopplungscode ist aktiv.</div>` : `<div class="faint small">Gerade ist kein Kopplungscode aktiv.</div>`}
+    </div>`;
+  }
+
+  function commandsTable(list) {
+    if (!list || !list.length) return "";
+    return `<div class="table-wrap" style="margin:16px -16px -16px;border-top:1px solid var(--border)"><table><thead><tr><th>Zeit</th><th>Befehl</th><th class="hide-sm">Von</th><th>Ergebnis</th></tr></thead><tbody>
+      ${list.map((c) => {
+        const [l, tone] = CMD_STATUS[c.status] || [c.status, ""];
+        return `<tr><td class="t">${esc(dateTime(c.ts))}</td><td>${esc(cmdLabel(c))}</td><td class="hide-sm">${esc(c.passkey || c.by || "")}</td><td><span class="pill ${tone}">${esc(l)}</span></td></tr>`;
+      }).join("")}</tbody></table></div>`;
+  }
+
+  function remoteCards(d) {
+    const r = d.remote;
+    if (!r || !r.enabled) return "";
+    const hb = d.hb || {};
+    const keys = r.passkeys || [];
+    const msg = remoteUi.msg ? `<div class="notice ${remoteUi.tone}">${esc(remoteUi.msg)}${remoteUi.force ? `<br><button class="btn sm" data-remote-force="${remoteUi.force}">Trotzdem scharf schalten</button>` : ""}</div>` : "";
+    if (!hasWebAuthn()) return `<div class="mt">${card("Fernsteuerung", `<div class="muted">Dieser Browser unterstützt keine Passkeys.</div>`)}</div>`;
+    if (!keys.length) {
+      return `<div class="mt">${card("Fernsteuerung", `${pairForm(r)}${msg}`, { sub: "Scharf und unscharf schalten mit Passkey", right: `<span class="pill">Kein Passkey</span>` })}</div>`;
+    }
+    const current = !hb.state || hb.state === "disarmed" ? "disarm" : hb.mode ? `arm_${hb.mode}` : "";
+    const intent = remoteUi.intent && ACTIONS[remoteUi.intent] && (remoteUi.intent !== "disarm" || r.disarm) ? remoteUi.intent : null;
+    const buttons = Object.entries(ACTIONS).filter(([k]) => k !== "disarm" || r.disarm).map(([k, a]) => `<button class="btn ctl ${k === current ? "current" : ""}" data-remote="${k}" ${remoteUi.busy || hb.offline ? "disabled" : ""}>
+      ${ICON[a.icon]}<span>${esc(a.label)}</span><small>${k === current ? "Aktuell" : k === "disarm" ? "Ausschalten" : "Scharf schalten"}</small></button>`).join("");
+    const controls = card("Fernsteuerung", `${intent ? `<div class="notice warn" style="margin:0 0 12px">Aus der Erinnerung: <b>${esc(ACTIONS[intent].label)}</b> scharf schalten?<br>
+        <button class="btn sm primary" data-remote="${intent}" ${remoteUi.busy ? "disabled" : ""}>Mit Passkey bestätigen</button><button class="btn sm" data-remote-dismiss>Nein</button></div>` : ""}
+      <div class="ctl-grid">${buttons}</div>${msg}
+      <div class="faint small" style="margin-top:12px">Jeder Befehl verlangt deinen Passkey (Face ID, Fingerabdruck oder PIN).${r.disarm ? "" : " Unscharf schalten aus der Ferne ist in Home Assistant nicht freigegeben."}${hb.offline ? " Home Assistant ist gerade nicht erreichbar." : ""}</div>
+      ${commandsTable(r.commands)}`, { sub: "Befehle holt Home Assistant beim Worker ab" });
+    const list = `<div class="table-wrap"><table><thead><tr><th>Gerät</th><th class="hide-sm">Gekoppelt</th><th>Zuletzt</th></tr></thead><tbody>
+      ${keys.map((k) => `<tr><td><span class="name">${esc(k.name || "Passkey")}</span></td><td class="t hide-sm">${esc(dateTime(k.created))}</td><td class="t">${k.last_used ? esc(rel(k.last_used)) : "–"}</td></tr>`).join("")}
+      </tbody></table></div>`;
+    const more = remoteUi.pairOpen ? `<div class="card-body" style="border-top:1px solid var(--border)">${pairForm(r)}</div>`
+      : `<div class="more"><button class="btn sm" data-pair-open>${ICON.key}Weiteren Passkey koppeln</button></div>`;
+    const keysCard = `<section class="card"><div class="card-head"><div><h2>Passkeys</h2><div class="sub">Entfernen in Home Assistant</div></div><span class="faint small">${keys.length}</span></div>${list}${more}</section>`;
+    return `<div class="grid two mt">${controls}${keysCard}</div>`;
+  }
+
   function renderAlarm(d) {
     const a = analyse(d);
     const k = a.kpi;
     return {
       html: `${alarmHero(d)}
+        ${remoteCards(d)}
         <div class="grid two mt">${hintsCard(d)}${triggersCard(a)}</div>
         ${rangeRow("Zeitraum")}
         <div class="grid kpis mt">
@@ -676,6 +868,8 @@ td .name { font-weight: 600; }
     const dayAgo = d.now - 86400;
     const attempts = (d.attempts || []).filter((a) => a.ts >= dayAgo).reduce((n, a) => n + a.n, 0);
     if (attempts) warn.push(`${attempts} abgewiesene Zugriffe am Worker (24 h)`);
+    const decoys = (d.canary || []).filter((c) => c.ts >= dayAgo).length;
+    if (decoys) crit.push(`Köder ${decoys}× benutzt (24 h) – Zugangsdaten in fremden Händen`);
     for (const r of (d.exposure && d.exposure.results) || []) {
       for (const c of r.checks) {
         if (c.level === "critical") crit.push(`Außenprüfung: ${c.text}`);
@@ -957,6 +1151,27 @@ td .name { font-weight: 600; }
     return card("Vom Worker gesperrte IPs", body, { flush: true, sub: "Zu viele abgewiesene Zugriffe" });
   }
 
+  function sessionsCard(d) {
+    const rows = (d.sessions || []).slice(0, 15);
+    const body = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Zuletzt</th><th>Gerät</th><th>Herkunft</th><th class="hide-sm">Konto</th></tr></thead><tbody>
+      ${rows.map((x) => `<tr><td class="t">${esc(dateTime(x.last))}</td>
+        <td><span class="name">${esc(x.label || "Gerät")}</span>${x.new_device ? ` <span class="pill warn" style="height:18px">neu</span>` : ""}</td>
+        <td><span class="mono">${esc(x.ip || "")}</span>${x.country ? ` <span class="faint">· ${esc([x.city, x.country].filter(Boolean).join(", "))}</span>` : ""}${x.new_country ? ` <span class="pill warn" style="height:18px">neues Land</span>` : ""}</td>
+        <td class="hide-sm">${esc(x.email || "")}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">Keine Zugriffe im Zeitraum.</div>`;
+    const total = (d.sessions || []).length;
+    return card("Dashboard-Zugriffe", body, { flush: true, sub: "Sitzungen hinter Cloudflare Access", right: `<span class="faint small">${total}</span>` });
+  }
+
+  function canaryCard(d) {
+    const rows = (d.canary || []).slice(0, 15);
+    const body = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Köder</th><th>Herkunft</th><th class="hide-sm">Gerät</th></tr></thead><tbody>
+      ${rows.map((x) => `<tr><td class="t">${esc(dateTime(x.ts))}</td><td><span class="tag dotted" style="--c:var(--critical)">${x.kind === "webhook" ? "Webhook" : "Token"}</span></td>
+        <td><span class="mono">${esc(x.ip || "")}</span>${x.country ? ` <span class="faint">· ${esc(x.country)}</span>` : ""}</td><td class="hide-sm msg small">${esc(x.agent || "–")}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">Nicht ausgelöst. Token und Webhook aus der Köderdatei nutzt niemand legitim.</div>`;
+    return card("Köder im Worker", body, { flush: true, sub: "Benutzung heißt: die Köderdatei ist in fremden Händen", right: rows.length ? `<span class="pill bad">${rows.length}× benutzt</span>` : `<span class="pill ok">Ruhig</span>` });
+  }
+
   function secLogCard(d, filter) {
     const all = (d.secevents || []).filter((e) => filter === "all" || (SEC_GROUPS[filter] || []).includes(e.type));
     const evs = all.slice(0, view.secLimit);
@@ -995,9 +1210,12 @@ td .name { font-weight: 600; }
           ${kpi("Gesperrt", ICON.lock, String(s.banned), s.brute ? `${s.brute}× Brute-Force-Verdacht` : "von HA und Bastion", s.brute > 0)}
           ${kpi("Konten & Tokens", ICON.key, String(s.accounts), "Änderungen im Zeitraum")}
           ${kpi("Worker", ICON.globe, String(s.workerAttempts), s.blockedActive.length ? `${s.blockedActive.length} IP gesperrt` : "abgewiesene Zugriffe", s.workerAttempts > 0)}
+          ${kpi("Köder", ICON.bird, String((d.canary || []).length), (d.canary || []).length ? "Köderdatei kompromittiert" : "nicht ausgelöst", (d.canary || []).length > 0)}
         </div>
         <div class="grid two mt">${stackCard({ id: "failed-chart", title: "Fehlversuche pro Tag", sub: "Home Assistant und Worker", rows: s.days, series: SEC_SERIES, fmt: (n) => String(n), showTable: view.secTable, toggle: "sec" })}${sourcesCard(s)}</div>
         <div class="grid two mt">${score.html}${blockedCard(d, s)}</div>
+        <div class="mt">${sessionsCard(d)}</div>
+        <div class="mt">${canaryCard(d)}</div>
         <div class="mt">${secLogCard(d, view.secLog)}</div>`,
       bind: () => {
         bindStack("failed-chart", s.days, SEC_SERIES, opts, (n) => String(n));
@@ -1006,8 +1224,109 @@ td .name { font-weight: 600; }
     };
   }
 
+  // ---------------------------------------------------------- availability
+  const OUTAGE = {
+    planned: ["Geplanter Neustart", "var(--s2)"], reboot: ["Rechner neu gestartet", "var(--s1)"], restart: ["Neustart ohne Ankündigung", "var(--s1)"],
+    network: ["Netzwerk / Internet", "var(--s1)"], open: ["Funkstille", "var(--critical)"],
+  };
+  const UP_SERIES = [{ key: "unplanned", label: "Ungeplant", color: "var(--s1)" }, { key: "planned", label: "Geplant", color: "var(--s2)" }];
+  const minutes = (s) => (s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} Min.` : duration(s));
+  const pct = (v) => `${(Math.floor(v * 10000) / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+
+  function analyseUptime(d) {
+    const since = d.now - d.days * 86400;
+    const from = Math.max(since, d.uptime_since || since);
+    const days = dayRows(d, () => ({ unplanned: 0, planned: 0, covered: 0 }));
+    const list = (d.outages || []).map((o) => ({ ...o, s: Math.max(o.start, since), e: Math.min(o.end == null ? d.now : o.end, d.now) })).filter((o) => o.e >= o.s);
+    let planned = 0;
+    let unplanned = 0;
+    for (const o of list) {
+      const key = o.kind === "planned" ? "planned" : "unplanned";
+      let t = o.s;
+      while (t < o.e) {
+        const next = Math.min(o.e, t - secOfDay(t) + 86400);
+        const row = days.get(dayKey(t));
+        if (row) row[key] += next - t;
+        t = next > t ? next : o.e;
+      }
+      if (key === "planned") planned += o.e - o.s;
+      else unplanned += o.e - o.s;
+    }
+    const rows = [...days.values()].slice(-d.days);
+    for (const r of rows) r.covered = r.ts - secOfDay(r.ts) + 86400 > (d.uptime_since || 0);
+    const span = Math.max(1, d.now - from);
+    const open = list.find((o) => o.end == null);
+    const unplannedList = list.filter((o) => o.kind !== "planned");
+    return {
+      rows, list: [...list].reverse(), span, from, open,
+      availability: Math.max(0, 1 - (planned + unplanned) / span),
+      unplannedAvailability: Math.max(0, 1 - unplanned / span),
+      planned, unplanned,
+      count: unplannedList.length, plannedCount: list.length - unplannedList.length,
+      longest: unplannedList.reduce((m, o) => Math.max(m, o.e - o.s), 0),
+    };
+  }
+
+  function stripCard(u, d) {
+    const weekly = d.days > 90;
+    const cells = [];
+    if (weekly) {
+      for (let i = 0; i < u.rows.length; i += 7) {
+        const part = u.rows.slice(i, i + 7);
+        cells.push({ ts: part[0].ts, end: part[part.length - 1].ts, down: part.reduce((n, r) => n + r.unplanned + r.planned, 0), covered: part.some((r) => r.covered), len: part.length });
+      }
+    } else for (const r of u.rows) cells.push({ ts: r.ts, end: r.ts, down: r.unplanned + r.planned, covered: r.covered, len: 1 });
+    const color = (c) => (!c.covered ? "var(--chip-bg)" : c.down === 0 ? "var(--good)" : c.down <= 0.01 * 86400 * c.len ? "var(--warning)" : "var(--critical)");
+    const label = (c) => (!c.covered ? "keine Daten" : c.down === 0 ? "keine Ausfälle" : `${minutes(c.down)} Ausfall`);
+    const strip = `<div class="strip" role="img" aria-label="Verfügbarkeit pro ${weekly ? "Woche" : "Tag"}">${cells.map((c) => `<i style="--c:${color(c)}" title="${esc(weekly ? `${dayShort(c.ts)}–${dayShort(c.end)}` : weekday(c.ts))}: ${esc(label(c))}"></i>`).join("")}</div>
+      <div class="strip-axis"><span>${esc(dayShort(cells[0] ? cells[0].ts : d.now))}</span><span>heute</span></div>
+      <div class="chart-legend mt8"><span><i class="sw" style="background:var(--good)"></i>Keine Ausfälle</span><span><i class="sw" style="background:var(--warning)"></i>Unter 1 %</span><span><i class="sw" style="background:var(--critical)"></i>1 % und mehr</span><span><i class="sw" style="background:var(--chip-bg)"></i>Keine Daten</span></div>`;
+    return card(`Verfügbarkeit pro ${weekly ? "Woche" : "Tag"}`, strip, { sub: "Ausfallzeit inklusive geplanter Neustarts" });
+  }
+
+  function outagesCard(u) {
+    const rows = u.list.slice(0, view.upLimit);
+    const body = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Beginn</th><th>Art</th><th class="num">Dauer</th><th class="hide-sm">Ursache</th></tr></thead><tbody>
+      ${rows.map((o) => {
+        const [l, c] = OUTAGE[o.kind] || [o.kind, "var(--gray)"];
+        return `<tr><td class="t">${esc(dateTime(o.start))}</td><td><span class="tag dotted" style="--c:${c}">${esc(l)}</span>${o.armed ? ` <span class="faint small">scharf</span>` : ""}</td>
+          <td class="num">${o.end == null ? `<span class="pill bad">läuft</span>` : esc(minutes(o.end - o.start))}</td><td class="hide-sm msg small">${esc(o.cause || "")}</td></tr>`;
+      }).join("")}</tbody></table></div>
+      ${u.list.length > rows.length ? `<div class="more"><button class="btn sm" data-upmore>Weitere ${Math.min(50, u.list.length - rows.length)} anzeigen</button></div>` : ""}` : `<div class="empty">Keine Ausfälle im Zeitraum.</div>`;
+    return card("Ausfälle und Neustarts", body, { flush: true, right: `<span class="faint small">${u.list.length} Einträge</span>` });
+  }
+
+  function renderUptime(d) {
+    const u = analyseUptime(d);
+    const hb = d.hb;
+    const tone = !hb ? "idle" : hb.offline ? (isArmed(hb.state) ? "down" : "warn") : u.unplannedAvailability >= 0.999 ? "ok" : u.unplannedAvailability >= 0.99 ? "warn" : "down";
+    const last = u.list.find((o) => o.end != null);
+    const sub = [hb && hb.offline ? `Keine Verbindung seit ${dateTime(hb.received)}` : last ? `Letzter Ausfall ${rel(last.end)}` : "Keine Ausfälle", `überwacht seit ${dateTime(d.uptime_since || u.from)}`].join(" · ");
+    const peak = Math.max(1, ...u.rows.map((r) => (r.unplanned + r.planned) / 60));
+    const maxDay = [4, 8, 12, 20, 40, 60, 80, 120, 180, 240, 360, 480, 720, 1440].find((m) => m >= peak) || 1440;
+    const opts = { max: maxDay * 60, ticks: [0, 0.25, 0.5, 0.75, 1].map((f) => f * maxDay * 60), tick: (t) => (maxDay >= 180 ? `${t / 3600}h` : `${t / 60}`), label: "Ausfallminuten pro Tag" };
+    return {
+      html: `${hero({
+        tone, icon: ICON.pulse, title: esc(`${pct(u.availability)} verfügbar`), sub: esc(sub),
+        side: `<span class="pill ${tone === "ok" ? "ok" : tone === "down" ? "bad" : "warn"}">Ohne geplante: ${esc(pct(u.unplannedAvailability))}</span>`,
+        stats: [
+          { v: String(u.count), l: "Ungeplante Ausfälle", cls: u.count ? "warn" : "" },
+          { v: String(u.plannedCount), l: "Geplante Neustarts" },
+          { v: u.planned + u.unplanned ? minutes(u.planned + u.unplanned) : "0", l: "Ausfallzeit gesamt" },
+          { v: u.longest ? minutes(u.longest) : "–", l: "Längster Ausfall" },
+        ],
+      })}
+        ${rangeRow("Zeitraum")}
+        <div class="mt">${stripCard(u, d)}</div>
+        <div class="mt">${stackCard({ id: "up-chart", title: "Ausfallzeit pro Tag", sub: "Minuten, ungeplant und geplant", rows: u.rows, series: UP_SERIES, fmt: minutes, showTable: view.upTable, toggle: "up" })}</div>
+        <div class="mt">${outagesCard(u)}</div>`,
+      bind: () => bindStack("up-chart", u.rows, UP_SERIES, opts, minutes),
+    };
+  }
+
   // ---------------------------------------------------------- dashboard
-  const view = { days: 30, table: false, log: "all", logLimit: 25, secTable: false, secLog: "all", secLimit: 25, data: null };
+  const view = { days: 30, table: false, log: "all", logLimit: 25, secTable: false, secLog: "all", secLimit: 25, upTable: false, upLimit: 25, data: null };
+  const TABS = { "#sicherheit": ["security", "Sicherheit"], "#verfuegbarkeit": ["uptime", "Verfügbarkeit"] };
 
   async function loadDashboard() {
     try {
@@ -1025,15 +1344,17 @@ td .name { font-weight: 600; }
 
   function renderDashboard() {
     const d = view.data;
-    const tab = location.hash === "#sicherheit" ? "security" : "alarm";
+    const [tab, title] = TABS[location.hash] || ["alarm", "Alarmanlage"];
     document.querySelectorAll("[data-nav]").forEach((el) => el.classList.toggle("active", el.dataset.nav === tab));
-    document.getElementById("title").textContent = tab === "security" ? "Sicherheit" : "Alarmanlage";
+    document.getElementById("title").textContent = title;
     const hb = d.hb;
     document.getElementById("badge-alarm").textContent = hb && (hb.state === "triggered" || hb.state === "pending" || hb.offline) ? "!" : "";
     const urgent = d.security ? (d.security.counts.critical || 0) + (d.security.counts.high || 0) : 0;
-    document.getElementById("badge-sec").textContent = urgent ? String(urgent) : "";
+    const decoys = (d.canary || []).filter((c) => c.ts >= d.now - 86400).length;
+    document.getElementById("badge-sec").textContent = decoys ? "!" : urgent ? String(urgent) : "";
+    document.getElementById("badge-up").textContent = hb && hb.offline ? "!" : "";
     document.getElementById("updated").textContent = `Aktualisiert ${timeOnly(d.now).slice(0, 5)}`;
-    const page = tab === "security" ? renderSecurity(d) : renderAlarm(d);
+    const page = tab === "security" ? renderSecurity(d) : tab === "uptime" ? renderUptime(d) : renderAlarm(d);
     app.innerHTML = page.html;
     page.bind();
     app.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { view.days = Number(b.dataset.days); loadDashboard(); }));
@@ -1041,6 +1362,7 @@ td .name { font-weight: 600; }
     app.querySelectorAll("[data-seclog]").forEach((b) => b.addEventListener("click", () => { view.secLog = b.dataset.seclog; view.secLimit = 25; renderDashboard(); }));
     app.querySelectorAll("[data-toggle-table]").forEach((b) => b.addEventListener("click", () => {
       if (b.dataset.toggleTable === "sec") view.secTable = !view.secTable;
+      else if (b.dataset.toggleTable === "up") view.upTable = !view.upTable;
       else view.table = !view.table;
       renderDashboard();
     }));
@@ -1049,6 +1371,21 @@ td .name { font-weight: 600; }
     if (more) more.addEventListener("click", () => { view.logLimit += 50; renderDashboard(); });
     const secMore = app.querySelector("[data-secmore]");
     if (secMore) secMore.addEventListener("click", () => { view.secLimit += 50; renderDashboard(); });
+    const upMore = app.querySelector("[data-upmore]");
+    if (upMore) upMore.addEventListener("click", () => { view.upLimit += 50; renderDashboard(); });
+    app.querySelectorAll("[data-remote]").forEach((b) => b.addEventListener("click", () => { if (!remoteUi.busy) sendCommand(b.dataset.remote, false); }));
+    app.querySelectorAll("[data-remote-force]").forEach((b) => b.addEventListener("click", () => { if (!remoteUi.busy) sendCommand(b.dataset.remoteForce, true); }));
+    const dismiss = app.querySelector("[data-remote-dismiss]");
+    if (dismiss) dismiss.addEventListener("click", () => { remoteUi.intent = null; history.replaceState(null, "", location.pathname + location.hash); renderDashboard(); });
+    const code = app.querySelector("#pair-code");
+    if (code) {
+      code.addEventListener("input", () => { remoteUi.code = code.value; });
+      code.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !remoteUi.busy) pairPasskey(); });
+    }
+    const pair = app.querySelector("[data-pair]");
+    if (pair) pair.addEventListener("click", () => { if (!remoteUi.busy) pairPasskey(); });
+    const pairOpen = app.querySelector("[data-pair-open]");
+    if (pairOpen) pairOpen.addEventListener("click", () => { remoteUi.pairOpen = true; renderDashboard(); });
   }
 
   // ------------------------------------------------------------ incident
@@ -1101,7 +1438,9 @@ td .name { font-weight: 600; }
     loadIncident(m[1], token);
   } else {
     loadDashboard();
-    setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
+    // No refresh while a passkey dialog runs or the pairing code is being typed.
+    const idle = () => !document.hidden && !remoteUi.busy && !(document.activeElement && document.activeElement.id === "pair-code");
+    setInterval(() => { if (idle()) loadDashboard(); }, 60000);
     // Back in the foreground (installed app), show fresh data right away.
     document.addEventListener("visibilitychange", () => { if (!document.hidden && view.data && Date.now() / 1000 - view.data.now > 20) loadDashboard(); });
     window.addEventListener("online", () => loadDashboard());

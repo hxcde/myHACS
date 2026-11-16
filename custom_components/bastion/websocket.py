@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import secrets
+import time
 from typing import Any
 
 from homeassistant.components import websocket_api
@@ -375,6 +377,17 @@ _ALARM_CONFIG = probatio.Schema(
                 ),
             }
         ),
+        probatio.Optional("remote"): probatio.Schema(
+            {
+                probatio.Optional("enabled"): bool,
+                probatio.Optional("disarm"): bool,
+                probatio.Optional("reminder"): bool,
+                probatio.Optional("reminder_minutes"): probatio.All(
+                    probatio.Coerce(int), probatio.Range(min=5, max=240)
+                ),
+                probatio.Optional("persons"): [probatio.All(cv.entity_id, probatio.Match(r"^person\."))],
+            }
+        ),
         probatio.Optional("sounds"): probatio.Schema(
             {
                 probatio.Optional("players"): [_PLAYER],
@@ -430,6 +443,13 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         ),
         key=lambda c: c["name"].lower(),
     )
+    persons = sorted(
+        (
+            {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id, "state": s.state}
+            for s in hass.states.async_all("person")
+        ),
+        key=lambda c: c["name"].lower(),
+    )
     relay = bastion.relay
     return {
         "config": bastion.alarm.public_config(),
@@ -439,6 +459,7 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         "actors": actors,
         "cameras": cameras,
         "players": players,
+        "persons": persons,
         "sounds_builtin": list(BUILTIN),
         "relay": {
             "enabled": relay.enabled,
@@ -446,6 +467,8 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
             "last_error": relay.last_error,
             "check_urls": relay.check_urls(),
             "backfill": relay.backfill_result,
+            "dashboard": relay.dashboard_url,
+            "last_commands": relay.last_commands,
         },
         "external_url": hass.config.external_url,
         "exposure": bastion.data.get("exposure"),
@@ -484,6 +507,7 @@ async def ws_alarm_save(hass, connection, msg) -> None:
         room.setdefault("id", f"r_{secrets.token_hex(3)}")
     await bastion.alarm.async_update_config(config)
     bastion.relay.setup()
+    bastion.presence.setup()
     connection.send_result(msg["id"], _alarm_payload(hass, bastion))
 
 
@@ -569,6 +593,39 @@ async def ws_alarm_worker(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {"result": result, **_alarm_payload(hass, bastion)})
 
 
+@websocket_api.websocket_command(
+    {
+        probatio.Required("type"): "bastion/alarm/remote",
+        probatio.Required("action"): probatio.In(("list", "pair", "unpair", "revoke", "revoke_all")),
+        probatio.Optional("passkey"): probatio.All(str, probatio.Length(max=400)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_alarm_remote(hass, connection, msg) -> None:
+    """Passkeys for the remote control: pairing code, list, revoke (stored at the worker)."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    relay = bastion.relay
+    action = msg["action"]
+    code = None
+    if action == "pair":
+        # One-time code for adding a passkey in the dashboard; the worker only gets its hash.
+        code = f"{secrets.randbelow(10**8):08d}"
+        result = await relay.async_remote(
+            "pair", code_hash=hashlib.sha256(code.encode()).hexdigest(), expires=int(time.time()) + 600
+        )
+    elif action == "revoke":
+        result = await relay.async_remote("revoke", id=msg.get("passkey") or "")
+    elif action == "revoke_all":
+        result = await relay.async_remote("revoke", all=True)
+    else:
+        result = await relay.async_remote(action)
+    if code and result.get("ok"):
+        result["code"] = f"{code[:4]}-{code[4:]}"
+    connection.send_result(msg["id"], result)
+
+
 @websocket_api.websocket_command({probatio.Required("type"): "bastion/alarm/media"})
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -628,6 +685,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_alarm_disarm,
         ws_alarm_code,
         ws_alarm_worker,
+        ws_alarm_remote,
         ws_alarm_media,
         ws_alarm_sound,
     ):

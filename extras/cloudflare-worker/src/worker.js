@@ -6,9 +6,14 @@
 //   POST /snapshot          Signed camera image of an incident (stored in D1).
 //   POST /pushover/<token>  Pushover callback when an emergency alarm is acknowledged.
 //   POST /backfill          Signed resend of Home Assistant's alarm and login log (deduplicated).
+//   POST /commands          Signed: Home Assistant fetches remote commands and reports results.
+//   POST /remote            Signed: pairing code, passkey list and revocation (managed in HA).
 //   GET  /i/<incident>?t=   Incident page (events + camera images), token from the alarm push.
-//   GET  /                  Read-only dashboard, only behind Cloudflare Access (installable PWA:
-//                           /manifest.webmanifest, /sw.js, icons).
+//   GET  /                  Dashboard, only behind Cloudflare Access (installable PWA:
+//                           /manifest.webmanifest, /sw.js, icons). Every visit is logged.
+//   POST /api/passkey/*     Add a passkey (one-time code from Home Assistant), Access only.
+//   POST /api/command/*     Arm/disarm with a passkey, Access only; GET /api/command/<id> = status.
+//   any  decoy token/URL    Decoys from Bastion's decoy file: answered like HA, logged, alerted.
 //   cron (every minute)     Offline detection with last known state, receipt polling, retention,
 //                           outside check of Home Assistant's public address (every 6 hours).
 //
@@ -27,14 +32,20 @@
 //   ATTACK_ALERT_AFTER   default 5 rejected requests in 20 min -> push (at most hourly)
 //   ATTACK_BLOCK_AFTER   default 10 rejected requests of one IP in 20 min -> block
 //   ATTACK_BLOCK_MINUTES default 60
+//   ACCESS_ALERT         "new" (default: push for a new device or country), "all", "off"
 // D1 binding: DB
 
 import { connect } from "cloudflare:sockets";
 import APP_HTML from "./app.html";
 import { accessConfigured, verifyAccess } from "./access.js";
+import { canaryResponse, detectCanary } from "./canary.js";
 import { EMERGENCY_EXPIRE, notify, pushoverCancel, pushoverEnabled, pushoverReceipt } from "./notify.js";
 import { pwaAsset } from "./pwa.js";
+import * as remote from "./remote.js";
+import { trackAccess } from "./sessions.js";
 import * as store from "./store.js";
+import * as uptime from "./uptime.js";
+import { clientIp, hmacHex, json, nowS, timingSafeEqual, writeBudget } from "./util.js";
 
 const DEFAULT_PORTS = [
   21, 22, 23, 80, 139, 443, 445, 1880, 1883, 2375, 2376, 3000, 3389, 5000,
@@ -66,6 +77,10 @@ const LABELS = {
   restart: "Neustart",
   attack: "Angriffsversuch",
   exposure: "Außenprüfung",
+  canary: "Köder benutzt",
+  passkey_added: "Passkey gekoppelt",
+  passkey_removed: "Passkey entfernt",
+  unarmed: "Niemand zuhause, nicht scharf",
 };
 const ATTACK_LABELS = {
   signature: "falsche Signatur",
@@ -73,39 +88,14 @@ const ATTACK_LABELS = {
   callback: "falscher Pushover-Rückruf",
   link_token: "falscher Vorfall-Link",
   access: "ungültiger Access-Login",
+  pairing: "falscher Kopplungscode",
+  passkey: "ungültiger Passkey",
 };
 // Events pushed by older Bastion versions that do not send a push flag.
 const LEGACY_PUSH = new Set(["triggered", "pending", "disarmed", "armed", "sensor_unavailable"]);
 
-const nowS = () => Math.floor(Date.now() / 1000);
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" },
-  });
-}
-
-function timingSafeEqual(a, b) {
-  const enc = new TextEncoder();
-  const x = enc.encode(a);
-  const y = enc.encode(b);
-  if (x.length !== y.length) return false;
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-  return diff === 0;
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function hmacHex(secret, message) {
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // Link token for an incident page; Bastion computes the same value.
@@ -138,19 +128,7 @@ async function verified(request, env, maxBody = MAX_BODY) {
 }
 
 // --------------------------------------------------------- attack detection
-const writes = { minute: 0, n: 0 };
 const blockedCache = new Map(); // ip -> until (seconds)
-
-function clientIp(request) {
-  return request.headers.get("cf-connecting-ip") || "unknown";
-}
-
-// Caps D1 writes per isolate so a flood cannot exhaust the daily write quota.
-function writeBudget() {
-  const minute = Math.floor(Date.now() / 60000);
-  if (writes.minute !== minute) Object.assign(writes, { minute, n: 0 });
-  return ++writes.n <= 60;
-}
 
 async function isBlocked(env, request) {
   const ip = clientIp(request);
@@ -314,6 +292,10 @@ function eventText(data) {
       return ["🔑 Falscher Alarm-Code", `Ein falscher Code wurde eingegeben${by}.`, "high"];
     case "arm_failed":
       return ["Scharfschalten fehlgeschlagen", `Offen: ${list(data.sensors).join(", ")}`, "default"];
+    case "unarmed": {
+      const minutes = data.detail && data.detail.minutes;
+      return ["🏠 Niemand zuhause – Alarmanlage aus", `Alle sind${minutes ? ` seit ${minutes} Min.` : ""} weg, die Alarmanlage ist unscharf.`, "high"];
+    }
     case "test":
       return ["🧪 Bastion Test", "Die Verbindung zwischen Home Assistant und dem Worker funktioniert.", "default"];
     default:
@@ -390,12 +372,14 @@ async function handleHeartbeat(request, env, url, ctx) {
     origin: url.origin,
     ip: clientIp(request),
     check_urls: checkUrls(data.check_urls),
+    remote: data.remote && typeof data.remote === "object" ? { enabled: Boolean(data.remote.enabled), disarm: Boolean(data.remote.disarm) } : null,
     offline: false,
     offline_notified: false,
   };
+  await uptime.onHeartbeat(env, prev, record);
   if (prev && prev.offline) {
     const minutes = Math.round((Date.now() - prev.received) / 60000);
-    const cause = recoveryCause(prev, record);
+    const cause = uptime.recoveryCause(prev, record);
     await store.addEvent(env, { event: "online", state: record.state, mode: record.mode, detail: { minutes, cause } });
     if (prev.offline_notified) {
       await cancelOpen(env, "offline");
@@ -404,11 +388,13 @@ async function handleHeartbeat(request, env, url, ctx) {
         message: `Nach ${minutes} Min. Funkstille. ${cause}\nAlarmanlage: ${stateText(record)}.`,
       });
     }
-  } else if (prev && !prev.stopping && restarted(prev, record)) {
-    await store.addEvent(env, { event: "restart", state: record.state, mode: record.mode, detail: { cause: recoveryCause(prev, record) } });
+  } else if (prev && !prev.stopping && uptime.restarted(prev, record)) {
+    await store.addEvent(env, { event: "restart", state: record.state, mode: record.mode, detail: { cause: uptime.recoveryCause(prev, record) } });
   }
   await store.setState(env, "hb", record);
   if (seen.length) await store.markSeen(env, seen);
+  const noticesSeen = (Array.isArray(data.notices_seen) ? data.notices_seen : []).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 50);
+  if (noticesSeen.length) await store.markNoticesSeen(env, noticesSeen);
   // A valid signature lifts a block of this IP (e.g. HA behind a new address).
   if (await store.blockedUntil(env, record.ip)) await store.unblock(env, record.ip);
   blockedCache.delete(record.ip);
@@ -418,21 +404,14 @@ async function handleHeartbeat(request, env, url, ctx) {
   }
   const attack = await store.getState(env, "attack_pending");
   if (attack) await store.setState(env, "attack_pending", null);
-  return json({ ok: true, acks: await store.unseenAcks(env), attack: attack || null, exposure: await store.getState(env, "exposure") });
-}
-
-function restarted(prev, cur) {
-  return Boolean((prev.started && cur.started && prev.started !== cur.started) || (prev.boot && cur.boot && Math.abs(cur.boot - prev.boot) > 300));
-}
-
-function recoveryCause(prev, cur) {
-  if (prev.boot && cur.boot && Math.abs(cur.boot - prev.boot) > 300) {
-    return "Der Rechner wurde neu gestartet – vermutlich Stromausfall oder Neustart des Hosts.";
-  }
-  if (prev.started && cur.started && prev.started !== cur.started) {
-    return prev.stopping ? "Home Assistant wurde geplant neu gestartet." : "Home Assistant wurde neu gestartet (Absturz oder Neustart).";
-  }
-  return "Home Assistant lief durch – Internet oder Netzwerk war unterbrochen.";
+  return json({
+    ok: true,
+    acks: await store.unseenAcks(env),
+    attack: attack || null,
+    exposure: await store.getState(env, "exposure"),
+    notices: await store.unseenNotices(env),
+    dashboard: remote.dashboardUrl(env),
+  });
 }
 
 async function handleAlert(request, env, url, ctx) {
@@ -460,13 +439,20 @@ async function handleAlert(request, env, url, ctx) {
     }
   }
   if (data.event === "disarmed") await cancelOpen(env, "alarm");
-  const view = incident ? `${url.origin}/i/${incident}?t=${await incidentToken(env, incident)}` : null;
+  let view = incident ? `${url.origin}/i/${incident}?t=${await incidentToken(env, incident)}` : null;
+  let urlTitle = "Ereignis und Kamerabilder";
+  if (data.event === "unarmed" && remote.dashboardUrl(env)) {
+    const hb = await store.getState(env, "hb");
+    const allowed = hb && hb.remote && hb.remote.enabled;
+    view = `${remote.dashboardUrl(env)}/${allowed ? "?do=arm_away" : ""}`;
+    urlTitle = allowed ? "Jetzt scharf schalten" : "Dashboard öffnen";
+  }
   const push = data.event === "test" || (typeof data.push === "boolean" ? data.push : LEGACY_PUSH.has(data.event));
   let channels = [];
   if (push) {
     const [title, message, priority] = eventText(data);
     const callback = pushoverEnabled(env) ? `${url.origin}/pushover/${await callbackToken(env)}` : null;
-    const res = await notify(env, { title, message, priority, url: view, urlTitle: "Ereignis und Kamerabilder", callback });
+    const res = await notify(env, { title, message, priority, url: view, urlTitle, callback });
     channels = res.sent;
     if (res.receipt && priority === "urgent") {
       await store.addReceipt(env, { receipt: res.receipt, kind: "alarm", incident, expires: nowS() + EMERGENCY_EXPIRE });
@@ -670,6 +656,7 @@ async function checkHeartbeat(env) {
   const events = await store.recentEvents(env, Math.floor(record.received / 1000) - 1800, 5);
   const report = offlineReport({ ...record, open: record.open || [], unavailable: record.unavailable || [] }, events, silent);
   record.offline = true;
+  record.outage_id = await uptime.onOffline(env, record, relevant);
   if (relevant) {
     const view = active && record.incident && record.origin
       ? `${record.origin}/i/${record.incident}?t=${await incidentToken(env, record.incident)}`
@@ -762,6 +749,7 @@ async function apiImage(request, env, url, id, ctx) {
 }
 
 async function apiSummary(env, url, user) {
+  await uptime.ensureHistory(env);
   const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 365);
   const since = nowS() - days * 86400;
   const hb = await store.getState(env, "hb");
@@ -783,6 +771,11 @@ async function apiSummary(env, url, user) {
     attempts: await store.attemptsSince(env, since),
     blocked: await store.blockedList(env, since),
     exposure: await store.getState(env, "exposure"),
+    outages: await store.outagesSince(env, since),
+    uptime_since: await store.getState(env, "uptime_since"),
+    sessions: await store.sessionsSince(env, since),
+    canary: await store.canaryHitsSince(env, since),
+    remote: await remote.remoteSummary(env, user, hb),
   });
 }
 
@@ -798,16 +791,56 @@ async function handleGet(request, env, url, ctx) {
   if (m) return apiIncident(request, env, url, m[1], ctx);
   m = path.match(/^\/api\/img\/(\d+)$/);
   if (m) return apiImage(request, env, url, m[1], ctx);
-  if (path === "/" || path === "/api/summary") {
+  m = path.match(/^\/api\/command\/([a-f0-9]{16})$/);
+  if (path === "/" || path === "/api/summary" || m) {
     const user = await dashboardUser(request, env, url);
     if (!user) {
       // Behind Access every request carries a valid token; anything else is a bypass attempt.
       if (accessConfigured(env) && onDashboardHost(env, url) && env.DASHBOARD_HOST) await rejected(request, env, ctx, "access", url);
       return json({ error: "not found" }, 404);
     }
+    if (!m) await trackAccess(request, env, ctx, user);
+    if (m) return remote.commandStatus(env, m[1]);
     return path === "/" ? page(env) : apiSummary(env, url, user);
   }
   return json({ error: "not found" }, 404);
+}
+
+// Dashboard actions (passkeys, commands): Access, same origin, JSON.
+const DASHBOARD_POST = {
+  "/api/passkey/begin": (env, url, user, body) => remote.passkeyBegin(env, url, user, body),
+  "/api/passkey/finish": (env, url, user, body, request) => remote.passkeyFinish(env, url, user, body, request.headers.get("user-agent")),
+  "/api/command/begin": (env, url, user, body) => remote.commandBegin(env, url, user, body),
+  "/api/command/finish": (env, url, user, body) => remote.commandFinish(env, url, user, body),
+};
+
+async function handleDashboardPost(request, env, url, ctx) {
+  const handler = DASHBOARD_POST[url.pathname];
+  if (!handler) return json({ error: "not found" }, 404);
+  if (await isBlocked(env, request)) return tooMany();
+  const user = await dashboardUser(request, env, url);
+  if (!user) {
+    if (accessConfigured(env) && onDashboardHost(env, url) && env.DASHBOARD_HOST) await rejected(request, env, ctx, "access", url);
+    return json({ error: "not found" }, 404);
+  }
+  if (request.headers.get("origin") !== url.origin) return json({ error: "forbidden" }, 403);
+  if (Number(request.headers.get("content-length") || 0) > 32768) return json({ error: "too large" }, 413);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid json" }, 400);
+  }
+  if (!body || typeof body !== "object") return json({ error: "invalid json" }, 400);
+  await trackAccess(request, env, ctx, user);
+  const res = await handler(env, url, user, body, request);
+  if (res.attack) await rejected(request, env, ctx, url.pathname.startsWith("/api/passkey/begin") ? "pairing" : "passkey", url);
+  return res.response;
+}
+
+async function handleSigned(request, env, url, ctx, fn) {
+  const { data, response } = await signedBody(request, env, ctx, url);
+  return response || fn(env, data);
 }
 
 export default {
@@ -815,8 +848,14 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     try {
+      // Decoys first: whatever the path, a decoy token or URL is never legitimate.
+      const decoy = await detectCanary(request, env, url);
+      if (decoy) return await canaryResponse(request, env, ctx, url, decoy);
       if (request.method === "GET" || request.method === "HEAD") return await handleGet(request, env, url, ctx);
       if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+      if (path.startsWith("/api/")) return await handleDashboardPost(request, env, url, ctx);
+      if (path === "/commands") return await handleSigned(request, env, url, ctx, remote.haCommands);
+      if (path === "/remote") return await handleSigned(request, env, url, ctx, remote.haRemote);
       if (path === "/probe") return await handleProbe(request, env, ctx, url);
       if (path === "/heartbeat") return await handleHeartbeat(request, env, url, ctx);
       if (path === "/alert") return await handleAlert(request, env, url, ctx);
@@ -832,7 +871,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       (async () => {
-        for (const job of [checkHeartbeat, pollReceipts, retention, checkExposure]) {
+        for (const job of [uptime.ensureHistory, checkHeartbeat, pollReceipts, retention, checkExposure]) {
           try {
             await job(env);
           } catch (err) {

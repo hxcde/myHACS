@@ -97,6 +97,32 @@ const I18N = {
       cameras_hint: "Bei Vorwarnung und Alarm gehen Bilder dieser Kameras an den Worker. Sie bleiben dort, auch wenn Home Assistant zerstört oder gestohlen wird.",
       add_camera: "Kamera hinzufügen …",
       snapshots: "Bilder pro Kamera und Phase (alle 5 s)",
+      remote: "Fernsteuerung (Dashboard)",
+      remote_help: "Scharf und unscharf schalten aus dem Worker-Dashboard. Jeder Befehl verlangt Cloudflare Access und einen Passkey (Face ID, Fingerabdruck, PIN). Home Assistant holt Befehle beim Worker ab, es gibt keinen Weg von außen hinein.",
+      remote_enabled: "Fernsteuerung erlauben",
+      remote_disarm: "Auch unscharf schalten erlauben",
+      remote_disarm_hint: "Ohne diese Freigabe kann aus der Ferne nur scharf geschaltet werden.",
+      remote_save_first: "Erst speichern, dann Passkeys koppeln.",
+      pair: "Passkey koppeln",
+      pair_hint: "Code im Dashboard unter Fernsteuerung eingeben. Gültig 10 Minuten, nur einmal.",
+      pair_open: "Dashboard öffnen",
+      passkeys: "Passkeys",
+      no_passkeys: "Noch kein Passkey gekoppelt.",
+      revoke: "Entfernen",
+      revoke_all: "Alle entfernen",
+      revoke_confirm: "Passkey entfernen? Dieses Gerät kann die Alarmanlage dann nicht mehr fernsteuern.",
+      last_used: "zuletzt",
+      never: "nie",
+      commands: "Letzte Befehle",
+      cmd_status: { pending: "wartet", delivered: "läuft", done: "ausgeführt", failed: "fehlgeschlagen", expired: "nicht abgeholt" },
+      reminder: "Erinnerung: niemand zuhause",
+      reminder_help: "Sind alle Personen weg und die Anlage ist unscharf, kommt nach der eingestellten Zeit eine Erinnerung aufs Handy und über den Worker. Mit Fernsteuerung enthält sie einen Link, der nach dem Passkey „Abwesend“ scharf schaltet.",
+      reminder_enabled: "Erinnern, wenn niemand zuhause ist",
+      reminder_minutes: "Nach Minuten",
+      persons: "Personen",
+      persons_all: "Leer = alle Personen",
+      add_person: "Person hinzufügen …",
+      extra_events: { unarmed: "Niemand zuhause, nicht scharf" },
       offsite: "Protokoll außer Haus",
       public_url: "Öffentliche Adresse von außen prüfen",
       public_url_hint: "Der Worker prüft alle 6 Stunden, ob diese Adresse geschützt ist (Cloudflare Access), ob die HA-Anmeldung oder die API offen sind und ob sie unverschlüsselt erreichbar ist. Leer = externe URL aus den HA-Einstellungen.",
@@ -147,6 +173,7 @@ const I18N = {
       tamper: "Manipulation", anomaly: "Anomalie", new_destination: "Neues Verbindungsziel", worker_attack: "Angriffsversuch am Worker",
       external_config_change: "Extern geändert", deviation: "Abweichung", continuous: "Dauerbetrieb", drift: "Steigende Grundlast",
       token: "Token", webhook: "Webhook",
+      dashboard_access: "Dashboard-Zugriff", passkey_added: "Passkey gekoppelt",
     },
     category: {
       access: "Zugang", exposure: "Erreichbarkeit", updates: "Updates", supply_chain: "Integrationen",
@@ -209,6 +236,9 @@ const I18N = {
     canary_token: "Köder-Token",
     canary_webhook: "Köder-Webhook",
     canary_triggers: "Auslösungen",
+    canary_worker: "Köder im Worker",
+    canary_worker_help: "Zeigen auf den Cloud-Worker und schlagen dort Alarm, auch wenn Home Assistant von außen nicht erreichbar oder ausgefallen ist. Stehen auch in der Köderdatei im Git.",
+    canary_worker_off: "Mit eingerichtetem Cloud-Worker gibt es zusätzlich Köder, die dort Alarm schlagen.",
     no_triggers: "Noch nie ausgelöst.",
     sabotage: "Sabotageverdacht",
     sensors: "Angelernte Sensoren",
@@ -325,6 +355,32 @@ const I18N = {
       cameras_hint: "During entry warnings and alarms, images of these cameras go to the worker. They stay there even if Home Assistant is destroyed or stolen.",
       add_camera: "Add camera …",
       snapshots: "Images per camera and phase (every 5 s)",
+      remote: "Remote control (dashboard)",
+      remote_help: "Arm and disarm from the worker dashboard. Every command needs Cloudflare Access and a passkey (Face ID, fingerprint, PIN). Home Assistant fetches commands from the worker, there is no way in from outside.",
+      remote_enabled: "Allow remote control",
+      remote_disarm: "Also allow disarming",
+      remote_disarm_hint: "Without this, the alarm can only be armed remotely.",
+      remote_save_first: "Save first, then pair passkeys.",
+      pair: "Pair a passkey",
+      pair_hint: "Enter the code in the dashboard under remote control. Valid for 10 minutes, once.",
+      pair_open: "Open dashboard",
+      passkeys: "Passkeys",
+      no_passkeys: "No passkey paired yet.",
+      revoke: "Remove",
+      revoke_all: "Remove all",
+      revoke_confirm: "Remove this passkey? That device can no longer control the alarm.",
+      last_used: "last",
+      never: "never",
+      commands: "Recent commands",
+      cmd_status: { pending: "waiting", delivered: "running", done: "done", failed: "failed", expired: "not fetched" },
+      reminder: "Reminder: nobody home",
+      reminder_help: "When everybody left and the alarm is disarmed, a reminder goes to the phones and via the worker after the set time. With remote control it links to the dashboard, which arms 'away' after the passkey.",
+      reminder_enabled: "Remind when nobody is home",
+      reminder_minutes: "After minutes",
+      persons: "People",
+      persons_all: "Empty = all people",
+      add_person: "Add person …",
+      extra_events: { unarmed: "Nobody home, not armed" },
       offsite: "Off-site log",
       public_url: "Check public address from outside",
       public_url_hint: "Every 6 hours the worker checks whether this address is protected (Cloudflare Access), whether the HA login or API are open and whether it is reachable without encryption. Empty = external URL from the HA settings.",
@@ -375,6 +431,7 @@ const I18N = {
       tamper: "Tampering", anomaly: "Anomaly", new_destination: "New destination", worker_attack: "Attack on the worker",
       external_config_change: "Changed outside the UI", deviation: "Deviation", continuous: "Continuous run", drift: "Rising base load",
       token: "Token", webhook: "Webhook",
+      dashboard_access: "Dashboard access", passkey_added: "Passkey paired",
     },
     category: {
       access: "Access", exposure: "Exposure", updates: "Updates", supply_chain: "Integrations",
@@ -437,6 +494,9 @@ const I18N = {
     canary_token: "Decoy token",
     canary_webhook: "Decoy webhook",
     canary_triggers: "Triggers",
+    canary_worker: "Worker decoys",
+    canary_worker_help: "Point at the cloud worker and alert from there, even when Home Assistant is down or not reachable from outside. Also part of the decoy file in git.",
+    canary_worker_off: "With the cloud worker set up there are extra decoys that alert from there.",
     no_triggers: "Never triggered.",
     sabotage: "Sabotage suspicion",
     sensors: "Learned sensors",
@@ -1058,6 +1118,12 @@ class BastionPanel extends HTMLElement {
         ${c.webhook_url ? `
           <div class="label">${esc(t.canary_webhook)}</div>
           <div class="secret"><code>${esc(c.webhook_url)}</code><button class="btn small" data-copy="${esc(c.webhook_url)}">${icon("mdi:content-copy")}${esc(t.copy)}</button></div>` : ""}
+        <div class="label">${esc(t.canary_worker)}</div>
+        ${c.worker ? `<div class="muted small">${esc(t.canary_worker_help)}</div>
+          <div class="secret"><code>${esc(masked(c.worker.token))}</code>
+            <button class="btn small" data-copy="${esc(c.worker.token)}">${icon("mdi:content-copy")}${esc(t.copy)}</button></div>
+          <div class="secret"><code>${esc(c.worker.webhook)}</code><button class="btn small" data-copy="${esc(c.worker.webhook)}">${icon("mdi:content-copy")}${esc(t.copy)}</button></div>`
+          : `<div class="muted small">${esc(t.canary_worker_off)}</div>`}
         <div class="label">${esc(t.canary_triggers)}</div>
         ${c.triggers.length ? c.triggers.map((tr) => `
           <div class="row">${icon("mdi:alarm-light-outline", SEV.critical.color)}
@@ -1236,9 +1302,9 @@ class BastionPanel extends HTMLElement {
           const ic = { triggered: ["mdi:alarm-light", SEV.critical.color], pending: ["mdi:timer-sand", SEV.medium.color], armed: ["mdi:shield-lock", "var(--primary-color)"],
             arming: ["mdi:shield-sync-outline", "var(--primary-color)"], rearmed: ["mdi:shield-refresh", "var(--primary-color)"], disarmed: ["mdi:shield-off-outline", GOOD],
             arm_failed: ["mdi:shield-alert-outline", SEV.high.color], wrong_code: ["mdi:form-textbox-password", SEV.high.color],
-            sensor_unavailable: ["mdi:lan-disconnect", "#8a8f98"], acknowledged: ["mdi:hand-back-right-outline", GOOD] }[e.type] || ["mdi:circle-small", "#8a8f98"];
-          const label = a.events[e.type] || a.states[e.type] || e.type;
-          const detail = [e.target ? a.modes[e.target] : "", e.name, e.room, e.user ? `${a.by} ${e.user}` : "", (e.sensors || []).join(", ")].filter(Boolean).join(" · ");
+            sensor_unavailable: ["mdi:lan-disconnect", "#8a8f98"], acknowledged: ["mdi:hand-back-right-outline", GOOD], unarmed: ["mdi:home-export-outline", SEV.medium.color] }[e.type] || ["mdi:circle-small", "#8a8f98"];
+          const label = a.events[e.type] || (a.extra_events || {})[e.type] || a.states[e.type] || e.type;
+          const detail = [e.target ? a.modes[e.target] : "", e.name, e.room, e.user ? `${a.by} ${e.user}` : "", (e.sensors || []).join(", "), (e.persons || []).join(", ")].filter(Boolean).join(" · ");
           return `<div class="row">${icon(ic[0], ic[1])}<div class="row-main"><div><b>${esc(label)}</b> ${detail ? `· ${esc(detail)}` : ""}</div>
             <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))}</div></div></div>`;
         }).join("")}
@@ -1496,6 +1562,62 @@ class BastionPanel extends HTMLElement {
         <div class="muted small">${esc(a.public_url_hint)}</div>
         <label class="field"><span>URL</span><input class="input" data-worker="public_url" placeholder="${esc(this._alarm.external_url || "https://ha.example.com")}" value="${esc(d.worker.public_url || "")}"></label>
         ${this._exposureList()}
+      </section>
+      ${this._settingsRemote(d)}`;
+  }
+
+  _loadRemote() {
+    this._remoteLoading = true;
+    this._ws("bastion/alarm/remote", { action: "list" })
+      .then((r) => { this._remote = r; })
+      .catch((err) => { this._remote = { ok: false, error: err.message || String(err) }; })
+      .finally(() => { this._remoteLoading = false; this._render(); });
+  }
+
+  _settingsRemote(d) {
+    const a = this.t.alarm;
+    const r = d.remote;
+    const saved = this._alarm.config.remote || {};
+    const ready = Boolean(saved.enabled && this._alarm.relay.enabled);
+    if (ready && this._remote === undefined && !this._remoteLoading) this._loadRemote();
+    const info = this._remote || {};
+    const dash = info.dashboard || this._alarm.relay.dashboard;
+    const keys = info.passkeys || [];
+    const ago = (ts) => this.rel(new Date(ts * 1000).toISOString());
+    const cmdLabel = (c) => (c.action === "disarm" ? this.t.alarm.states.disarmed || "disarm" : `${a.modes[c.mode] || c.mode}`);
+    const passkeys = !ready ? `<div class="muted small">${esc(a.remote_save_first)}</div>` : `
+      <div class="label">${esc(a.passkeys)}</div>
+      ${info.error ? `<div class="chip tiny" style="--c:${SEV.high.color}">${esc(info.error)}</div>` : ""}
+      ${keys.length ? keys.map((k) => `<div class="row">${icon("mdi:key-variant")}
+          <div class="row-main"><div><b>${esc(k.name || "Passkey")}</b> <span class="muted small">${esc(k.email || "")}</span></div>
+          <div class="muted small">${esc(a.last_used)}: ${esc(k.last_used ? ago(k.last_used) : a.never)}</div></div>
+          <button class="btn small ghost danger" data-passkey-revoke="${esc(k.id)}">${icon("mdi:delete-outline")}${esc(a.revoke)}</button></div>`).join("")
+        : `<div class="muted small">${esc(this._remoteLoading ? "…" : a.no_passkeys)}</div>`}
+      ${this._pairing ? `<div class="secret"><code style="font-size:20px;letter-spacing:.12em">${esc(this._pairing.code)}</code></div><div class="muted small">${esc(a.pair_hint)}</div>` : ""}
+      <div class="actionbar tight">
+        <button class="btn" data-action="remote-pair">${icon("mdi:key-plus")}${esc(a.pair)}</button>
+        ${dash ? `<a class="btn ghost" href="${esc(dash)}/" target="_blank" rel="noopener noreferrer">${icon("mdi:open-in-new")}${esc(a.pair_open)}</a>` : ""}
+        ${keys.length > 1 ? `<button class="btn ghost danger" data-action="remote-revoke-all">${esc(a.revoke_all)}</button>` : ""}
+      </div>
+      ${(info.commands || []).length ? `<div class="label">${esc(a.commands)}</div>${info.commands.slice(0, 8).map((c) => `<div class="row">${icon(c.action === "disarm" ? "mdi:shield-off-outline" : "mdi:shield-lock", c.status === "done" ? GOOD : c.status === "failed" || c.status === "expired" ? SEV.high.color : "#8a8f98")}
+          <div class="row-main"><div><b>${esc(cmdLabel(c))}</b> · ${esc((a.cmd_status || {})[c.status] || c.status)}${c.result && c.result.error ? ` (${esc(c.result.error)})` : ""}</div>
+          <div class="muted small">${esc(ago(c.ts))} · ${esc(c.passkey || c.by || "")}</div></div></div>`).join("")}` : ""}`;
+    return `
+      <section class="card">
+        <h3 class="card-title">${icon("mdi:cellphone-key")}${esc(a.remote)}</h3>
+        <div class="muted small">${esc(a.remote_help)}</div>
+        <label class="switch block"><input type="checkbox" data-remote-flag="enabled" ${r.enabled ? "checked" : ""}><span>${esc(a.remote_enabled)}</span></label>
+        <label class="switch block"><input type="checkbox" data-remote-flag="disarm" ${r.disarm ? "checked" : ""}><span>${esc(a.remote_disarm)}</span></label>
+        <div class="muted small">${esc(a.remote_disarm_hint)}</div>
+        ${passkeys}
+      </section>
+      <section class="card">
+        <h3 class="card-title">${icon("mdi:home-export-outline")}${esc(a.reminder)}</h3>
+        <div class="muted small">${esc(a.reminder_help)}</div>
+        <label class="switch block"><input type="checkbox" data-remote-flag="reminder" ${r.reminder ? "checked" : ""}><span>${esc(a.reminder_enabled)}</span></label>
+        <label class="field"><span>${esc(a.reminder_minutes)}</span><input class="input" type="number" min="5" max="240" data-remote-minutes value="${esc(r.reminder_minutes)}"></label>
+        ${this._pickList(a.persons, r.persons, this._alarm.persons || [], "person", a.add_person)}
+        <div class="muted small">${esc(a.persons_all)}</div>
       </section>`;
   }
 
@@ -1570,6 +1692,7 @@ class BastionPanel extends HTMLElement {
       rooms: cfg.rooms, sensors: cfg.sensors, modes: cfg.modes, trigger_time: cfg.trigger_time, rearm: cfg.rearm,
       require_code_arm: cfg.require_code_arm, sabotage_triggers: cfg.sabotage_triggers, actions: cfg.actions,
       worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled, cameras: cfg.worker.cameras || [], snapshots: cfg.worker.snapshots ?? 3, public_url: cfg.worker.public_url || "" },
+      remote: { enabled: false, disarm: false, reminder: false, reminder_minutes: 20, persons: [], ...(cfg.remote || {}) },
       sounds: { players: [], volume: 0.9, notice_volume: 0.5, triggered: "", pending: "", arming: "", armed: "", disarmed: "", ...(cfg.sounds || {}) },
     }));
     this._alarmView = "settings";
@@ -1613,6 +1736,7 @@ class BastionPanel extends HTMLElement {
     on('[data-action="alarm-back"]', () => { this._alarmView = "status"; this._refreshAlarm(); });
     on("[data-section]", (el) => {
       this._section = el.dataset.section;
+      if (this._section === "worker") this._remote = undefined;
       this._render();
       if (this._section === "sounds" && !this._media) {
         this._media = [];
@@ -1723,6 +1847,27 @@ class BastionPanel extends HTMLElement {
     }), "change");
     // worker
     on("[data-camera-add]", (el) => { if (el.value) { d.worker.cameras = [...new Set([...d.worker.cameras, el.value])]; this._render(); } }, "change");
+    // remote control and reminder
+    on("[data-remote-flag]", (el) => { d.remote[el.dataset.remoteFlag] = el.checked; }, "change");
+    on("[data-remote-minutes]", (el) => { d.remote.reminder_minutes = Math.max(5, Math.min(240, Number(el.value) || 20)); }, "input");
+    on("[data-person-add]", (el) => { if (el.value) { d.remote.persons = [...new Set([...d.remote.persons, el.value])]; this._render(); } }, "change");
+    on("[data-person-remove]", (el) => { d.remote.persons = d.remote.persons.filter((x) => x !== el.dataset.personRemove); this._render(); });
+    on('[data-action="remote-pair"]', () => this._action(async () => {
+      const r = await this._ws("bastion/alarm/remote", { action: "pair" });
+      if (!r.ok) throw new Error(r.error || "Worker");
+      this._pairing = { code: r.code };
+      this._remote = r;
+      clearTimeout(this._pairTimer);
+      this._pairTimer = setTimeout(() => { this._pairing = null; this._render(); }, 600000);
+    }));
+    on("[data-passkey-revoke]", (el) => {
+      if (!confirm(this.t.alarm.revoke_confirm)) return;
+      this._action(async () => { this._remote = await this._ws("bastion/alarm/remote", { action: "revoke", passkey: el.dataset.passkeyRevoke }); });
+    });
+    on('[data-action="remote-revoke-all"]', () => {
+      if (!confirm(this.t.alarm.revoke_confirm)) return;
+      this._action(async () => { this._remote = await this._ws("bastion/alarm/remote", { action: "revoke_all" }); });
+    });
     on("[data-camera-remove]", (el) => { d.worker.cameras = d.worker.cameras.filter((x) => x !== el.dataset.cameraRemove); this._render(); });
     on('[data-worker="snapshots"]', (el) => { d.worker.snapshots = Number(el.value); }, "change");
     on('[data-worker="public_url"]', (el) => { d.worker.public_url = el.value.trim(); }, "input");

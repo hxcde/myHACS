@@ -130,6 +130,9 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
 5. **Codes:** Codes werden nur als scrypt-Hash gespeichert. Sobald ein Code existiert, verlangt das Unscharfschalten einen Code. Nach 5 falschen Eingaben sperrt die Anlage die Eingabe für 5 Minuten. Während eines Alarms oder einer Vorwarnung verlangt auch jedes Umschalten einen Code, damit niemand die Sirene durch Scharfschalten stummschalten kann.
 6. **Cloud-Worker** (optional): siehe unten. Er meldet sich über Pushover, Telegram, ntfy oder einen Webhook bei dir, wenn HA ausfällt, während die Anlage scharf ist, leitet Alarme unabhängig von HA weiter und bewahrt Protokoll und Kamerabilder außer Haus auf. Unter „Protokoll außer Haus“ die Kameras wählen, deren Bilder bei Vorwarnung und Alarm hochgeladen werden.
 
+7. **Fernsteuerung** (Cloud-Worker, unten): „Fernsteuerung erlauben“ schaltet Scharf- und Unscharfschalten aus dem Worker-Dashboard frei, „Auch unscharf schalten erlauben“ zusätzlich das Unscharfschalten. Passkeys koppeln und entfernen geht nur hier (siehe Cloud-Worker → Fernsteuerung).
+8. **Erinnerung „niemand zuhause“:** Sind alle gewählten Personen (leer = alle `person.*`) weg und die Anlage ist unscharf, kommt nach der eingestellten Zeit (Standard 20 Min.) eine Erinnerung aufs Handy und über den Worker. Mit Fernsteuerung öffnet der Link das Dashboard mit „Abwesend scharf schalten?“, bestätigt per Passkey. Eine Erinnerung pro Abwesenheit, sie setzt sich zurück, sobald jemand heimkommt. Im Protokoll steht sie als „Niemand zuhause, nicht scharf“.
+
 **Vorfälle:** Vorwarnung und anschließender Alarm bilden einen Vorfall mit eigener ID. Er endet mit dem Unscharf- oder erneuten Scharfschalten. Alle Protokolleinträge und Kamerabilder des Vorfalls tragen diese ID.
 
 **Offene Sensoren:** Ist beim Scharfschalten ein Sensor offen, verweigert Bastion das Scharfschalten und nennt die offenen Sensoren. „Trotzdem scharf schalten“ überbrückt sie, bis sie schließen.
@@ -152,6 +155,8 @@ Jeder Button gilt 48 Stunden, nur einmal und nur für Admins. Dieselbe Funktion 
 - `binary_sensor.bastion_decoy_triggered` geht für 24 Stunden an.
 
 Token und URL stehen im Panel unter „Anomalien & Köder“. Leg sie dort ab, wo ein Eindringling suchen würde (Notizen, NAS-Freigabe, alte Backups). Ist „Köder ins Git-Repo“ aktiv, liegt zusätzlich `homeassistant/.env` mit diesen Daten unverschlüsselt im Repo. Ein Leck des Repos fällt damit beim ersten Benutzungsversuch auf. Diese Datei wird beim Wiederherstellen nie nach `/config` geschrieben.
+
+**Köder im Worker:** Mit eingerichtetem Cloud-Worker gibt es zwei weitere Köder, die auf den Worker zeigen: einen Token im Format eines HA-Tokens und eine Webhook-URL (`…/api/webhook/<64 Hex>`). Sie stehen im Panel unter „Köder im Worker“ und in der `.env` als `HA_REMOTE_URL`, `HA_REMOTE_TOKEN`, `HA_REMOTE_WEBHOOK`. Der Worker erkennt sie an der Signatur (abgeleitet aus `ALARM_SECRET`, nichts gespeichert), antwortet wie HA (401 bzw. 200), schlägt selbst Alarm (hohe Priorität, je IP höchstens alle 15 Min.) und meldet die Benutzung mit dem nächsten Lebenszeichen an HA. Vorteil: Das funktioniert auch, wenn HA von außen nicht erreichbar oder ausgefallen ist. Ein neues `ALARM_SECRET` erzeugt neue Worker-Köder, alte Kopien an anderen Orten lösen dann nicht mehr aus.
 
 **Token-Nutzung:** HA selbst protokolliert nicht, wann ein Long-Lived-Token per API benutzt wird. Bastion erfasst das ab der Installation selbst, mit Zeit und IP. Darauf beruhen der Befund „ungenutzter Token“ (erst nach genügend Beobachtungszeit) und der Alarm „Token von neuer IP“.
 
@@ -199,8 +204,9 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Kommt HA zurück, nennt die Meldung die Dauer und die Ursache: Rechner neu gestartet (Stromausfall), HA neu gestartet oder Netzwerk unterbrochen (HA lief durch).
 - Bei unscharfer Anlage werden Ausfälle nur protokolliert (`ALERT_WHEN_DISARMED=1` meldet auch diese).
 
-**Dashboard (nur lesend, hinter Cloudflare Access):**
-- Tab „Alarmanlage“: Status, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+**Dashboard (hinter Cloudflare Access):**
+- Tab „Alarmanlage“: Status, Fernsteuerung (wenn in HA erlaubt), Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Tab „Verfügbarkeit“: siehe unten.
 - Tab „Sicherheit“: siehe unten.
 - Einrichten:
   1. Worker → Settings → Domains & Routes → Custom Domain hinzufügen, z. B. `bastion.example.com`.
@@ -210,8 +216,29 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Als App installierbar (PWA): im Browser „Zum Startbildschirm“ (iPhone: Teilen → Zum Home-Bildschirm, Android/Chrome/Edge: Installieren). Der Service Worker speichert nichts auf dem Gerät, ohne Netz erscheint nur ein Offline-Hinweis. Nach Ablauf der Access-Sitzung öffnet die App den Access-Login und kehrt danach zurück.
 - Der Worker prüft das Access-Token selbst (Signatur, Audience, Aussteller, Ablauf). Über die workers.dev-Adresse ist das Dashboard nicht erreichbar. HA spricht weiter über die workers.dev-Adresse, sie liegt nicht hinter Access.
 
+**Fernsteuerung mit Passkey:**
+- Voraussetzung: in HA „Fernsteuerung erlauben“ (Alarmanlage → Einstellungen → Cloud-Worker) und speichern. Ohne diese Einstellung zeigt das Dashboard keine Steuerung und der Worker nimmt keine Befehle an.
+- Passkey koppeln: In HA „Passkey koppeln“ erzeugt einen 8-stelligen Code (10 Minuten gültig, einmal verwendbar). Im Dashboard unter Fernsteuerung den Code eingeben und den Passkey anlegen (Face ID, Fingerabdruck, Windows Hello, Passwortmanager). Der Worker bekommt nur den Hash des Codes. Nach 5 falschen Codes ist der Code ungültig.
+- Schalten: Jeder Befehl verlangt Access und eine Bestätigung mit dem Passkey (mit Benutzerprüfung). HA holt Befehle mit einer signierten Anfrage ab, alle 15 Sekunden und alle 2 Sekunden, solange jemand im Dashboard einen Befehl vorbereitet. Es gibt keinen Weg von außen in HA. Jeder Befehl trägt die Signatur des Workers, gilt 90 Sekunden und läuft nur einmal.
+- Unscharf schalten aus der Ferne braucht zusätzlich „Auch unscharf schalten erlauben“. Der Passkey ersetzt dabei den Alarm-Code.
+- Offene Sensoren: Das Dashboard nennt sie und bietet „Trotzdem scharf schalten“ (neuer Passkey-Befehl).
+- Im Alarm-Protokoll steht als Benutzer „Dashboard (<E-Mail>)“. Dashboard und HA zeigen die letzten Befehle mit Ergebnis.
+- Passkeys entfernen: in HA unter Fernsteuerung (einzeln oder alle). Ein neuer Passkey, ein entfernter Passkey und jeder fehlgeschlagene Passkey-Versuch werden gemeldet bzw. als Angriff gezählt.
+- Passkeys hängen an der Dashboard-Domain (`DASHBOARD_HOST`). Wechselt die Domain, müssen sie neu gekoppelt werden.
+
+**Verfügbarkeit:**
+- Jede Lücke im Lebenszeichen wird als Ausfall gespeichert: geplanter Neustart (HA hat das Herunterfahren gemeldet), Rechner neu gestartet (Stromausfall), Neustart ohne Ankündigung (Absturz), Netzwerk/Internet (HA lief durch) und laufende Funkstille.
+- Kurze Lücken ohne Meldung (über 5 Min. bzw. 2,5 Intervalle) zählen als Netzwerkausfall.
+- Tab „Verfügbarkeit“: Verfügbarkeit im Zeitraum (gesamt und ohne geplante Neustarts), Ampel pro Tag (ab 90 Tagen pro Woche), Ausfallminuten pro Tag und die Liste aller Ausfälle mit Ursache.
+- Ausfälle von vor dieser Version übernimmt der Worker einmalig aus dem Protokoll („Wieder erreichbar“). Gemessen wird ab dem ersten Lebenszeichen, die Dauer ist auf ein Intervall genau.
+
+**Zugriffsprotokoll:**
+- Jeder Aufruf des Dashboards wird pro Gerät (Konto + Browser/System) und IP als Sitzung gespeichert, mit Land und Stadt. 30 Minuten ohne Aufruf beenden eine Sitzung.
+- Neues Gerät oder neues Land eines Kontos: Meldung mit hoher Priorität und Eintrag im HA-Anmelde-Protokoll (`dashboard_access`). `ACCESS_ALERT=all` meldet jede Sitzung, `off` keine.
+- Tab „Sicherheit“ → „Dashboard-Zugriffe“.
+
 **Angriffserkennung am Worker:**
-- Gezählt werden abgewiesene Zugriffe: falsche Signatur, falscher Probe-Token, gefälschter Pushover-Rückruf, falscher Vorfall-Link und Zugriffe auf das Dashboard ohne gültiges Access-Token. Aufrufe unbekannter Pfade (Scanner) zählen nicht.
+- Gezählt werden abgewiesene Zugriffe: falsche Signatur, falscher Probe-Token, gefälschter Pushover-Rückruf, falscher Vorfall-Link, Zugriffe auf das Dashboard ohne gültiges Access-Token, falsche Kopplungscodes und ungültige Passkeys. Aufrufe unbekannter Pfade (Scanner) zählen nicht.
 - Ab `ATTACK_ALERT_AFTER` (Standard 5) abgewiesenen Zugriffen in 20 Minuten kommt eine Meldung über alle Kanäle, höchstens einmal pro Stunde. HA trägt den Angriff ins Anmelde-Protokoll ein und feuert `bastion_security_event` mit dem Typ `worker_attack`.
 - Eine IP mit `ATTACK_BLOCK_AFTER` (Standard 10) Fehlversuchen in 20 Minuten wird für `ATTACK_BLOCK_MINUTES` (Standard 60) gesperrt. Die IP des letzten gültigen Lebenszeichens wird nie gesperrt, eine gültige Signatur hebt eine Sperre auf.
 - Ein gültig signiertes, aber zu altes Lebenszeichen gilt als Uhrenproblem, nicht als Angriff.
@@ -230,11 +257,11 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 
 **Nachliefern:** 30 Sekunden nach dem Start schickt HA das komplette Alarm-Protokoll (bis 300 Einträge) und Anmelde-Protokoll (bis 1000 Einträge) an `/backfill`. Jeder Eintrag trägt eine feste ID, der Worker übernimmt nur, was ihm fehlt, auch Einträge aus der Zeit vor den IDs. Den Score-Verlauf (120 Tage) schickt HA mit dem Sicherheitsüberblick. Das Ergebnis steht unter Cloud-Worker → Protokoll außer Haus.
 
-**Dashboard, Tab „Sicherheit“:** Sicherheitswert mit offenen Befunden, Fehlversuche pro Tag (HA und Worker), häufigste Quellen, gesperrte IPs und das Anmelde-Protokoll (Anmeldungen, neue IPs, Fehlversuche, Sperren, Konten und Tokens). Dazu Verlauf des Sicherheitswerts und das Ergebnis der Außenprüfung. HA schickt mit dem Lebenszeichen den Überblick (bei Änderung, sonst alle 30 Minuten) und neue Anmeldeereignisse, ältere über das Nachliefern. Interne IDs von Benutzern und Tokens verlassen HA nicht.
+**Dashboard, Tab „Sicherheit“:** Sicherheitswert mit offenen Befunden, Fehlversuche pro Tag (HA und Worker), häufigste Quellen, gesperrte IPs, Dashboard-Zugriffe, Benutzungen der Worker-Köder und das Anmelde-Protokoll (Anmeldungen, neue IPs, Fehlversuche, Sperren, Konten und Tokens). Dazu Verlauf des Sicherheitswerts und das Ergebnis der Außenprüfung. HA schickt mit dem Lebenszeichen den Überblick (bei Änderung, sonst alle 30 Minuten) und neue Anmeldeereignisse, ältere über das Nachliefern. Interne IDs von Benutzern und Tokens verlassen HA nicht.
 
 **Sicherheit:**
 - Jede Meldung von HA trägt eine HMAC-SHA256-Signatur über Zeitstempel und Inhalt, Wiederholungen werden nach 5 Minuten abgewiesen.
-- Der Worker nimmt keine Befehle an. Fernsteuern lässt sich die Anlage über ihn nicht.
+- Befehle nimmt der Worker nur mit Access-Login und Passkey an und nur, wenn HA die Fernsteuerung erlaubt. HA prüft Signatur, Alter und Freigabe jedes Befehls noch einmal selbst. Aktionen im Dashboard verlangen zusätzlich dieselbe Herkunft (Origin), Kopplungscodes und Passkey-Challenges sind einmalig.
 - Pushover-Rückrufe tragen ein geheimes Pfad-Token und werden zusätzlich bei Pushover gegengeprüft.
 - Die Seiten senden eine strikte Content-Security-Policy und `Referrer-Policy: no-referrer`, damit Vorfall-Tokens nicht weitergegeben werden.
 
@@ -247,7 +274,7 @@ Der Worker baut eine TCP-Verbindung zur IP des Aufrufers auf (`CF-Connecting-IP`
 ## Betrieb & Wartung
 
 - **Entities** (IDs je nach Systemsprache, hier Englisch): `sensor.bastion_security_score`, `sensor.bastion_open_findings`, `sensor.bastion_failed_logins_24_h`, `sensor.bastion_git_status`, `sensor.bastion_last_commit`, `binary_sensor.bastion_critical_findings`, `binary_sensor.bastion_sabotage_suspicion`, pro Anomalie-Sensor ein `binary_sensor`, Buttons für Audit, Sicherung und Probe.
-- **Events für Automationen:** `bastion_finding`, `bastion_security_event` (Typen: `login`, `new_ip`, `failed_login`, `brute_force`, `ip_banned`, `token_created`, `user_added`, `admin_granted`, `sabotage`, `tamper`, `unusual_action`, `unusual_login_time`, `external_config_change`, `new_destination`), `bastion_anomaly`.
+- **Events für Automationen:** `bastion_finding`, `bastion_security_event` (Typen: `login`, `new_ip`, `failed_login`, `brute_force`, `ip_banned`, `token_created`, `user_added`, `admin_granted`, `sabotage`, `tamper`, `unusual_action`, `unusual_login_time`, `external_config_change`, `new_destination`, `canary`, `worker_attack`, `dashboard_access`, `passkey_added`), `bastion_alarm` (u. a. `unarmed` für die Erinnerung), `bastion_anomaly`.
 - **Befunde ausblenden:** im Panel oder per Aktion `bastion.dismiss_finding`. Ausgeblendete Befunde zählen nicht in den Score.
 - **Custom-Integration aktualisiert:** Ändert sich die Version, übernimmt Bastion die neue Baseline automatisch. Ändert sich Code ohne Versionswechsel, entsteht ein Befund „Code geändert ohne Update“. Ist die Änderung gewollt, „Baseline übernehmen“ (Aktion `bastion.accept_integrity`).
 - **Hostkey-Wechsel des Git-Servers:** Der Sync stoppt mit einem kritischen Befund. Den neuen Fingerprint beim Anbieter prüfen, dann Aktion `bastion.reset_git_host_key` ausführen.
@@ -272,4 +299,9 @@ Der Worker baut eine TCP-Verbindung zur IP des Aufrufers auf (`CF-Connecting-IP`
 | Kamerabilder fehlen im Vorfall | Log: „snapshot … too large“ oder Kamera-Fehler | Kamera liefert auch verkleinert mehr als ~1 MB. Kleineren Stream bzw. Snapshot-Auflösung wählen |
 | Dashboard zeigt 404 | Aufruf über workers.dev, `ACCESS_AUD`/`ACCESS_TEAM_DOMAIN` fehlen oder Domain passt nicht zu `DASHBOARD_HOST` | Über die Access-Domain aufrufen, Variablen prüfen |
 | Worker meldet `ALARM_SECRET not set` | Secret fehlt im Worker | Secret setzen, Wert aus Bastion → Cloud-Worker |
+| Passkey koppeln: „Kein Kopplungscode aktiv“ | Code abgelaufen (10 Min.), schon benutzt oder nach 5 Fehlversuchen ungültig | In HA neuen Code erzeugen |
+| Dashboard zeigt keine Fernsteuerung | „Fernsteuerung erlauben“ in HA aus oder noch nicht gespeichert, HA hat seitdem kein Lebenszeichen geschickt | Einstellung speichern, ein Intervall warten |
+| Befehl „Nicht abgeholt“ | HA offline oder Worker-URL/Secret in HA falsch | Cloud-Worker → Testen. Befehle gelten 90 Sekunden |
+| HA lehnt Befehle mit „signature“ ab | `ALARM_SECRET` im Worker und in HA verschieden | Secret abgleichen |
+| Passkey wird nicht angeboten | Dashboard über andere Domain als bei der Kopplung geöffnet | Über `DASHBOARD_HOST` öffnen oder neu koppeln |
 | Fehlversuche werden nicht gezählt | Logger `homeassistant.components.http.ban` steht in der Logger-Konfiguration auf `error` | Bastion setzt ihn auf `warning`. Diese Einstellung in `logger:` nicht wieder überschreiben |

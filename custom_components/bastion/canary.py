@@ -10,13 +10,24 @@ Both are meant to be planted where an intruder would look (password manager
 notes, shares, old backups) and, optionally, as a plain file in the git
 repository, so a leak of that repository is detected the moment someone tries
 the credentials.
+
+With the Cloudflare worker configured there are two more: a token that looks
+like a Home Assistant token and a webhook URL, both pointing at the worker. The
+worker recognises them by their signature (derived from the shared secret),
+alerts on its own (even when Home Assistant is down or not reachable from
+outside) and reports the use back with the next heartbeat.
 """
 
 from __future__ import annotations
 
+import base64
 from datetime import timedelta
+import hashlib
+import hmac
+import json
 import logging
 import secrets
+import time
 from typing import Any
 
 from aiohttp import web
@@ -32,6 +43,26 @@ from .const import CONF_CANARY_ENABLED, DOMAIN, EVENT_SECURITY, SIGNAL_UPDATE
 from .texts import event_text
 
 _LOGGER = logging.getLogger(__name__)
+
+DECOY_LIFETIME = 10 * 365 * 86400
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def worker_decoys(url: str, secret: str, decoy_id: str, created: int) -> dict[str, str]:
+    """Worker decoy token and webhook URL (the worker derives the same values)."""
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _b64url(
+        json.dumps({"iss": decoy_id, "iat": created, "exp": created + DECOY_LIFETIME}, separators=(",", ":")).encode()
+    )
+    key = hmac.new(secret.encode(), b"canary-token", hashlib.sha256).hexdigest()
+    sig = _b64url(hmac.new(key.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())
+    hook = hmac.new(secret.encode(), f"canary-webhook.{decoy_id}".encode(), hashlib.sha256).hexdigest()[:32]
+    base = url.rstrip("/")
+    return {"url": base, "token": f"{header}.{payload}.{sig}", "webhook": f"{base}/api/webhook/{decoy_id}{hook}"}
+
 
 CANARY_USER = "api-backup"
 CANARY_CLIENT = "backup-sync"
@@ -143,8 +174,8 @@ class CanaryManager:
         """Called synchronously by the token guard."""
         self.hass.async_create_task(self.async_trigger("token", ip, agent), eager_start=True)
 
-    async def async_trigger(self, via: str, ip: str | None, agent: str | None) -> None:
-        """A decoy was used."""
+    async def async_trigger(self, via: str, ip: str | None, agent: str | None, *, source: str | None = None) -> None:
+        """A decoy was used (source "worker": reported by the worker, which already alerted)."""
         entry = {"time": dt_util.utcnow().isoformat(), "via": via, "ip": ip or "?", "agent": agent or ""}
         triggers = self.state.setdefault("triggers", [])
         triggers.append(entry)
@@ -152,6 +183,8 @@ class CanaryManager:
         self.state["last_trigger"] = entry["time"]
         self.bastion.schedule_save()
         data = {"via": via, "ip": ip or "?", "agent": agent or "—"}
+        if source:
+            data["source"] = source
         self.hass.bus.async_fire(EVENT_SECURITY, {"type": "canary", **data})
         self.bastion.logins.record("canary", data)
         title, message = event_text("canary", self.hass.config.language, data)
@@ -189,16 +222,36 @@ class CanaryManager:
         except NoURLAvailableError:
             return "http://homeassistant.local:8123"
 
+    def worker_decoy(self) -> dict[str, str] | None:
+        """Decoys that point at the Cloudflare worker (None without a worker)."""
+        relay = getattr(self.bastion, "relay", None)
+        if relay is None or not relay.enabled or not self.state.get("token"):
+            return None
+        state = self.state
+        if not state.get("worker_id"):
+            state["worker_id"] = secrets.token_hex(16)
+            state["worker_created"] = int(time.time())
+            self.bastion.schedule_save()
+        return worker_decoys(relay.cfg["url"], relay.cfg["secret"], state["worker_id"], int(state["worker_created"]))
+
     def decoy_text(self) -> str | None:
         """Content of the decoy file that is placed in the git repository."""
         if not self.state.get("token"):
             return None
-        return (
+        text = (
             "# Home Assistant API access (backup sync)\n"
             f"HA_URL={self.base_url()}\n"
             f"HA_TOKEN={self.state['token']}\n"
             f"HA_BACKUP_WEBHOOK={self.webhook_url()}\n"
         )
+        if worker := self.worker_decoy():
+            text += (
+                "# Remote access (proxy)\n"
+                f"HA_REMOTE_URL={worker['url']}\n"
+                f"HA_REMOTE_TOKEN={worker['token']}\n"
+                f"HA_REMOTE_WEBHOOK={worker['webhook']}\n"
+            )
+        return text
 
     def summary(self) -> dict[str, Any]:
         """For the panel (admin only)."""
@@ -210,4 +263,5 @@ class CanaryManager:
             "created": state.get("created"),
             "triggers": list(reversed(state.get("triggers", [])))[:20],
             "alarm": self.alarm_active,
+            "worker": self.worker_decoy(),
         }

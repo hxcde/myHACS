@@ -1,4 +1,5 @@
-// D1 storage: alarm events, camera snapshots, Pushover receipts and small state.
+// D1 storage: alarm events, camera snapshots, Pushover receipts, outages, dashboard
+// sessions, decoy hits, passkeys, remote commands and small state.
 //
 // Home Assistant can only append (signed requests); nothing here deletes data
 // except the retention cleanup of the cron job. An intruder who takes over the
@@ -29,6 +30,39 @@ const SCHEMA = [
      country TEXT, path TEXT, PRIMARY KEY (bucket, ip, kind))`,
   `CREATE TABLE IF NOT EXISTS blocked (
      ip TEXT PRIMARY KEY, ts INTEGER NOT NULL, until INTEGER NOT NULL, reason TEXT, n INTEGER, country TEXT)`,
+  // Outages and restarts of Home Assistant (gaps in the heartbeat); end NULL = still down.
+  `CREATE TABLE IF NOT EXISTS outages (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, start INTEGER NOT NULL, end INTEGER, kind TEXT NOT NULL,
+     cause TEXT, armed INTEGER NOT NULL DEFAULT 0, notified INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS outages_start ON outages(start)`,
+  // Dashboard access log: one row per device and IP while active (30 min gap = new session).
+  `CREATE TABLE IF NOT EXISTS sessions (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, device TEXT NOT NULL, email TEXT, label TEXT, ip TEXT, country TEXT,
+     city TEXT, agent TEXT, first INTEGER NOT NULL, last INTEGER NOT NULL, hits INTEGER NOT NULL DEFAULT 1,
+     new_device INTEGER NOT NULL DEFAULT 0, new_country INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS sessions_device ON sessions(device, last)`,
+  `CREATE INDEX IF NOT EXISTS sessions_last ON sessions(last)`,
+  // Uses of the worker decoys (token, webhook).
+  `CREATE TABLE IF NOT EXISTS canary_hits (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, ip TEXT, country TEXT,
+     agent TEXT, method TEXT, path TEXT)`,
+  `CREATE INDEX IF NOT EXISTS canary_hits_ts ON canary_hits(ts)`,
+  // Messages for Home Assistant, delivered with the heartbeat response until confirmed.
+  `CREATE TABLE IF NOT EXISTS notices (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, type TEXT NOT NULL, data TEXT, seen INTEGER NOT NULL DEFAULT 0)`,
+  // Remote control: passkeys, one-time challenges and commands for Home Assistant.
+  `CREATE TABLE IF NOT EXISTS passkeys (
+     id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT, alg INTEGER NOT NULL, key TEXT NOT NULL,
+     counter INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, last_used INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS challenges (
+     id TEXT PRIMARY KEY, challenge TEXT NOT NULL, email TEXT NOT NULL, purpose TEXT NOT NULL, data TEXT, expires INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS commands (
+     id TEXT PRIMARY KEY, ts INTEGER NOT NULL, action TEXT NOT NULL, mode TEXT, force INTEGER NOT NULL DEFAULT 0,
+     by TEXT, passkey TEXT, status TEXT NOT NULL, result TEXT, expires INTEGER NOT NULL, delivered INTEGER, done INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS commands_ts ON commands(ts)`,
+  `CREATE INDEX IF NOT EXISTS commands_status ON commands(status, expires)`,
+  `CREATE INDEX IF NOT EXISTS notices_seen ON notices(seen, id)`,
+  `CREATE INDEX IF NOT EXISTS sessions_email ON sessions(email, country)`,
 ];
 
 const ready = new WeakMap();
@@ -356,6 +390,220 @@ export async function blockedList(env, since) {
   return results;
 }
 
+// ---------------------------------------------------------------- outages
+export async function addOutage(env, o) {
+  const db = await database(env);
+  const res = await db
+    .prepare("INSERT INTO outages (start, end, kind, cause, armed, notified) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(Math.floor(o.start), o.end == null ? null : Math.floor(o.end), str(o.kind, 20), str(o.cause, 200), o.armed ? 1 : 0, o.notified ? 1 : 0)
+    .run();
+  return res.meta?.last_row_id ?? null;
+}
+
+export async function endOutage(env, id, { end, kind, cause }) {
+  const db = await database(env);
+  await db
+    .prepare("UPDATE outages SET end = ?, kind = COALESCE(?, kind), cause = COALESCE(?, cause) WHERE id = ?")
+    .bind(Math.floor(end), str(kind, 20), str(cause, 200), id)
+    .run();
+}
+
+export async function markOutageNotified(env, id) {
+  const db = await database(env);
+  await db.prepare("UPDATE outages SET notified = 1 WHERE id = ?").bind(id).run();
+}
+
+export async function outagesSince(env, since) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare("SELECT id, start, end, kind, cause, armed, notified FROM outages WHERE end IS NULL OR end >= ? ORDER BY start LIMIT 2000")
+    .bind(since)
+    .all();
+  return results;
+}
+
+export async function outageTotal(env) {
+  const db = await database(env);
+  const row = await db.prepare("SELECT COUNT(*) AS n, MIN(start) AS first FROM outages").first();
+  return { n: row ? row.n : 0, first: row ? row.first : null };
+}
+
+// --------------------------------------------------------------- sessions
+export async function lastSession(env, device, ip) {
+  const db = await database(env);
+  return db.prepare("SELECT id, last FROM sessions WHERE device = ? AND ip = ? ORDER BY last DESC LIMIT 1").bind(device, ip).first();
+}
+
+export async function touchSession(env, id) {
+  const db = await database(env);
+  await db.prepare("UPDATE sessions SET last = ?, hits = hits + 1 WHERE id = ?").bind(nowS(), id).run();
+}
+
+export async function known(env, { device, email, country }) {
+  const db = await database(env);
+  const dev = await db.prepare("SELECT 1 AS x FROM sessions WHERE device = ? LIMIT 1").bind(device).first();
+  const land = country ? await db.prepare("SELECT 1 AS x FROM sessions WHERE email = ? AND country = ? LIMIT 1").bind(email, country).first() : { x: 1 };
+  const any = await db.prepare("SELECT 1 AS x FROM sessions WHERE email = ? LIMIT 1").bind(email).first();
+  return { device: Boolean(dev), country: Boolean(land), email: Boolean(any) };
+}
+
+export async function addSession(env, s) {
+  const db = await database(env);
+  await db
+    .prepare(
+      "INSERT INTO sessions (device, email, label, ip, country, city, agent, first, last, new_device, new_country) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(s.device, str(s.email, 120), str(s.label, 60), str(s.ip, 64), str(s.country, 4), str(s.city, 60), str(s.agent, 200), nowS(), nowS(), s.newDevice ? 1 : 0, s.newCountry ? 1 : 0)
+    .run();
+}
+
+export async function sessionsSince(env, since, limit = 500) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare("SELECT id, email, label, ip, country, city, first, last, hits, new_device, new_country FROM sessions WHERE last >= ? ORDER BY last DESC LIMIT ?")
+    .bind(since, limit)
+    .all();
+  return results;
+}
+
+// ---------------------------------------------------------------- decoys
+export async function addCanaryHit(env, h) {
+  const db = await database(env);
+  const res = await db
+    .prepare("INSERT INTO canary_hits (ts, kind, ip, country, agent, method, path) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(nowS(), str(h.kind, 20), str(h.ip, 64), str(h.country, 4), str(h.agent, 200), str(h.method, 10), str(h.path, 200))
+    .run();
+  return res.meta?.last_row_id ?? null;
+}
+
+export async function canaryHitsSince(env, since, limit = 500) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare("SELECT id, ts, kind, ip, country, agent, method, path FROM canary_hits WHERE ts >= ? ORDER BY ts DESC LIMIT ?")
+    .bind(since, limit)
+    .all();
+  return results;
+}
+
+// ---------------------------------------------------------------- notices
+export async function addNotice(env, type, data) {
+  const db = await database(env);
+  await db.prepare("INSERT INTO notices (ts, type, data) VALUES (?, ?, ?)").bind(nowS(), str(type, 40), JSON.stringify(data || {}).slice(0, 2000)).run();
+}
+
+export async function unseenNotices(env, limit = 20) {
+  const db = await database(env);
+  const { results } = await db.prepare("SELECT id, ts, type, data FROM notices WHERE seen = 0 ORDER BY id LIMIT ?").bind(limit).all();
+  return results.map((r) => ({ ...r, data: r.data ? JSON.parse(r.data) : {} }));
+}
+
+export async function markNoticesSeen(env, ids) {
+  const db = await database(env);
+  const stmt = db.prepare("UPDATE notices SET seen = 1 WHERE id = ?");
+  await db.batch(ids.map((id) => stmt.bind(id)));
+}
+
+// --------------------------------------------------------------- passkeys
+export async function addPasskey(env, p) {
+  const db = await database(env);
+  await db
+    .prepare("INSERT INTO passkeys (id, email, name, alg, key, counter, created) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(p.id, str(p.email, 120), str(p.name, 60), p.alg, p.key, p.counter || 0, nowS())
+    .run();
+}
+
+const PASSKEY_COLUMNS = "id, email, name, alg, created, last_used";
+
+export async function passkeysFor(env, email) {
+  const db = await database(env);
+  return (await db.prepare(`SELECT ${PASSKEY_COLUMNS} FROM passkeys WHERE email = ? ORDER BY created`).bind(email).all()).results;
+}
+
+export async function allPasskeys(env) {
+  const db = await database(env);
+  return (await db.prepare(`SELECT ${PASSKEY_COLUMNS} FROM passkeys ORDER BY created`).all()).results;
+}
+
+export async function getPasskey(env, id) {
+  const db = await database(env);
+  return db.prepare("SELECT * FROM passkeys WHERE id = ?").bind(id).first();
+}
+
+export async function usePasskey(env, id, counter) {
+  const db = await database(env);
+  await db.prepare("UPDATE passkeys SET counter = ?, last_used = ? WHERE id = ?").bind(counter, nowS(), id).run();
+}
+
+export async function deletePasskeys(env, id = null) {
+  const db = await database(env);
+  const res = id ? await db.prepare("DELETE FROM passkeys WHERE id = ?").bind(id).run() : await db.prepare("DELETE FROM passkeys").run();
+  return (res.meta && res.meta.changes) || 0;
+}
+
+// ------------------------------------------------------------- challenges
+export async function addChallenge(env, c) {
+  const db = await database(env);
+  await db
+    .prepare("INSERT INTO challenges (id, challenge, email, purpose, data, expires) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(c.id, c.challenge, str(c.email, 120), c.purpose, JSON.stringify(c.data || {}), c.expires)
+    .run();
+}
+
+// One-time: the challenge is deleted when it is taken.
+export async function takeChallenge(env, id) {
+  const db = await database(env);
+  const row = await db.prepare("DELETE FROM challenges WHERE id = ? RETURNING *").bind(String(id).slice(0, 64)).first();
+  if (!row || row.expires < nowS()) return null;
+  return { ...row, data: row.data ? JSON.parse(row.data) : {} };
+}
+
+// --------------------------------------------------------------- commands
+export async function addCommand(env, c) {
+  const db = await database(env);
+  await db
+    .prepare("INSERT INTO commands (id, ts, action, mode, force, by, passkey, status, expires) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+    .bind(c.id, c.ts, c.action, c.mode || null, c.force ? 1 : 0, str(c.by, 120), str(c.passkey, 60), c.expires)
+    .run();
+}
+
+export async function getCommand(env, id) {
+  const db = await database(env);
+  const row = await db.prepare("SELECT * FROM commands WHERE id = ?").bind(String(id).slice(0, 64)).first();
+  return row ? { ...row, result: row.result ? JSON.parse(row.result) : null } : null;
+}
+
+// Pending commands for Home Assistant; old ones expire first.
+export async function openCommands(env) {
+  const db = await database(env);
+  await db.prepare("UPDATE commands SET status = 'expired' WHERE status IN ('pending', 'delivered') AND expires < ?").bind(nowS()).run();
+  const { results } = await db.prepare("SELECT * FROM commands WHERE status IN ('pending', 'delivered') ORDER BY ts LIMIT 5").all();
+  return results;
+}
+
+export async function markDelivered(env, ids) {
+  const db = await database(env);
+  const stmt = db.prepare("UPDATE commands SET status = 'delivered', delivered = ? WHERE id = ? AND status = 'pending'");
+  await db.batch(ids.map((id) => stmt.bind(nowS(), id)));
+}
+
+export async function finishCommand(env, id, status, result) {
+  const db = await database(env);
+  const res = await db
+    .prepare("UPDATE commands SET status = ?, result = ?, done = ? WHERE id = ? AND status IN ('pending', 'delivered')")
+    .bind(status, JSON.stringify(result || {}).slice(0, 1000), nowS(), String(id).slice(0, 64))
+    .run();
+  return (res.meta && res.meta.changes) || 0;
+}
+
+export async function commandsSince(env, since, limit = 50) {
+  const db = await database(env);
+  const { results } = await db
+    .prepare("SELECT id, ts, action, mode, force, by, passkey, status, result, done FROM commands WHERE ts >= ? ORDER BY ts DESC LIMIT ?")
+    .bind(since, limit)
+    .all();
+  return results.map((r) => ({ ...r, result: r.result ? JSON.parse(r.result) : null }));
+}
+
 // -------------------------------------------------------------- retention
 export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
   const db = await database(env);
@@ -367,5 +615,11 @@ export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
     db.prepare("DELETE FROM secevents WHERE ts < ?").bind(now - logDays * 86400),
     db.prepare("DELETE FROM attempts WHERE bucket < ?").bind(Math.floor((now - 90 * 86400) / BUCKET)),
     db.prepare("DELETE FROM blocked WHERE until < ? AND ts < ?").bind(now, now - 90 * 86400),
+    db.prepare("DELETE FROM outages WHERE start < ? AND end IS NOT NULL").bind(now - logDays * 86400),
+    db.prepare("DELETE FROM sessions WHERE last < ?").bind(now - logDays * 86400),
+    db.prepare("DELETE FROM canary_hits WHERE ts < ?").bind(now - logDays * 86400),
+    db.prepare("DELETE FROM notices WHERE ts < ?").bind(now - 30 * 86400),
+    db.prepare("DELETE FROM challenges WHERE expires < ?").bind(now),
+    db.prepare("DELETE FROM commands WHERE ts < ?").bind(now - logDays * 86400),
   ]);
 }
