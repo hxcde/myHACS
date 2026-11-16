@@ -129,6 +129,7 @@ class AlarmRelay:
         self._unsub_fast: CALLBACK_TYPE | None = None
         self._unsub_household: CALLBACK_TYPE | None = None
         self._presence_beat = 0.0
+        self._zones_sent: str | None = None
         self.last_commands: list[dict[str, Any]] = []
 
     @property
@@ -379,6 +380,7 @@ class AlarmRelay:
             "check_urls": self.check_urls(),
             "remote": {"enabled": bool(self.remote.get("enabled")), "disarm": bool(self.remote.get("disarm"))},
             "presence": self._presence(),
+            "zones": self.engine.zones(),
         }
 
     def check_urls(self) -> list[str]:
@@ -388,8 +390,14 @@ class AlarmRelay:
 
     async def _async_tick(self, _now: datetime | None = None) -> None:
         due = time.monotonic() - self._last_beat >= self.interval - TICK / 2
-        if due or self.engine.state in ACTIVE_STATES:
+        # A door opened or a sensor dropped out: the dashboard shows it within one tick.
+        zones = hashlib.sha256(json.dumps(self.engine.zones(), sort_keys=True).encode()).hexdigest()
+        changed = self._zones_sent is not None and zones != self._zones_sent
+        if due or changed or self.engine.state in ACTIVE_STATES:
+            self._zones_sent = zones
             await self._async_heartbeat()
+        elif self._zones_sent is None:
+            self._zones_sent = zones
         if self.remote_enabled:
             await self.async_poll_commands()
 

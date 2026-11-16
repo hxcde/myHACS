@@ -206,7 +206,7 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Bei unscharfer Anlage werden Ausfälle nur protokolliert (`ALERT_WHEN_DISARMED=1` meldet auch diese).
 
 **Dashboard (hinter Cloudflare Access):**
-- Tab „Alarmanlage“: Status, Fernsteuerung (wenn in HA erlaubt), Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Tab „Alarmanlage“: Status mit Modus-Knöpfen (schaltbar mit Fernsteuerung), Systemstatus, Anwesenheit, Zonen (Räume und Sensoren mit bereit/offen/gestört und ob sie gerade überwacht sind; HA meldet Änderungen innerhalb von 15 Sekunden), Ereignisprotokoll, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
 - Tab „Verfügbarkeit“: siehe unten.
 - Tab „Sicherheit“: siehe unten.
 - Einrichten:
@@ -214,6 +214,7 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
   2. Zero Trust → Access → Applications → Self-hosted, Domain wie oben, Policy mit den erlaubten E-Mail-Adressen.
   3. Den „Application Audience (AUD) Tag“ der Anwendung kopieren.
   4. Im Worker die Variablen `DASHBOARD_HOST` (die Domain), `ACCESS_TEAM_DOMAIN` (`<team>.cloudflareaccess.com`) und `ACCESS_AUD` setzen.
+- Live: Das Dashboard fragt alle 10 Sekunden einen kleinen Stand ab und lädt nur bei Änderungen neu, ohne dass man neu laden muss. Oben rechts zeigt „LIVE“ mit Uhrzeit, dass die Verbindung steht.
 - Als App installierbar (PWA): im Browser „Zum Startbildschirm“ (iPhone: Teilen → Zum Home-Bildschirm, Android/Chrome/Edge: Installieren). Der Service Worker speichert nichts auf dem Gerät, ohne Netz erscheint nur ein Offline-Hinweis. Nach Ablauf der Access-Sitzung öffnet die App den Access-Login und kehrt danach zurück.
 - Der Worker prüft das Access-Token selbst (Signatur, Audience, Aussteller, Ablauf). Über die workers.dev-Adresse ist das Dashboard nicht erreichbar. HA spricht weiter über die workers.dev-Adresse, sie liegt nicht hinter Access.
 

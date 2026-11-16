@@ -143,3 +143,22 @@ async def test_people_websocket(hass: HomeAssistant, alarm, hass_ws_client) -> N
         assert (await client.receive_json())["result"] == {"found": True, "method": "ping"}
         await client.send_json({"id": 4, "type": "bastion/alarm/presence_test", "address": "8.8.8.8"})
         assert not (await client.receive_json())["success"]
+
+
+async def test_zones_in_heartbeat(hass: HomeAssistant, alarm, aioclient_mock) -> None:  # noqa: F811
+    relay = await _enable_worker(hass, alarm, aioclient_mock)
+    beat = _payload(_calls(aioclient_mock, "/heartbeat")[-1])
+    zones = {z["name"]: z for z in beat["zones"]}
+    assert zones["Door"] == {"room": "Flur", "name": "Door", "state": "closed", "type": "delayed", "watched": False}
+    assert zones["Smoke"]["watched"] is True, "always-on sensors are watched while disarmed"
+    await alarm.async_arm("night")
+    await relay._async_tick()
+    await relay._async_tick()
+    count = len(_calls(aioclient_mock, "/heartbeat"))
+    hass.states.async_set("binary_sensor.window", "on", {"friendly_name": "Window"})
+    await relay._async_tick()
+    assert len(_calls(aioclient_mock, "/heartbeat")) == count + 1, "a zone change is sent right away"
+    zones = {z["name"]: z for z in _payload(_calls(aioclient_mock, "/heartbeat")[-1])["zones"]}
+    assert zones["Window"]["state"] == "open"
+    assert zones["Door"]["watched"] is True
+    relay.unload()

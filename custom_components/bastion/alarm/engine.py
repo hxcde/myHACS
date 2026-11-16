@@ -413,6 +413,28 @@ class AlarmEngine:
                 open_now.append(self._name(entity_id))
         return {"open": open_now[:10], "unavailable": unavailable[:10]}
 
+    def zones(self) -> list[dict[str, Any]]:
+        """Rooms and sensors with their state, for the worker dashboard (names only)."""
+        armed = self.state.startswith("armed_") or self.state in (PENDING, TRIGGERED)
+        zones: list[dict[str, Any]] = []
+        for room in self.config["rooms"]:
+            for entity_id in room.get("sensors", []):
+                cfg = self.sensor_config(entity_id)
+                active = is_active(self.hass.states.get(entity_id))
+                watched = cfg["type"] == "always" or (
+                    armed and self.mode in cfg["modes"] and entity_id not in self.bypassed and self._is_live(entity_id)
+                )
+                zones.append(
+                    {
+                        "room": str(room.get("name") or "")[:60],
+                        "name": self._name(entity_id)[:60],
+                        "state": "unavailable" if active is None else "open" if active else "closed",
+                        "type": cfg["type"],
+                        "watched": bool(watched),
+                    }
+                )
+        return zones[:120]
+
     def _set_state(self, state: str, *, mode: str | None = None, until: float | None = None) -> None:
         self.state = state
         if mode is not None or state == DISARMED:

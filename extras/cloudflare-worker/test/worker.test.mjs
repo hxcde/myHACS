@@ -831,3 +831,20 @@ test("household presence reaches the dashboard without addresses", async () => {
   await worker.fetch(signed("/heartbeat", { ...HB, presence: [{ name: "Anna", home: false }, { name: "Ben", home: false }] }), env);
   assert.notEqual((await (await d.get("/api/live")).json()).rev, rev, "someone left: the dashboard reloads");
 });
+
+test("zone board: rooms and sensors are stored and change the revision", async () => {
+  const env = makeEnv(ACCESS);
+  const d = await dashboard(env);
+  const zones = [
+    { room: "Flur", name: "Haustür", state: "closed", type: "delayed", watched: true, entity_id: "binary_sensor.door" },
+    { room: "Küche", name: "Rauchmelder", state: "weird", type: "always", watched: 1 },
+  ];
+  await worker.fetch(signed("/heartbeat", { ...HB, zones }), env);
+  const sum = await (await d.get("/api/summary")).json();
+  assert.deepEqual(sum.hb.zones, [
+    { room: "Flur", name: "Haustür", state: "closed", type: "delayed", watched: true },
+    { room: "Küche", name: "Rauchmelder", state: "unavailable", type: "always", watched: true },
+  ]);
+  await worker.fetch(signed("/heartbeat", { ...HB, zones: [{ ...zones[0], state: "open" }, zones[1]] }), env);
+  assert.notEqual((await (await d.get("/api/live")).json()).rev, sum.rev, "door opened: the dashboard reloads");
+});
