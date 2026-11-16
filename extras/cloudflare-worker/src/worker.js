@@ -83,6 +83,7 @@ const LABELS = {
   passkey_added: "Passkey gekoppelt",
   passkey_removed: "Passkey entfernt",
   unarmed: "Niemand zuhause, nicht scharf",
+  presence: "Anwesenheit",
 };
 const ATTACK_LABELS = {
   signature: "falsche Signatur",
@@ -383,6 +384,8 @@ async function handleHeartbeat(request, env, url, ctx) {
         state: ["open", "closed", "unavailable"].includes(z.state) ? z.state : "unavailable",
         type: ["instant", "delayed", "always"].includes(z.type) ? z.type : "delayed",
         watched: Boolean(z.watched),
+        battery: Number.isInteger(z.battery) && z.battery >= 0 && z.battery <= 100 ? z.battery : null,
+        seen: Number.isFinite(z.seen) && z.seen > 0 ? Math.floor(z.seen) : null,
       }))
       : null,
     // People of the household (names and home/away only, no addresses).
@@ -397,6 +400,25 @@ async function handleHeartbeat(request, env, url, ctx) {
     offline_notified: false,
   };
   await uptime.onHeartbeat(env, prev, record);
+  // Somebody came or left: kept in the log for the day timeline.
+  if (prev && Array.isArray(prev.presence) && Array.isArray(record.presence)) {
+    const before = new Map(prev.presence.map((p) => [p.name, p.home]));
+    for (const p of record.presence) {
+      if (typeof p.home === "boolean" && typeof before.get(p.name) === "boolean" && before.get(p.name) !== p.home) {
+        await store.addEvent(env, { event: "presence", user: p.name, detail: { home: p.home } });
+      }
+    }
+  }
+  // Floor plan: Home Assistant sends it only when the worker does not have this version.
+  const fpHash = typeof data.floorplan_hash === "string" && /^[a-f0-9]{8,64}$/.test(data.floorplan_hash) ? data.floorplan_hash : null;
+  const fpStored = await store.getState(env, "floorplan");
+  let floorplanHash = fpStored && fpHash && fpStored.hash === fpHash ? fpHash : null;
+  if (!fpHash) {
+    if (fpStored) await store.setState(env, "floorplan", null);
+  } else if (data.floorplan && typeof data.floorplan === "object" && !Array.isArray(data.floorplan) && JSON.stringify(data.floorplan).length <= 70000) {
+    await store.setState(env, "floorplan", { hash: fpHash, plan: data.floorplan, received: nowS() });
+    floorplanHash = fpHash;
+  }
   if (prev && prev.offline) {
     const minutes = Math.round((Date.now() - prev.received) / 60000);
     const cause = uptime.recoveryCause(prev, record);
@@ -431,6 +453,7 @@ async function handleHeartbeat(request, env, url, ctx) {
     exposure: await store.getState(env, "exposure"),
     notices: await store.unseenNotices(env),
     dashboard: remote.dashboardUrl(env),
+    floorplan_hash: floorplanHash,
   });
 }
 
@@ -777,7 +800,8 @@ async function liveState(env) {
   const parts = hb
     ? [hb.state, hb.mode, hb.offline, (hb.open || []).join(","), (hb.unavailable || []).join(","), JSON.stringify(hb.remote || {}), hb.version, JSON.stringify(hb.presence || null), JSON.stringify(hb.zones || null)]
     : ["-"];
-  const rev = [...parts, await store.marks(env), ex ? ex.checked : 0, pairing ? pairing.expires : 0].join("|");
+  const fp = await store.getState(env, "floorplan");
+  const rev = [...parts, await store.marks(env), ex ? ex.checked : 0, pairing ? pairing.expires : 0, fp ? fp.hash : ""].join("|");
   return { hb, rev: (await hmacHex("rev", rev)).slice(0, 16) };
 }
 
@@ -810,6 +834,7 @@ async function apiSummary(env, url, user) {
     attempts: await store.attemptsSince(env, since),
     blocked: await store.blockedList(env, since),
     exposure: await store.getState(env, "exposure"),
+    floorplan: ((await store.getState(env, "floorplan")) || {}).plan || null,
     countries: allowedCountries(env),
     outages: await store.outagesSince(env, since),
     uptime_since: await store.getState(env, "uptime_since"),

@@ -837,14 +837,44 @@ test("zone board: rooms and sensors are stored and change the revision", async (
   const d = await dashboard(env);
   const zones = [
     { room: "Flur", name: "Haustür", state: "closed", type: "delayed", watched: true, entity_id: "binary_sensor.door" },
-    { room: "Küche", name: "Rauchmelder", state: "weird", type: "always", watched: 1 },
+    { room: "Küche", name: "Rauchmelder", state: "weird", type: "always", watched: 1, battery: 12, seen: 1700000000.7 },
   ];
-  await worker.fetch(signed("/heartbeat", { ...HB, zones }), env);
+  await worker.fetch(signed("/heartbeat", { ...HB, zones: [{ ...zones[0], battery: 140, seen: "x" }, zones[1]] }), env);
   const sum = await (await d.get("/api/summary")).json();
   assert.deepEqual(sum.hb.zones, [
-    { room: "Flur", name: "Haustür", state: "closed", type: "delayed", watched: true },
-    { room: "Küche", name: "Rauchmelder", state: "unavailable", type: "always", watched: true },
+    { room: "Flur", name: "Haustür", state: "closed", type: "delayed", watched: true, battery: null, seen: null },
+    { room: "Küche", name: "Rauchmelder", state: "unavailable", type: "always", watched: true, battery: 12, seen: 1700000000 },
   ]);
   await worker.fetch(signed("/heartbeat", { ...HB, zones: [{ ...zones[0], state: "open" }, zones[1]] }), env);
   assert.notEqual((await (await d.get("/api/live")).json()).rev, sum.rev, "door opened: the dashboard reloads");
+});
+
+test("floor plan: stored once, confirmed by hash, removed with the hash", async () => {
+  const env = makeEnv(ACCESS);
+  const d = await dashboard(env);
+  const plan = { size: [100, 80], areas: [{ id: "a", label: "Wohnen", rect: [0, 0, 100, 80] }] };
+  let res = await (await worker.fetch(signed("/heartbeat", { ...HB, floorplan_hash: "abcdef0123456789" }), env)).json();
+  assert.equal(res.floorplan_hash, null, "hash without plan: the worker asks for the plan");
+  res = await (await worker.fetch(signed("/heartbeat", { ...HB, floorplan_hash: "abcdef0123456789", floorplan: plan }), env)).json();
+  assert.equal(res.floorplan_hash, "abcdef0123456789");
+  const sum = await (await d.get("/api/summary")).json();
+  assert.deepEqual(sum.floorplan, plan);
+  res = await (await worker.fetch(signed("/heartbeat", { ...HB, floorplan_hash: "abcdef0123456789" }), env)).json();
+  assert.equal(res.floorplan_hash, "abcdef0123456789", "same version: confirmed without sending it again");
+  res = await (await worker.fetch(signed("/heartbeat", { ...HB, floorplan_hash: "1111111111111111" }), env)).json();
+  assert.equal(res.floorplan_hash, null, "new version: asked again");
+  await worker.fetch(signed("/heartbeat", { ...HB, floorplan_hash: null }), env);
+  assert.equal((await (await d.get("/api/summary")).json()).floorplan, null);
+  assert.notEqual((await (await d.get("/api/live")).json()).rev, sum.rev);
+});
+
+test("presence changes are logged for the day timeline", async () => {
+  const env = makeEnv();
+  await worker.fetch(signed("/heartbeat", { ...HB, presence: [{ name: "Anna", home: true }, { name: "Ben", home: null }] }), env);
+  await worker.fetch(signed("/heartbeat", { ...HB, presence: [{ name: "Anna", home: false }, { name: "Ben", home: true }] }), env);
+  await worker.fetch(signed("/heartbeat", { ...HB, presence: [{ name: "Anna", home: false }, { name: "Ben", home: true }] }), env);
+  const rows = (await events(env)).filter((e) => e.event === "presence");
+  assert.equal(rows.length, 1, "unknown → home is no change");
+  assert.equal(rows[0].user, "Anna");
+  assert.deepEqual(JSON.parse(rows[0].detail), { home: false });
 });

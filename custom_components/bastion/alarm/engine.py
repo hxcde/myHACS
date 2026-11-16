@@ -28,6 +28,7 @@ from typing import Any
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.storage import Store
@@ -101,6 +102,8 @@ def default_config() -> dict[str, Any]:
             "snapshots": 3,
             "public_url": "",
         },
+        # Floor plan for the dashboard (imported JSON, see alarm/floorplan.py).
+        "floorplan": None,
         # People of the household (phone IP for presence) and when a silent phone counts as away.
         "people": [],
         "presence": {"away_minutes": 10},
@@ -239,6 +242,9 @@ class AlarmEngine:
         """Apply configuration from the panel (already validated)."""
         for key, value in changes.items():
             if key in ("codes",):
+                continue
+            if key == "floorplan":
+                self.config[key] = value  # replaced as a whole, never merged
                 continue
             if isinstance(self.config.get(key), dict) and isinstance(value, dict):
                 self.config[key] = {**self.config[key], **value}
@@ -413,7 +419,37 @@ class AlarmEngine:
                 open_now.append(self._name(entity_id))
         return {"open": open_now[:10], "unavailable": unavailable[:10]}
 
-    def zones(self) -> list[dict[str, Any]]:
+    def _health(self, entity_id: str) -> tuple[int | None, int | None]:
+        """Battery level and last report (unix time) of a sensor's device."""
+        registry = er.async_get(self.hass)
+        entry = registry.async_get(entity_id)
+        ids = [entity_id]
+        if entry is not None and entry.device_id:
+            ids += [
+                e.entity_id for e in er.async_entries_for_device(registry, entry.device_id) if e.entity_id != entity_id
+            ]
+        battery: int | None = None
+        seen: float | None = None
+        for eid in ids:
+            state = self.hass.states.get(eid)
+            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                continue
+            stamp = getattr(state, "last_reported", None) or state.last_updated
+            seen = max(seen or 0, stamp.timestamp())
+            value = None
+            if state.domain == "sensor" and state.attributes.get("device_class") == "battery":
+                value = state.state
+            elif eid == entity_id:
+                value = state.attributes.get("battery_level", state.attributes.get("battery"))
+            try:
+                level = round(float(value)) if value is not None else None
+            except (TypeError, ValueError):
+                level = None
+            if level is not None and 0 <= level <= 100:
+                battery = level if battery is None else min(battery, level)
+        return battery, int(seen) if seen else None
+
+    def zones(self, *, health: bool = True) -> list[dict[str, Any]]:
         """Rooms and sensors with their state, for the worker dashboard (names only)."""
         armed = self.state.startswith("armed_") or self.state in (PENDING, TRIGGERED)
         zones: list[dict[str, Any]] = []
@@ -424,15 +460,16 @@ class AlarmEngine:
                 watched = cfg["type"] == "always" or (
                     armed and self.mode in cfg["modes"] and entity_id not in self.bypassed and self._is_live(entity_id)
                 )
-                zones.append(
-                    {
-                        "room": str(room.get("name") or "")[:60],
-                        "name": self._name(entity_id)[:60],
-                        "state": "unavailable" if active is None else "open" if active else "closed",
-                        "type": cfg["type"],
-                        "watched": bool(watched),
-                    }
-                )
+                zone = {
+                    "room": str(room.get("name") or "")[:60],
+                    "name": self._name(entity_id)[:60],
+                    "state": "unavailable" if active is None else "open" if active else "closed",
+                    "type": cfg["type"],
+                    "watched": bool(watched),
+                }
+                if health:
+                    zone["battery"], zone["seen"] = self._health(entity_id)
+                zones.append(zone)
         return zones[:120]
 
     def _set_state(self, state: str, *, mode: str | None = None, until: float | None = None) -> None:

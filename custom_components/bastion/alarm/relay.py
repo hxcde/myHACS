@@ -37,6 +37,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import EVENT_SECURITY, SEVERITY_WEIGHT
 from .engine import AlarmError
+from .floorplan import plan_hash
 from .household import SIGNAL_HOUSEHOLD
 
 _LOGGER = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ class AlarmRelay:
         self._unsub_household: CALLBACK_TYPE | None = None
         self._presence_beat = 0.0
         self._zones_sent: str | None = None
+        self._floorplan_acked: str | None = None
         self.last_commands: list[dict[str, Any]] = []
 
     @property
@@ -381,7 +383,17 @@ class AlarmRelay:
             "remote": {"enabled": bool(self.remote.get("enabled")), "disarm": bool(self.remote.get("disarm"))},
             "presence": self._presence(),
             "zones": self.engine.zones(),
+            **self._floorplan_payload(),
         }
+
+    def _floorplan_payload(self) -> dict[str, Any]:
+        """The plan travels only when the worker does not have this version yet."""
+        plan = self.engine.config.get("floorplan")
+        digest = plan_hash(plan)
+        payload: dict[str, Any] = {"floorplan_hash": digest}
+        if digest and digest != self._floorplan_acked:
+            payload["floorplan"] = plan
+        return payload
 
     def check_urls(self) -> list[str]:
         """Public address the worker checks from outside (setting, else HA's external URL)."""
@@ -391,7 +403,7 @@ class AlarmRelay:
     async def _async_tick(self, _now: datetime | None = None) -> None:
         due = time.monotonic() - self._last_beat >= self.interval - TICK / 2
         # A door opened or a sensor dropped out: the dashboard shows it within one tick.
-        zones = hashlib.sha256(json.dumps(self.engine.zones(), sort_keys=True).encode()).hexdigest()
+        zones = hashlib.sha256(json.dumps(self.engine.zones(health=False), sort_keys=True).encode()).hexdigest()
         changed = self._zones_sent is not None and zones != self._zones_sent
         if due or changed or self.engine.state in ACTIVE_STATES:
             self._zones_sent = zones
@@ -423,6 +435,7 @@ class AlarmRelay:
         del self._sec_queue[:sent_events]
         if isinstance(result.get("dashboard"), str) and result["dashboard"].startswith("https://"):
             self.dashboard_url = result["dashboard"].rstrip("/")
+        self._floorplan_acked = result.get("floorplan_hash") if isinstance(result.get("floorplan_hash"), str) else None
         self._handle_acks(result.get("acks") or [])
         self._handle_notices(result.get("notices") or [])
         self._handle_attack(result.get("attack"))

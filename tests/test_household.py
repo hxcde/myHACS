@@ -149,7 +149,8 @@ async def test_zones_in_heartbeat(hass: HomeAssistant, alarm, aioclient_mock) ->
     relay = await _enable_worker(hass, alarm, aioclient_mock)
     beat = _payload(_calls(aioclient_mock, "/heartbeat")[-1])
     zones = {z["name"]: z for z in beat["zones"]}
-    assert zones["Door"] == {"room": "Flur", "name": "Door", "state": "closed", "type": "delayed", "watched": False}
+    door = {k: v for k, v in zones["Door"].items() if k not in ("battery", "seen")}
+    assert door == {"room": "Flur", "name": "Door", "state": "closed", "type": "delayed", "watched": False}
     assert zones["Smoke"]["watched"] is True, "always-on sensors are watched while disarmed"
     await alarm.async_arm("night")
     await relay._async_tick()
