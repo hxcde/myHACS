@@ -43,3 +43,7 @@ pip install -r requirements_test.txt
 pytest
 ruff check . && ruff format --check .
 ```
+
+## Lizenz
+
+MIT, siehe [LICENSE](./LICENSE).
