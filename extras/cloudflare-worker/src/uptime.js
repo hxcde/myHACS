@@ -77,7 +77,8 @@ export async function ensureHistory(env) {
   const events = await store.eventsSince(env, 0, 10000);
   const own = events.filter((e) => ["offline", "online", "restart", "attack", "exposure"].includes(e.event));
   const hb = await store.getState(env, "hb");
-  const first = Math.min(nowS(), ...own.map((e) => e.ts), hb ? Math.floor(hb.received / 1000) : nowS());
+  const stored = await store.firstStored(env);
+  const first = Math.min(nowS(), ...own.map((e) => e.ts), hb ? Math.floor(hb.received / 1000) : nowS(), stored || nowS());
   const { n } = await store.outageTotal(env);
   if (!n) {
     for (const e of events) {

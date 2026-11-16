@@ -422,6 +422,13 @@ export async function outagesSince(env, since) {
   return results;
 }
 
+// Time of the first event the worker stored (lowest id; resent old events get higher ids).
+export async function firstStored(env) {
+  const db = await database(env);
+  const row = await db.prepare("SELECT ts FROM events ORDER BY id LIMIT 1").first();
+  return row ? row.ts : null;
+}
+
 export async function outageTotal(env) {
   const db = await database(env);
   const row = await db.prepare("SELECT COUNT(*) AS n, MIN(start) AS first FROM outages").first();
