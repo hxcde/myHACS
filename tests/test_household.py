@@ -162,3 +162,126 @@ async def test_zones_in_heartbeat(hass: HomeAssistant, alarm, aioclient_mock) ->
     assert zones["Window"]["state"] == "open"
     assert zones["Door"]["watched"] is True
     relay.unload()
+
+
+async def test_person_follows_a_linked_tracker(hass: HomeAssistant, alarm) -> None:  # noqa: F811
+    hass.states.async_set("device_tracker.unifi_phone", "home", {"friendly_name": "Annas iPhone"})
+    await alarm.async_update_config(
+        {"people": [{"id": "cccc3333", "name": "Anna", "ip": "", "tracker": "device_tracker.unifi_phone"}]}
+    )
+    household = alarm.bastion.household
+    household.probe = _fake_probe({})
+    household.setup()
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert household.is_home("cccc3333") is True
+    registry = er.async_get(hass)
+    sensor = next(e.entity_id for e in registry.entities.values() if e.unique_id.endswith("_presence_cccc3333"))
+    assert hass.states.get(sensor).state == "on"
+    assert hass.states.get(sensor).attributes["device_class"] == "presence"
+    # the controller says the phone left: away right away (no extra waiting)
+    hass.states.async_set("device_tracker.unifi_phone", "not_home")
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert household.is_home("cccc3333") is False
+    assert hass.states.get(sensor).state == "off"
+    # unavailable keeps the last state
+    hass.states.async_set("device_tracker.unifi_phone", "unavailable")
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert household.is_home("cccc3333") is False
+    hass.states.async_set("device_tracker.unifi_phone", "Arbeit")
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert household.is_home("cccc3333") is False, "another zone counts as away"
+    household.unload()
+
+
+async def test_probe_without_false_positives(hass: HomeAssistant) -> None:
+    import ipaddress  # noqa: PLC0415
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from custom_components.bastion.alarm import household as hh  # noqa: PLC0415
+
+    async def refused(*_args, **_kwargs):
+        raise ConnectionRefusedError
+
+    with patch.object(hh.asyncio, "open_connection", refused):
+        assert await hh._tcp_alive("192.168.1.20", 62078, True) is True
+        assert await hh._tcp_alive("192.168.20.5", 62078, False) is False, "a reset across the router proves nothing"
+
+    lan = [ipaddress.IPv4Network("192.168.1.0/24")]
+    arp = {"192.168.1.20": True}
+
+    async def no(*_args):
+        return False
+
+    async def nets(_hass):
+        return lan
+
+    with (
+        patch.object(hh, "_tcp_alive", no),
+        patch.object(hh, "_icmp_alive", no),
+        patch.object(hh, "_local_networks", nets),
+        patch.object(hh, "_arp_poke", lambda _ip: None),
+        patch.object(hh, "_arp_lookup", lambda ip: arp.get(ip, False)),
+        patch.object(hh, "ARP_SETTLE", 0),
+    ):
+        assert await hh.async_probe(hass, "192.168.1.20") == "arp"
+        arp["192.168.1.20"] = False  # stale entry turned incomplete after the re-check
+        assert await hh.async_probe(hass, "192.168.1.20") is None
+        arp["10.0.0.5"] = True
+        assert await hh.async_probe(hass, "10.0.0.5") is None, "ARP is only used in the own subnet"
+
+
+async def test_person_needs_ip_or_tracker(hass: HomeAssistant, alarm, hass_ws_client) -> None:  # noqa: F811
+    alarm.bastion.household.probe = _fake_probe({})
+    hass.states.async_set("device_tracker.unifi_phone", "home")
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "bastion/alarm/save", "config": {"people": [{"name": "Anna"}]}})
+    assert not (await client.receive_json())["success"]
+    await client.send_json(
+        {
+            "id": 2,
+            "type": "bastion/alarm/save",
+            "config": {"people": [{"name": "Anna", "tracker": "device_tracker.unifi_phone"}]},
+        }
+    )
+    res = await client.receive_json()
+    assert res["success"]
+    assert res["result"]["household"][0]["tracker"] == "device_tracker.unifi_phone"
+    assert any(t["entity_id"] == "device_tracker.unifi_phone" for t in res["result"]["trackers"])
+    assert not any(t["entity_id"].startswith("device_tracker.bastion") for t in res["result"]["trackers"])
+    alarm.bastion.household.unload()
+
+
+async def test_hostnames_are_resolved_before_the_subnet_check(hass: HomeAssistant) -> None:
+    import ipaddress  # noqa: PLC0415
+    import socket  # noqa: PLC0415
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from custom_components.bastion.alarm import household as hh  # noqa: PLC0415
+
+    async def getaddrinfo(host, *_args, **_kwargs):
+        assert host == "phone.lan"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.20", 0))]
+
+    async def no(*_args):
+        return False
+
+    async def nets(_hass):
+        return [ipaddress.IPv4Network("192.168.1.0/24")]
+
+    seen = []
+
+    async def tcp(host, _port, onlink):
+        seen.append((host, onlink))
+        return False
+
+    with (
+        patch.object(hass.loop, "getaddrinfo", getaddrinfo),
+        patch.object(hh, "_tcp_alive", tcp),
+        patch.object(hh, "_icmp_alive", no),
+        patch.object(hh, "_local_networks", nets),
+        patch.object(hh, "_arp_poke", lambda _ip: None),
+        patch.object(hh, "_arp_lookup", lambda ip: ip == "192.168.1.20"),
+        patch.object(hh, "ARP_SETTLE", 0),
+    ):
+        assert await hh.async_probe(hass, "phone.lan") == "arp"
+    assert seen and all(s == ("192.168.1.20", True) for s in seen)

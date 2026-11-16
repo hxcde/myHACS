@@ -21,7 +21,7 @@ import probatio
 from .alarm.engine import MODES, NOTIFY_EVENTS, SENSOR_TYPES, SUPPORTED_DOMAINS, AlarmError
 from .alarm.household import async_probe, valid_address
 from .alarm.sounds import BUILTIN, SOUND_KEYS, async_media_files
-from .const import ALL_AREAS
+from .const import ALL_AREAS, DOMAIN
 from .texts import alarm_error_text
 
 
@@ -355,12 +355,24 @@ def _address(value: Any) -> str:
     return value
 
 
-_PERSON = probatio.Schema(
-    {
-        probatio.Optional("id"): probatio.All(str, probatio.Match(r"^[a-f0-9]{6,16}$")),
-        probatio.Required("name"): probatio.All(str, probatio.Strip, probatio.Length(min=1, max=40)),
-        probatio.Required("ip"): _address,
-    }
+def _ip_or_tracker(person: dict[str, Any]) -> dict[str, Any]:
+    if not person.get("ip") and not person.get("tracker"):
+        raise probatio.Invalid("IP-Adresse oder Tracker angeben")
+    return person
+
+
+_PERSON = probatio.All(
+    probatio.Schema(
+        {
+            probatio.Optional("id"): probatio.All(str, probatio.Match(r"^[a-f0-9]{6,16}$")),
+            probatio.Required("name"): probatio.All(str, probatio.Strip, probatio.Length(min=1, max=40)),
+            probatio.Optional("ip", default=""): probatio.Any("", _address),
+            probatio.Optional("tracker", default=None): probatio.Any(
+                None, "", probatio.All(cv.entity_id, probatio.Match(r"^device_tracker\."))
+            ),
+        }
+    ),
+    _ip_or_tracker,
 )
 _ALARM_CONFIG = probatio.Schema(
     {
@@ -471,6 +483,14 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         ),
         key=lambda c: c["name"].lower(),
     )
+    trackers = sorted(
+        (
+            {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id, "state": s.state}
+            for s in hass.states.async_all("device_tracker")
+            if (entry := ent_reg.async_get(s.entity_id)) is None or entry.platform != DOMAIN
+        ),
+        key=lambda c: c["name"].lower(),
+    )
     relay = bastion.relay
     return {
         "config": bastion.alarm.public_config(),
@@ -482,6 +502,7 @@ def _alarm_payload(hass: HomeAssistant, bastion) -> dict[str, Any]:
         "players": players,
         "persons": persons,
         "household": bastion.household.summary(),
+        "trackers": trackers,
         "sounds_builtin": list(BUILTIN),
         "relay": {
             "enabled": relay.enabled,
