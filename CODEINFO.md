@@ -44,7 +44,7 @@ custom_components/bastion/
     relay.py             Worker-Anbindung (HMAC-SHA256): Lebenszeichen mit Kontext, Ereignisse, Kamerabilder, Quittierungen,
                          Meldungen des Workers (notices), Fernbefehle abholen/prüfen/ausführen, Passkey-Verwaltung (/remote)
     presence.py          Erinnerung „niemand zuhause, nicht scharf“ (Haushalt oder person.*, einmal pro Abwesenheit)
-    household.py         Personen im Haushalt: Handy-IP alle 30 s prüfen (TCP, ICMP, ARP), zuhause/weg mit Wartezeit
+    household.py         Personen im Haushalt: verknüpfter Tracker oder Handy-IP alle 30 s (TCP, ICMP, ARP mit Neuprüfung)
     sounds.py            Töne auf Medienplayern: Schleifen (Alarm/Countdown), Einmal-Töne, Lautstärke sichern/wiederherstellen
   alarm_control_panel.py Alarm-Entität (Aus/Zuhause/Nacht/Abwesend/Panik)
   gitsync/

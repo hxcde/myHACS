@@ -52,7 +52,9 @@ const I18N = {
       icon_custom: "Anderes MDI-Icon",
       icon_apply: "Übernehmen",
       people: "Personen",
-      people_help: "Personen im Haushalt mit der IP-Adresse ihres Handys. Bastion prüft alle 30 Sekunden, ob das Handy im Heimnetz antwortet, und erkennt so, wer zuhause ist. Daraus entstehen device_tracker-Entitäten (für HA-Personen nutzbar) und „Jemand zuhause“. Die Erinnerung „niemand zuhause“ nutzt diese Personen.",
+      people_help: "Personen im Haushalt. Am zuverlässigsten ist ein vorhandener Tracker, z. B. aus der UniFi- oder FRITZ!Box-Integration: Der Router weiß, ob das Handy im WLAN ist. Ohne Tracker prüft Bastion alle 30 Sekunden die IP-Adresse des Handys. Pro Person entstehen ein Anwesenheitssensor und ein device_tracker, dazu „Jemand zuhause“. Die Erinnerung „niemand zuhause“ nutzt diese Personen.",
+      people_tracker: "Tracker",
+      people_by_ip: "— IP-Adresse prüfen —",
       person_name: "Name",
       people_add: "Person hinzufügen",
       people_new: "neu – speichern",
@@ -328,7 +330,9 @@ const I18N = {
       icon_custom: "Other MDI icon",
       icon_apply: "Apply",
       people: "People",
-      people_help: "People of the household with the IP address of their phone. Every 30 seconds Bastion checks whether the phone answers in the home network and so knows who is home. This creates device_tracker entities (usable for HA persons) and 'Someone home'. The 'nobody home' reminder uses these people.",
+      people_help: "People of the household. Most reliable is an existing tracker, e.g. from the UniFi or FRITZ!Box integration: the router knows whether the phone is on the WLAN. Without a tracker Bastion checks the phone's IP address every 30 seconds. Each person gets a presence sensor and a device_tracker, plus 'Someone home'. The 'nobody home' reminder uses these people.",
+      people_tracker: "Tracker",
+      people_by_ip: "— check IP address —",
       person_name: "Name",
       people_add: "Add person",
       people_new: "new – save",
@@ -1488,9 +1492,15 @@ class BastionPanel extends HTMLElement {
           return `<div class="person-row">
             <span class="room-icon">${icon("mdi:account")}</span>
             <input class="input" data-person-name="${i}" value="${esc(p.name)}" placeholder="${esc(a.person_name)}">
-            <input class="input mono" data-person-ip="${i}" value="${esc(p.ip)}" placeholder="192.168.1.20" autocomplete="off">
+            <div class="person-src">
+              <select class="input" data-person-tracker="${i}" title="${esc(a.people_tracker)}">
+                <option value="">${esc(a.people_by_ip)}</option>
+                ${(this._alarm.trackers || []).map((tr) => `<option value="${esc(tr.entity_id)}" ${p.tracker === tr.entity_id ? "selected" : ""}>${esc(tr.name)} (${esc(tr.state === "home" ? a.people_home : tr.state === "not_home" ? a.people_away : tr.state)})</option>`).join("")}
+              </select>
+              ${p.tracker ? "" : `<input class="input mono" data-person-ip="${i}" value="${esc(p.ip || "")}" placeholder="192.168.1.20" autocomplete="off">`}
+            </div>
             ${chip(p)}
-            <button class="btn small" data-person-test="${i}">${icon("mdi:radar")}${esc(a.people_test)}</button>
+            ${p.tracker ? "<span></span>" : `<button class="btn small" data-person-test="${i}">${icon("mdi:radar")}${esc(a.people_test)}</button>`}
             <button class="btn small ghost danger" data-person-delete="${i}" aria-label="${esc(a.delete)}">${icon("mdi:delete-outline")}</button>
             ${st && st.last_seen ? `<div class="person-seen muted">${esc(a.people_seen)} ${esc(this.rel(st.last_seen))}${st.method ? ` · ${esc(st.method)}` : ""}</div>` : ""}
             ${probe}
@@ -1907,6 +1917,7 @@ class BastionPanel extends HTMLElement {
     // people
     on("[data-person-name]", (el) => { d.people[+el.dataset.personName].name = el.value; }, "input");
     on("[data-person-ip]", (el) => { d.people[+el.dataset.personIp].ip = el.value.trim(); }, "input");
+    on("[data-person-tracker]", (el) => { d.people[+el.dataset.personTracker].tracker = el.value || null; this._render(); }, "change");
     on('[data-action="person-add"]', () => { d.people.push({ name: "", ip: "" }); this._render(); });
     on("[data-person-delete]", (el) => { d.people.splice(+el.dataset.personDelete, 1); this._probe = null; this._render(); });
     on("[data-presence-minutes]", (el) => { d.presence.away_minutes = Math.max(2, Math.min(60, Number(el.value) || 10)); }, "input");
@@ -2037,7 +2048,7 @@ class BastionPanel extends HTMLElement {
     on("[data-code-delete]", (el) => this._action(async () => { this._alarm = await this._ws("bastion/alarm/code", { delete: el.dataset.codeDelete }); }));
     // save
     on('[data-action="alarm-save"]', () => this._action(async () => {
-      d.people = d.people.filter((x) => x.name.trim() && x.ip.trim());
+      d.people = d.people.filter((x) => x.name.trim() && ((x.ip || "").trim() || x.tracker)).map((x) => ({ ...x, ip: x.tracker ? "" : (x.ip || "").trim(), tracker: x.tracker || null }));
       this._alarm = await this._ws("bastion/alarm/save", { config: d });
       this._notify(this.t.alarm.saved);
     }));
@@ -2509,7 +2520,9 @@ const STYLE = `
   .icon-opt[hidden] { display:none; }
   .icon-custom { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .icon-custom .input { width:200px; }
-  .person-row { display:grid; grid-template-columns: 38px minmax(120px, 1fr) 190px 112px auto auto; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
+  .person-row { display:grid; grid-template-columns: 38px minmax(120px, 1fr) minmax(200px, 300px) 104px 96px 36px; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
+  .person-src { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .person-src .input { width:100%; }
   .person-row > .chip { justify-self:start; }
   .person-row:first-child { border-top:0; }
   .person-seen { grid-column: 2 / -1; font-size:12px; margin-top:-4px; }
@@ -2518,7 +2531,8 @@ const STYLE = `
   .people-strip .chip .muted { margin-left:4px; }
   @media (max-width: 640px) {
     .person-row { grid-template-columns: 38px minmax(0, 1fr); }
-    .person-row > .input, .person-row > .chip, .person-row > .btn { grid-column: 2; justify-self: start; }
+    .person-row > .input, .person-row > .person-src, .person-row > .chip, .person-row > .btn { grid-column: 2; justify-self: start; }
+    .person-row > .person-src { justify-self: stretch; }
     .person-row > .input { justify-self: stretch; }
   }
   .room-edit-head .input:first-of-type { font-weight:600; }
