@@ -17,6 +17,8 @@ rights:
 A phone counts as home as soon as one check answers, and as away only after it
 stayed silent for the set number of minutes (phones sleep, WLAN drops briefly).
 A tracker is followed directly: its integration already waits before "away".
+The last state survives restarts; without one, a silent phone counts as away
+right after the first check, so the sensors never show "unavailable".
 """
 
 from __future__ import annotations
@@ -195,6 +197,10 @@ class Household:
         """Start scanning (again) with the current people."""
         self.unload()
         ids = {p["id"] for p in self.people}
+        saved = self._saved()
+        for pid in ids:
+            if pid not in self.status and isinstance(saved.get(pid), dict):
+                self.status[pid] = {"home": None, "last_seen": None, "since": None, "method": None, **saved[pid]}
         self.status = {k: v for k, v in self.status.items() if k in ids}
         # The list may have changed: trackers and sensors follow right away.
         async_dispatcher_send(self.hass, SIGNAL_HOUSEHOLD)
@@ -258,15 +264,29 @@ class Household:
         finally:
             self._scanning = False
 
+    def _saved(self) -> dict[str, Any]:
+        bastion = getattr(self.engine, "bastion", None)
+        data = getattr(bastion, "data", None)
+        return (data.get("household") if isinstance(data, dict) else None) or {}
+
+    def _persist(self) -> None:
+        bastion = getattr(self.engine, "bastion", None)
+        if bastion is not None and isinstance(getattr(bastion, "data", None), dict):
+            bastion.data["household"] = {k: dict(v) for k, v in self.status.items()}
+            bastion.schedule_save()
+
     def _update(self, person: dict[str, Any], method: str | None, now: datetime) -> bool:
         st = self.status.setdefault(person["id"], {"home": None, "last_seen": None, "since": None, "method": None})
         if method:
             st["last_seen"] = now.isoformat()
             st["method"] = method
             home = True
+        elif st["home"] is None:
+            home = False  # nothing known yet: silent means away, not "unavailable"
         else:
             seen = dt_util.parse_datetime(st["last_seen"] or "")
-            silent_since = seen or self._started
+            # After a restart the grace period starts again (the saved last_seen is old).
+            silent_since = max(seen, self._started) if seen else self._started
             if now - silent_since < self.away_after:
                 return False
             home = False
@@ -280,6 +300,7 @@ class Household:
         st["since"] = now.isoformat()
         if previous is not None:
             self.hass.bus.async_fire(EVENT_PRESENCE, {"person": person["name"], "home": home})
+        self._persist()
         return True
 
     # ---------------------------------------------------------------- queries
