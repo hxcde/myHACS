@@ -611,6 +611,26 @@ export async function commandsSince(env, since, limit = 50) {
   return results.map((r) => ({ ...r, result: r.result ? JSON.parse(r.result) : null }));
 }
 
+// ------------------------------------------------------------ live marks
+// Cheap fingerprint of everything the dashboard shows; it changes when anything new arrives.
+export async function marks(env) {
+  const db = await database(env);
+  const week = nowS() - 7 * 86400;
+  const bucket = Math.floor(nowS() / BUCKET) - 144;
+  const rows = await db.batch([
+    db.prepare("SELECT MAX(id) AS v FROM events"),
+    db.prepare("SELECT MAX(ts) AS v FROM secevents"),
+    db.prepare("SELECT MAX(id) AS v FROM canary_hits"),
+    db.prepare("SELECT MAX(id) || ':' || COALESCE(MAX(end), 0) AS v FROM outages"),
+    db.prepare("SELECT COALESCE(SUM(n), 0) AS v FROM attempts WHERE bucket >= ?").bind(bucket),
+    db.prepare("SELECT COUNT(*) || ':' || COALESCE(MAX(done), 0) || ':' || COALESCE(MAX(delivered), 0) AS v FROM commands WHERE ts >= ?").bind(week),
+    db.prepare("SELECT COUNT(*) || ':' || COALESCE(MAX(last_used), 0) AS v FROM passkeys"),
+    db.prepare("SELECT MAX(id) AS v FROM sessions"),
+    db.prepare("SELECT COUNT(*) AS v FROM blocked WHERE until > ?").bind(nowS()),
+  ]);
+  return rows.map((r) => ((r.results && r.results[0]) || {}).v ?? "").join("|");
+}
+
 // -------------------------------------------------------------- retention
 export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
   const db = await database(env);

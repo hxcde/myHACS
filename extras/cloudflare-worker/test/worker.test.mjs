@@ -801,3 +801,21 @@ test("ALLOWED_COUNTRIES limits browser access, Home Assistant and Pushover stay 
   const sum = await (await page("DE", "/api/summary")).json();
   assert.deepEqual(sum.countries, ["DE"]);
 });
+
+test("live endpoint: revision changes only when something new arrives", async () => {
+  const env = makeEnv(ACCESS);
+  const d = await dashboard(env);
+  await worker.fetch(signed("/heartbeat", HB), env);
+  const sum = await (await d.get("/api/summary")).json();
+  const live1 = await (await d.get("/api/live")).json();
+  assert.equal(live1.rev, sum.rev);
+  assert.ok(live1.received > 0);
+  await worker.fetch(signed("/heartbeat", HB), env);
+  assert.equal((await (await d.get("/api/live")).json()).rev, live1.rev, "a heartbeat alone changes nothing");
+  await worker.fetch(signed("/alert", { event: "armed", push: false, state: "armed_away", mode: "away" }), env);
+  const live2 = await (await d.get("/api/live")).json();
+  assert.notEqual(live2.rev, live1.rev);
+  assert.equal((await worker.fetch(new Request(`${ORIGIN}/api/live`), env)).status, 404, "Access required");
+  const sessions = (await env.DB.prepare("SELECT COUNT(*) AS n FROM sessions").first()).n;
+  assert.equal(sessions, 1, "live polls are not logged as visits");
+});

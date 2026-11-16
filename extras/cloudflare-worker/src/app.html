@@ -269,14 +269,66 @@ td .name { font-weight: 600; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
 .loading, .error { padding: 80px 0; text-align: center; color: var(--text-2); }
 
+/* Konsole (Zustand + Systemstatus) */
+.console { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); overflow: hidden;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--hero-c) 9%, var(--panel)) 0%, var(--panel) 55%); }
+.console-main { padding: 20px 22px 18px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.console-side { border-left: 1px solid var(--border); min-width: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--panel) 70%, transparent); }
+.state { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.state h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.state p { color: var(--text-2); font-size: 12px; margin-top: 3px; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
+.fact { display: flex; flex-direction: column; gap: 1px; padding: 0 14px; min-width: 0; }
+.fact:first-child { padding-left: 0; }
+.fact + .fact { border-left: 1px solid var(--border); }
+.fact b { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fact span { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); min-height: 48px; }
+.side-head h3 { font-size: 13px; font-weight: 600; }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 16px; }
+.checks li + li { border-top: 1px solid var(--border); }
+.checks .ci { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--c-soft); color: var(--c); }
+.checks .ci svg.icon { width: 12px; height: 12px; stroke-width: 2.8; }
+.checks .cl { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.checks .cs { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.checks .cv { font-size: 12px; font-weight: 600; white-space: nowrap; text-align: right; color: var(--c); }
+.checks .lvl-ok .cv { color: var(--text-2); font-weight: 500; }
+.lvl-ok { --c: var(--green); --c-soft: var(--green-soft); }
+.lvl-warn { --c: var(--orange); --c-soft: var(--orange-soft); }
+.lvl-bad { --c: var(--red); --c-soft: var(--red-soft); }
+
+/* Ereignisliste */
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.feed li:last-child { border-bottom: 0; }
+.feed li.link { cursor: pointer; transition: background var(--t-fast) var(--ease); }
+.feed li.link:hover { background: var(--hover); }
+.fi { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); }
+.fi svg.icon { width: 16px; height: 16px; }
+.ft { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* Kennzahlen als eine Leiste */
+.grid.kpis { gap: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.grid.kpis > .card.kpi { border: 0; border-radius: 0; background: transparent; box-shadow: -1px -1px 0 0 var(--border); }
+
+/* Live */
+.updated { display: inline-flex; align-items: center; gap: 7px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); flex: none; }
+.updated.stale .live-dot { background: var(--gray); box-shadow: 0 0 0 3px var(--chip-bg); }
+
 /* Fernsteuerung */
 .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
 .btn.primary:hover { background: var(--primary-hover); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; transform: none; }
 .input { height: var(--h); padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-s); background: var(--panel); color: var(--text);
   font: inherit; font-size: 16px; min-width: 0; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
-.ctl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-.btn.ctl { flex-direction: column; height: auto; padding: 14px 8px 12px; gap: 4px; font-weight: 600; }
+.ctl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.btn.ctl { flex-direction: column; height: auto; padding: 12px 8px 10px; gap: 3px; font-weight: 600; }
 .btn.ctl svg.icon { width: 22px; height: 22px; color: var(--primary); }
 .btn.ctl small { font-weight: 400; color: var(--text-2); font-size: 11px; }
 .btn.ctl.current { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); background: var(--primary-soft); }
@@ -304,7 +356,11 @@ td .name { font-weight: 600; }
   .side-link .badge { position: absolute; top: 3px; right: 2px; margin: 0; }
   .shell { margin-left: 60px; }
 }
-@media (max-width: 900px) { .grid.two, .grid.even { grid-template-columns: minmax(0, 1fr); } .hide-md { display: none; } }
+@media (max-width: 900px) {
+  .grid.two, .grid.even { grid-template-columns: minmax(0, 1fr); } .hide-md { display: none; }
+  .console { grid-template-columns: minmax(0, 1fr); }
+  .console-side { border-left: 0; border-top: 1px solid var(--border); }
+}
 @media (max-width: 640px) {
   :root { font-size: 15px; --radius: 14px; }
   .sidebar { inset: auto 0 0 0; width: auto; height: calc(58px + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom); flex-direction: row; align-items: stretch;
@@ -321,7 +377,11 @@ td .name { font-weight: 600; }
   body.bare .shell { padding-bottom: 0; }
   .header { padding: env(safe-area-inset-top) 12px 0 16px; gap: 10px; }
   .sidebar { padding-top: 0; }
-  .updated { display: none; }
+  .updated .ut { display: none; }
+  .state h2 { font-size: 19px; }
+  .console-main { padding: 16px; }
+  .ctl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   main { padding: 12px 12px 28px; }
   .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; }
   .hstat:nth-child(3) { padding-left: 0; border-left: 0; }
@@ -404,6 +464,8 @@ td .name { font-weight: 600; }
     check: '<svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
     back: '<svg class="icon" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
     pulse: '<svg class="icon" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
+    x: '<svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+    bang: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 5v9M12 19v.01"/></svg>',
     power: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>',
     moon: '<svg class="icon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>',
     home: '<svg class="icon" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/></svg>',
@@ -547,7 +609,6 @@ td .name { font-weight: 600; }
     disarmed: ["Unscharf", "idle"], arming: ["Wird scharf", "maint"], pending: ["Vorwarnung", "warn"], triggered: ["Alarm", "down"],
     armed_home: ["Scharf · Zuhause", "ok"], armed_night: ["Scharf · Nacht", "ok"], armed_away: ["Scharf · Abwesend", "ok"],
   };
-  const TONE_COLOR = { ok: "var(--green)", warn: "var(--orange)", down: "var(--red)", maint: "var(--violet)", idle: "var(--gray)" };
 
   function orb(tone, icon, large = true) {
     return `<div class="orb orb-${tone}${large ? " orb-lg" : ""}" aria-hidden="true"><div class="orb-in"><span class="orb-b b1"></span><span class="orb-b b2"></span><span class="orb-b b3"></span></div>${icon}</div>`;
@@ -567,40 +628,6 @@ td .name { font-weight: 600; }
   function card(title, body, { sub = "", right = "", flush = false } = {}) {
     return `<section class="card"><div class="card-head"><div><h2>${esc(title)}</h2>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>${right}</div>
       <div class="card-body ${flush ? "flush" : ""}">${body}</div></section>`;
-  }
-
-  const sitTone = { critical: "down", elevated: "warn", normal: "ok" };
-
-  function hintsCard(d) {
-    const sit = situation(d);
-    const color = TONE_COLOR[sitTone[sit.key]];
-    const rows = sit.reasons.map((r) => `<div class="problem"><span class="dot" style="--c:${sit.key === "normal" ? "var(--green)" : color}"></span><div class="grow"><div class="pname" style="font-weight:500">${esc(r)}</div></div></div>`).join("");
-    return card("Lagebild", rows, { flush: true, right: `<span class="pill ${sit.key === "normal" ? "ok" : sit.key === "critical" ? "bad" : "warn"}">${sit.label}</span>` });
-  }
-
-  function alarmHero(d) {
-    const hb = d.hb;
-    if (!hb) {
-      return hero({ tone: "idle", icon: ICON.shieldOff, title: "Keine Daten", sub: "Home Assistant hat sich noch nicht gemeldet.", stats: [{ v: "–", l: "Lage" }, { v: "–", l: "Offen" }, { v: "–", l: "Nicht erreichbar" }, { v: "–", l: "Letztes Signal" }] });
-    }
-    const [label, tone0] = STATE_VIEW[hb.state] || [hb.state, "idle"];
-    const tone = hb.offline ? (isArmed(hb.state) ? "down" : "warn") : tone0;
-    const lastChange = [...d.events].reverse().find((e) => e.state && e.event !== "acknowledged");
-    const sit = situation(d);
-    const subParts = [hb.offline ? `Keine Verbindung seit ${dateTime(hb.received)}` : lastChange ? `Seit ${dateTime(lastChange.ts)}` : "", hb.instance || "", hb.version ? `Bastion ${hb.version}` : ""].filter(Boolean);
-    return hero({
-      tone,
-      icon: tone === "down" || tone === "warn" ? ICON.alert : tone === "idle" ? ICON.shieldOff : ICON.shield,
-      title: esc(hb.offline ? `${label} (letzter Stand)` : label),
-      sub: esc(subParts.join(" · ")),
-      side: `<span class="pill ${sit.key === "normal" ? "ok" : sit.key === "critical" ? "bad" : "warn"}">Lage: ${sit.label}</span>`,
-      stats: [
-        { v: hb.offline ? "Funkstille" : "Online", l: "Verbindung", cls: hb.offline ? "bad" : "ok" },
-        { v: String((hb.open || []).length), l: "Offene Sensoren", cls: (hb.open || []).length ? "warn" : "" },
-        { v: String((hb.unavailable || []).length), l: "Nicht erreichbar", cls: (hb.unavailable || []).length ? "warn" : "" },
-        { v: rel(hb.received), l: "Letztes Signal" },
-      ],
-    });
   }
 
   // Stacked daily bars in a card (chart or table).
@@ -629,36 +656,30 @@ td .name { font-weight: 600; }
     })), "Keine Auslösungen im Zeitraum."), { sub: "Vorwarnungen und Alarme pro Sensor", flush: true });
   }
 
-  function incidentsCard(list) {
-    if (!list.length) return card("Vorfälle", `<div class="empty">Keine Vorfälle im Zeitraum.</div>`, { flush: true });
-    const rows = list.slice(0, 30).map((inc) => {
-      const tag = inc.triggered ? `<span class="tag dotted" style="--c:var(--red)">Alarm</span>` : `<span class="tag dotted" style="--c:var(--orange)">Vorwarnung entschärft</span>`;
-      return `<tr class="link" data-href="/i/${esc(inc.id)}"><td class="t mono">#${esc(inc.id.slice(0, 8).toUpperCase())}</td>
-        <td><span class="name">${esc(where(inc.first) || LABELS[inc.first.event] || "Vorfall")}</span></td><td>${tag}</td>
-        <td class="t">${esc(dateTime(inc.start))}</td>
-        <td class="hide-sm">${inc.ack ? esc(inc.ack.user || "Pushover") : `<span class="faint">–</span>`}</td>
-        <td class="hide-sm">${inc.dis ? `${esc(inc.dis.user || "–")} <span class="faint">nach ${esc(duration(inc.dis.ts - inc.start))}</span>` : `<span class="faint">–</span>`}</td>
-        <td class="num hide-sm">${inc.shots || "–"}</td></tr>`;
-    }).join("");
-    return card("Vorfälle", `<div class="table-wrap"><table><thead><tr><th>Fall</th><th>Auslöser</th><th>Ergebnis</th><th>Beginn</th><th class="hide-sm">Quittiert</th><th class="hide-sm">Unscharf</th><th class="num hide-sm">Bilder</th></tr></thead><tbody>${rows}</tbody></table></div>`, { flush: true });
-  }
-
   function seg(items, current, attr) {
     return `<div class="seg">${items.map(([k, l]) => `<button class="${current === k ? "active" : ""}" ${attr}="${k}">${l}</button>`).join("")}</div>`;
+  }
+
+  const SYSTEM_EVENTS = ["acknowledged", "online", "offline", "restart", "attack", "exposure", "canary", "passkey_added", "passkey_removed"];
+  function evDetail(e) {
+    const det = e.detail || {};
+    return [e.mode && MODES[e.mode] && !SYSTEM_EVENTS.includes(e.event) ? MODES[e.mode] : "", where(e), e.user,
+      det.minutes ? `${det.minutes} Min.` : "", det.cause || det.verdict || "",
+      det.sensors ? `offen: ${det.sensors.join(", ")}` : "",
+      e.event === "attack" && det.total ? `${det.total} abgewiesen` : "",
+      e.event === "canary" && det.ip ? `${det.ip}${det.country ? ` (${det.country})` : ""}` : "",
+      det.name && e.event.startsWith("passkey") ? det.name : ""].filter(Boolean).join(" · ");
   }
 
   function logCard(d, filter) {
     const all = [...d.events].reverse().filter((e) => filter === "all" || (GROUPS[filter] || []).includes(e.event));
     const evs = all.slice(0, view.logLimit);
     const rows = evs.length ? evs.map((e) => {
-      const det = [e.mode && MODES[e.mode] && !["acknowledged", "online", "offline", "restart", "attack", "exposure"].includes(e.event) ? MODES[e.mode] : "", where(e), e.user,
-        e.detail && e.detail.minutes ? `${e.detail.minutes} Min.` : "", (e.detail && (e.detail.cause || e.detail.verdict)) || "",
-        e.detail && e.detail.sensors ? `offen: ${e.detail.sensors.join(", ")}` : "",
-        e.event === "attack" && e.detail ? `${e.detail.total} abgewiesen` : ""].filter(Boolean).join(" · ");
+      const det = evDetail(e);
       return `<tr><td class="t">${esc(dateTime(e.ts))}</td><td><span class="tag dotted" style="--c:${EV_COLOR[e.event] || "var(--gray)"}">${esc(LABELS[e.event] || e.event)}</span></td>
         <td class="msg">${esc(det)}${e.incident ? ` <a href="/i/${esc(e.incident)}">Fall #${esc(e.incident.slice(0, 8).toUpperCase())}</a>` : ""}</td></tr>`;
     }).join("") : `<tr><td colspan="3" class="empty">Keine Ereignisse.</td></tr>`;
-    return `<section class="card"><div class="card-head"><h2>Protokoll</h2><span class="faint small">${all.length} Einträge</span></div>
+    return `<section class="card" id="log"><div class="card-head"><h2>Protokoll</h2><span class="faint small">${all.length} Einträge</span></div>
       <div class="toolbar">${seg([["all", "Alle"], ["alarm", "Alarm"], ["ops", "Bedienung"], ["system", "System"]], filter, "data-log")}</div>
       <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Ereignis</th><th>Details</th></tr></thead><tbody>${rows}</tbody></table></div>
       ${all.length > evs.length ? `<div class="more"><button class="btn sm" data-more>Weitere ${Math.min(50, all.length - evs.length)} anzeigen</button></div>` : ""}</section>`;
@@ -684,6 +705,8 @@ td .name { font-weight: 600; }
     stale: () => "Der Befehl war zu alt (Uhrzeit von Home Assistant prüfen).",
   };
   const remoteUi = { busy: false, msg: "", tone: "", force: null, code: "", pairOpen: false, intent: new URLSearchParams(location.search).get("do") };
+  // No refresh while a passkey dialog runs or the pairing code is being typed.
+  const idle = () => !document.hidden && !remoteUi.busy && !(document.activeElement && document.activeElement.id === "pair-code");
   const hasWebAuthn = () => Boolean(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
   const cmdLabel = (c) => (c.action === "disarm" ? "Unscharf" : `Scharf · ${MODES[c.mode] || c.mode}${c.force ? " (trotz offener Sensoren)" : ""}`);
 
@@ -798,52 +821,153 @@ td .name { font-weight: 600; }
       }).join("")}</tbody></table></div>`;
   }
 
-  function remoteCards(d) {
+  // ------------------------------------------------- alarm view (console)
+  const EV_ICON = {
+    triggered: "bell", pending: "alert", arming: "clock", armed: "shield", rearmed: "shield", disarmed: "shieldOff", reset: "shieldOff",
+    arm_failed: "alert", wrong_code: "key", sensor_unavailable: "wifiOff", acknowledged: "check", offline: "wifiOff", online: "check",
+    restart: "power", attack: "ban", exposure: "globe", canary: "bird", passkey_added: "key", passkey_removed: "key", unarmed: "home",
+  };
+  const LEVEL_ICON = { ok: "check", warn: "bang", bad: "x" };
+  const ago = (ts, extra = "") => `<span data-ts="${ts}"${extra}>${esc(rel(ts))}</span>`;
+
+  // Fixed list of checks, like the status page of an alarm panel.
+  function statusChecks(d) {
+    const hb = d.hb;
+    const dayAgo = d.now - 86400;
+    const rows = [];
+    const add = (level, label, value, sub = "") => rows.push({ level, label, value, sub });
+    if (!hb) add("warn", "Home Assistant", "keine Daten", "noch kein Lebenszeichen");
+    else {
+      add(hb.offline ? (isArmed(hb.state) ? "bad" : "warn") : "ok", "Verbindung", hb.offline ? "Funkstille" : "online",
+        `${hb.offline ? "seit" : "Signal"} ${ago(hb.received, " data-hb")}`);
+      const open = hb.open || [];
+      add(open.length ? "warn" : "ok", "Sensoren", open.length ? `${open.length} offen` : "alle geschlossen", esc(open.join(", ")));
+      const un = hb.unavailable || [];
+      add(un.length ? "warn" : "ok", "Funk und Erreichbarkeit", un.length ? `${un.length} gestört` : "alle erreichbar", esc(un.join(", ")));
+    }
+    const sec = d.security;
+    if (sec) {
+      add(sec.counts.critical ? "bad" : sec.score < 70 ? "warn" : "ok", "Sicherheitswert", `${Math.round(sec.score)} / 100`,
+        esc(sec.open ? `${sec.open} offene Befunde` : "keine offenen Befunde"));
+    }
+    const attempts = (d.attempts || []).filter((a) => a.ts >= dayAgo).reduce((n, a) => n + a.n, 0);
+    add(attempts ? "warn" : "ok", "Angriffe am Worker", attempts ? `${attempts} abgewiesen` : "keine", "letzte 24 Stunden");
+    const decoys = (d.canary || []).filter((c) => c.ts >= dayAgo).length;
+    if (decoys) add("bad", "Köder", `${decoys}× benutzt`, "Zugangsdaten in fremden Händen");
+    const ex = ((d.exposure && d.exposure.results) || []).flatMap((r) => r.checks);
+    if (ex.length) {
+      const bad = ex.find((c) => c.level === "critical") || ex.find((c) => c.level === "warning");
+      add(bad ? (bad.level === "critical" ? "bad" : "warn") : "ok", "Außenprüfung", bad ? "Problem" : "geschützt", esc((bad || ex[0]).text));
+    }
+    return rows;
+  }
+
+  function controls(d) {
     const r = d.remote;
     if (!r || !r.enabled) return "";
     const hb = d.hb || {};
     const keys = r.passkeys || [];
-    const msg = remoteUi.msg ? `<div class="notice ${remoteUi.tone}">${esc(remoteUi.msg)}${remoteUi.force ? `<br><button class="btn sm" data-remote-force="${remoteUi.force}">Trotzdem scharf schalten</button>` : ""}</div>` : "";
-    if (!hasWebAuthn()) return `<div class="mt">${card("Fernsteuerung", `<div class="muted">Dieser Browser unterstützt keine Passkeys.</div>`)}</div>`;
+    if (!hasWebAuthn()) return `<div class="faint small">Fernsteuerung: Dieser Browser unterstützt keine Passkeys.</div>`;
     if (!keys.length) {
-      return `<div class="mt">${card("Fernsteuerung", `${pairForm(r)}${msg}`, { sub: "Scharf und unscharf schalten mit Passkey", right: `<span class="pill">Kein Passkey</span>` })}</div>`;
+      return `<div class="notice" style="margin:0">Fernsteuerung ist freigegeben, aber noch kein Passkey gekoppelt. <button class="btn sm" data-scroll="remote">Passkey koppeln</button></div>`;
     }
     const current = !hb.state || hb.state === "disarmed" ? "disarm" : hb.mode ? `arm_${hb.mode}` : "";
     const intent = remoteUi.intent && ACTIONS[remoteUi.intent] && (remoteUi.intent !== "disarm" || r.disarm) ? remoteUi.intent : null;
+    const msg = remoteUi.msg ? `<div class="notice ${remoteUi.tone}" style="margin:0">${esc(remoteUi.msg)}${remoteUi.force ? `<br><button class="btn sm" data-remote-force="${remoteUi.force}">Trotzdem scharf schalten</button>` : ""}</div>` : "";
     const buttons = Object.entries(ACTIONS).filter(([k]) => k !== "disarm" || r.disarm).map(([k, a]) => `<button class="btn ctl ${k === current ? "current" : ""}" data-remote="${k}" ${remoteUi.busy || hb.offline ? "disabled" : ""}>
-      ${ICON[a.icon]}<span>${esc(a.label)}</span><small>${k === current ? "Aktuell" : k === "disarm" ? "Ausschalten" : "Scharf schalten"}</small></button>`).join("");
-    const controls = card("Fernsteuerung", `${intent ? `<div class="notice warn" style="margin:0 0 12px">Aus der Erinnerung: <b>${esc(ACTIONS[intent].label)}</b> scharf schalten?<br>
+      ${ICON[a.icon]}<span>${esc(a.label)}</span><small>${k === current ? "Aktuell" : k === "disarm" ? "Ausschalten" : "Scharf"}</small></button>`).join("");
+    return `${intent ? `<div class="notice warn" style="margin:0">Aus der Erinnerung: <b>${esc(ACTIONS[intent].label)}</b> scharf schalten?<br>
         <button class="btn sm primary" data-remote="${intent}" ${remoteUi.busy ? "disabled" : ""}>Mit Passkey bestätigen</button><button class="btn sm" data-remote-dismiss>Nein</button></div>` : ""}
-      <div class="ctl-grid">${buttons}</div>${msg}
-      <div class="faint small" style="margin-top:12px">Jeder Befehl verlangt deinen Passkey (Face ID, Fingerabdruck oder PIN).${r.disarm ? "" : " Unscharf schalten aus der Ferne ist in Home Assistant nicht freigegeben."}${hb.offline ? " Home Assistant ist gerade nicht erreichbar." : ""}</div>
-      ${commandsTable(r.commands)}`, { sub: "Befehle holt Home Assistant beim Worker ab" });
-    const list = `<div class="table-wrap"><table><thead><tr><th>Gerät</th><th class="hide-sm">Gekoppelt</th><th>Zuletzt</th></tr></thead><tbody>
-      ${keys.map((k) => `<tr><td><span class="name">${esc(k.name || "Passkey")}</span></td><td class="t hide-sm">${esc(dateTime(k.created))}</td><td class="t">${k.last_used ? esc(rel(k.last_used)) : "–"}</td></tr>`).join("")}
-      </tbody></table></div>`;
-    const more = remoteUi.pairOpen ? `<div class="card-body" style="border-top:1px solid var(--border)">${pairForm(r)}</div>`
+      <div class="ctl-grid">${buttons}</div>${msg}`;
+  }
+
+  function consoleCard(d, a) {
+    const hb = d.hb;
+    const sit = situation(d);
+    let label = "Keine Daten";
+    let tone = "idle";
+    let sub = "Home Assistant hat sich noch nicht gemeldet.";
+    if (hb) {
+      [label, tone] = STATE_VIEW[hb.state] || [hb.state, "idle"];
+      if (hb.offline) tone = isArmed(hb.state) ? "down" : "warn";
+      const last = [...d.events].reverse().find((e) => e.state && !SYSTEM_EVENTS.includes(e.event));
+      sub = hb.offline ? `Letzter Stand vom ${dateTime(hb.received)}` : last ? `seit ${dateTime(last.ts)}${last.user ? ` · ${last.user}` : ""}` : "";
+      if (hb.offline) label = `${label} · Funkstille`;
+    }
+    const icon = tone === "down" || tone === "warn" ? ICON.alert : tone === "idle" ? ICON.shieldOff : ICON.shield;
+    const eyebrow = [hb && hb.instance, "Alarmanlage"].filter(Boolean).join(" · ");
+    const lastAlarm = [...d.events].reverse().find((e) => e.event === "triggered");
+    const today = a.days.length ? a.days[a.days.length - 1] : null;
+    const armedToday = today ? today.home + today.night + today.away : 0;
+    const checks = statusChecks(d);
+    const pillTone = sit.key === "normal" ? "ok" : sit.key === "critical" ? "bad" : "warn";
+    return `<section class="card console hero-${tone}">
+      <div class="console-main">
+        <div class="state">${orb(tone, icon)}<div class="grow"><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(label)}</h2>${sub ? `<p>${esc(sub)}</p>` : ""}</div></div>
+        ${controls(d)}
+        <div class="facts">
+          <div class="fact"><b>${lastAlarm ? ago(lastAlarm.ts) : "keiner"}</b><span>Letzter Alarm</span></div>
+          <div class="fact"><b>${esc(hours(armedToday))}</b><span>Scharf heute</span></div>
+          <div class="fact"><b>${esc(hb && hb.version ? hb.version : "–")}</b><span>Bastion-Version</span></div>
+        </div>
+      </div>
+      <div class="console-side">
+        <div class="side-head"><h3>Systemstatus</h3><span class="pill ${pillTone}">Lage: ${esc(sit.label)}</span></div>
+        <ul class="checks">${checks.map((c) => `<li class="lvl-${c.level}"><span class="ci">${ICON[LEVEL_ICON[c.level]]}</span>
+          <div style="min-width:0"><div class="cl">${esc(c.label)}</div>${c.sub ? `<div class="cs">${c.sub}</div>` : ""}</div><span class="cv">${esc(c.value)}</span></li>`).join("")}</ul>
+      </div>
+    </section>`;
+  }
+
+  function feedCard(d) {
+    const evs = [...d.events].reverse().slice(0, 8);
+    const body = evs.length ? `<ul class="feed">${evs.map((e) => `<li${e.incident ? ` class="link" data-href="/i/${esc(e.incident)}"` : ""}>
+        <span class="fi" style="--c:${EV_COLOR[e.event] || "var(--gray)"}">${ICON[EV_ICON[e.event]] || ICON.bell}</span>
+        <div style="min-width:0"><div class="ft">${esc(LABELS[e.event] || e.event)}</div><div class="fs">${esc(evDetail(e) || dateTime(e.ts))}</div></div>
+        <span class="fw">${ago(e.ts)}</span></li>`).join("")}</ul>` : `<div class="empty">Noch keine Ereignisse.</div>`;
+    return card("Letzte Ereignisse", body, { flush: true, right: d.events.length > 8 ? `<button class="btn sm" data-scroll="log">Alle ${d.events.length}</button>` : "" });
+  }
+
+  function incidentsMini(list) {
+    return card("Vorfälle", `<ul class="feed">${list.slice(0, 6).map((inc) => `<li class="link" data-href="/i/${esc(inc.id)}">
+        <span class="fi" style="--c:${inc.triggered ? "var(--red)" : "var(--orange)"}">${inc.triggered ? ICON.bell : ICON.alert}</span>
+        <div style="min-width:0"><div class="ft">${esc(where(inc.first) || "Vorfall")}</div>
+          <div class="fs">${inc.triggered ? "Alarm" : "Vorwarnung entschärft"}${inc.ack ? ` · quittiert von ${esc(inc.ack.user || "Pushover")}` : ""}${inc.shots ? ` · ${inc.shots} Bilder` : ""}</div></div>
+        <span class="fw">${esc(dateTime(inc.start))}</span></li>`).join("")}</ul>`, { flush: true, right: `<span class="faint small">${list.length}</span>` });
+  }
+
+  function remoteCard(d) {
+    const r = d.remote;
+    if (!r || !r.enabled || !hasWebAuthn()) return "";
+    const keys = r.passkeys || [];
+    const list = keys.length ? `<div class="table-wrap"><table><thead><tr><th>Passkey</th><th class="hide-sm">Gekoppelt</th><th>Zuletzt benutzt</th></tr></thead><tbody>
+      ${keys.map((k) => `<tr><td><span class="name">${esc(k.name || "Passkey")}</span></td><td class="t hide-sm">${esc(dateTime(k.created))}</td><td class="t">${k.last_used ? ago(k.last_used) : "–"}</td></tr>`).join("")}
+      </tbody></table></div>` : "";
+    const pair = !keys.length || remoteUi.pairOpen ? `<div class="card-body"${keys.length ? ' style="border-top:1px solid var(--border)"' : ""}>${pairForm(r)}${!keys.length && remoteUi.msg ? `<div class="notice ${remoteUi.tone}">${esc(remoteUi.msg)}</div>` : ""}</div>`
       : `<div class="more"><button class="btn sm" data-pair-open>${ICON.key}Weiteren Passkey koppeln</button></div>`;
-    const keysCard = `<section class="card"><div class="card-head"><div><h2>Passkeys</h2><div class="sub">Entfernen in Home Assistant</div></div><span class="faint small">${keys.length}</span></div>${list}${more}</section>`;
-    return `<div class="grid two mt">${controls}${keysCard}</div>`;
+    return `<section class="card" id="remote"><div class="card-head"><div><h2>Fernsteuerung</h2><div class="sub">Passkeys entfernen in Home Assistant · Befehle holt Home Assistant beim Worker ab</div></div><span class="faint small">${keys.length} Passkey${keys.length === 1 ? "" : "s"}</span></div>
+      ${list}${pair}${keys.length ? commandsTable(r.commands).replace('style="margin:16px -16px -16px;border-top:1px solid var(--border)"', 'style="border-top:1px solid var(--border)"') : ""}</section>`;
   }
 
   function renderAlarm(d) {
     const a = analyse(d);
     const k = a.kpi;
+    const side = [a.incidents.length ? incidentsMini(a.incidents) : "", a.triggers.length ? triggersCard(a) : ""].filter(Boolean);
+    const remote = remoteCard(d);
     return {
-      html: `${alarmHero(d)}
-        ${remoteCards(d)}
-        <div class="grid two mt">${hintsCard(d)}${triggersCard(a)}</div>
-        ${rangeRow("Zeitraum")}
+      html: `${consoleCard(d, a)}
+        ${side.length ? `<div class="grid two mt">${feedCard(d)}<div class="col">${side.join("")}</div></div>` : `<div class="mt">${feedCard(d)}</div>`}
+        ${rangeRow("Auswertung")}
         <div class="grid kpis mt">
           ${kpi("Alarme", ICON.bell, String(k.alarms), k.acked ? `${k.acked} quittiert` : "keine quittiert", k.alarms > 0)}
-          ${kpi("Vorwarnungen", ICON.alert, String(k.pending), `${k.defused} rechtzeitig entschärft`)}
-          ${kpi("Scharf", ICON.shield, `${Math.round(k.armedShare * 100)} %`, "der Zeit im Zeitraum")}
-          ${kpi("Quittierzeit", ICON.clock, k.ackMedian == null ? "–" : duration(k.ackMedian), "Median bis zur Bestätigung")}
+          ${kpi("Vorwarnungen", ICON.alert, String(k.pending), `${k.defused} entschärft`)}
+          ${kpi("Scharf", ICON.shield, `${Math.round(k.armedShare * 100)} %`, "der Zeit")}
+          ${kpi("Quittierzeit", ICON.clock, k.ackMedian == null ? "–" : duration(k.ackMedian), "Median")}
           ${kpi("Funkstille", ICON.wifiOff, String(k.outages), k.outageSec ? `insgesamt ${duration(k.outageSec)}` : "keine Ausfälle", k.outages > 0)}
-          ${kpi("Falsche Codes", ICON.key, String(k.wrong), k.shots ? `${k.shots} Kamerabilder gespeichert` : "")}
+          ${kpi("Falsche Codes", ICON.key, String(k.wrong), k.shots ? `${k.shots} Kamerabilder` : "")}
         </div>
         <div class="mt">${stackCard({ id: "armed-chart", title: "Scharf-Zeit pro Tag", sub: "Stunden pro Modus", rows: a.days, series: MODE_SERIES, totals: a.totals, fmt: hours, showTable: view.table, toggle: "armed" })}</div>
-        <div class="mt">${incidentsCard(a.incidents)}</div>
+        ${remote ? `<div class="mt">${remote}</div>` : ""}
         <div class="mt">${logCard(d, view.log)}</div>`,
       bind: () => bindStack("armed-chart", a.days, MODE_SERIES, ARMED_OPTS, hours),
     };
@@ -1330,8 +1454,11 @@ td .name { font-weight: 600; }
   const TABS = { "#sicherheit": ["security", "Sicherheit"], "#verfuegbarkeit": ["uptime", "Verfügbarkeit"] };
 
   async function loadDashboard() {
+    if (view.loading) return;
+    view.loading = true;
     try {
       view.data = await api(`/api/summary?days=${view.days}`);
+      view.liveOk = Date.now();
       TZ = (view.data.hb && view.data.hb.tz) || TZ;
       document.getElementById("instance").textContent = (view.data.hb && view.data.hb.instance) || "Bastion";
       const who = view.data.user || "";
@@ -1339,8 +1466,47 @@ td .name { font-weight: 600; }
       document.getElementById("avatar").textContent = (who[0] || "B").toUpperCase();
       renderDashboard();
     } catch (err) {
-      app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      // A failed refresh keeps the last data on screen; only the first load shows the error.
+      if (view.data) setLive(false);
+      else app.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    } finally {
+      view.loading = false;
     }
+  }
+
+  // --------------------------------------------------------------- live
+  // Every 10 s a small request; the full data is only reloaded when something changed.
+  function setLive(ok) {
+    const el = document.getElementById("updated");
+    el.classList.toggle("stale", !ok);
+    const at = view.liveOk ? timeOnly(Math.floor(view.liveOk / 1000)).slice(0, 5) : "–";
+    el.innerHTML = `<span class="live-dot"></span><span class="ut">${ok ? `Live · ${esc(at)}` : `Keine Verbindung · Stand ${esc(at)}`}</span>`;
+  }
+
+  function tickTimes() {
+    app.querySelectorAll("[data-ts]").forEach((el) => { el.textContent = rel(Number(el.dataset.ts)); });
+  }
+
+  async function liveTick() {
+    if (!view.data || view.loading || !idle()) return;
+    let live;
+    try {
+      live = await api("/api/live");
+    } catch {
+      setLive(false);
+      return;
+    }
+    view.liveOk = Date.now();
+    if (live.rev !== view.data.rev) {
+      await loadDashboard();
+      return;
+    }
+    if (view.data.hb && live.received) {
+      view.data.hb.received = live.received;
+      app.querySelectorAll("[data-hb]").forEach((el) => { el.dataset.ts = live.received; });
+    }
+    tickTimes();
+    setLive(true);
   }
 
   function renderDashboard() {
@@ -1354,10 +1520,14 @@ td .name { font-weight: 600; }
     const decoys = (d.canary || []).filter((c) => c.ts >= d.now - 86400).length;
     document.getElementById("badge-sec").textContent = decoys ? "!" : urgent ? String(urgent) : "";
     document.getElementById("badge-up").textContent = hb && hb.offline ? "!" : "";
-    document.getElementById("updated").textContent = `Aktualisiert ${timeOnly(d.now).slice(0, 5)}`;
+    setLive(true);
     const page = tab === "security" ? renderSecurity(d) : tab === "uptime" ? renderUptime(d) : renderAlarm(d);
+    // Keep the scroll position: a live update must not move the page.
+    const y = window.scrollY;
     app.innerHTML = page.html;
     page.bind();
+    window.scrollTo(0, view.tab === tab ? y : 0);
+    view.tab = tab;
     app.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => { view.days = Number(b.dataset.days); loadDashboard(); }));
     app.querySelectorAll("[data-log]").forEach((b) => b.addEventListener("click", () => { view.log = b.dataset.log; view.logLimit = 25; renderDashboard(); }));
     app.querySelectorAll("[data-seclog]").forEach((b) => b.addEventListener("click", () => { view.secLog = b.dataset.seclog; view.secLimit = 25; renderDashboard(); }));
@@ -1367,7 +1537,11 @@ td .name { font-weight: 600; }
       else view.table = !view.table;
       renderDashboard();
     }));
-    app.querySelectorAll("tr[data-href]").forEach((tr) => tr.addEventListener("click", () => { location.href = tr.dataset.href; }));
+    app.querySelectorAll("[data-href]").forEach((el) => el.addEventListener("click", (ev) => { if (!ev.target.closest("a, button")) location.href = el.dataset.href; }));
+    app.querySelectorAll("[data-scroll]").forEach((b) => b.addEventListener("click", () => {
+      const target = document.getElementById(b.dataset.scroll);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
     const more = app.querySelector("[data-more]");
     if (more) more.addEventListener("click", () => { view.logLimit += 50; renderDashboard(); });
     const secMore = app.querySelector("[data-secmore]");
@@ -1439,11 +1613,11 @@ td .name { font-weight: 600; }
     loadIncident(m[1], token);
   } else {
     loadDashboard();
-    // No refresh while a passkey dialog runs or the pairing code is being typed.
-    const idle = () => !document.hidden && !remoteUi.busy && !(document.activeElement && document.activeElement.id === "pair-code");
-    setInterval(() => { if (idle()) loadDashboard(); }, 60000);
-    // Back in the foreground (installed app), show fresh data right away.
-    document.addEventListener("visibilitychange", () => { if (!document.hidden && view.data && Date.now() / 1000 - view.data.now > 20) loadDashboard(); });
+    setInterval(liveTick, 10000);
+    setInterval(() => { if (!document.hidden) tickTimes(); }, 15000);
+    // Long-term numbers (days, shares) drift slowly: full reload every 5 minutes as well.
+    setInterval(() => { if (idle()) loadDashboard(); }, 300000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) liveTick(); });
     window.addEventListener("online", () => loadDashboard());
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => { /* not available, e.g. private mode */ });
     let resizeTimer = null;

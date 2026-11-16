@@ -750,13 +750,32 @@ async function apiImage(request, env, url, id, ctx) {
   return json({ id: row.id, ts: row.ts, camera: row.camera, type: row.type, data: row.data });
 }
 
+// Live state for the dashboard (polled every few seconds): a revision that changes with
+// every new event, plus the time of the last heartbeat.
+async function liveState(env) {
+  const hb = await store.getState(env, "hb");
+  const ex = await store.getState(env, "exposure");
+  const pairing = await store.getState(env, "pairing");
+  const parts = hb
+    ? [hb.state, hb.mode, hb.offline, (hb.open || []).join(","), (hb.unavailable || []).join(","), JSON.stringify(hb.remote || {}), hb.version]
+    : ["-"];
+  const rev = [...parts, await store.marks(env), ex ? ex.checked : 0, pairing ? pairing.expires : 0].join("|");
+  return { hb, rev: (await hmacHex("rev", rev)).slice(0, 16) };
+}
+
+async function apiLive(env) {
+  const { hb, rev } = await liveState(env);
+  return json({ now: nowS(), rev, received: hb ? Math.floor(hb.received / 1000) : null, offline: Boolean(hb && hb.offline) });
+}
+
 async function apiSummary(env, url, user) {
   await uptime.ensureHistory(env);
   const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 365);
   const since = nowS() - days * 86400;
-  const hb = await store.getState(env, "hb");
+  const { hb, rev } = await liveState(env);
   return json({
     now: nowS(),
+    rev,
     days,
     user: user.email,
     hb: hb && {
@@ -795,13 +814,14 @@ async function handleGet(request, env, url, ctx) {
   m = path.match(/^\/api\/img\/(\d+)$/);
   if (m) return apiImage(request, env, url, m[1], ctx);
   m = path.match(/^\/api\/command\/([a-f0-9]{16})$/);
-  if (path === "/" || path === "/api/summary" || m) {
+  if (path === "/" || path === "/api/summary" || path === "/api/live" || m) {
     const user = await dashboardUser(request, env, url);
     if (!user) {
       // Behind Access every request carries a valid token; anything else is a bypass attempt.
       if (accessConfigured(env) && onDashboardHost(env, url) && env.DASHBOARD_HOST) await rejected(request, env, ctx, "access", url);
       return json({ error: "not found" }, 404);
     }
+    if (path === "/api/live") return apiLive(env);
     if (!m) await trackAccess(request, env, ctx, user);
     if (m) return remote.commandStatus(env, m[1]);
     return path === "/" ? page(env) : apiSummary(env, url, user);
