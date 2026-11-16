@@ -54,7 +54,7 @@ async def test_presence_detection_and_entities(hass: HomeAssistant, alarm, freez
     answers = {"192.168.1.20": "tcp", "192.168.1.21": None}
     household = await _household(hass, alarm, answers)
     assert household.is_home("aaaa1111") is True
-    assert household.is_home("bbbb2222") is None, "silent phone: unknown until the away time passed"
+    assert household.is_home("bbbb2222") is False, "nothing known yet: a silent phone is away, not unavailable"
     assert household.anyone_home() is True
     registry = er.async_get(hass)
     trackers = [e for e in registry.entities.values() if e.domain == "device_tracker" and e.platform == "bastion"]
@@ -285,3 +285,23 @@ async def test_hostnames_are_resolved_before_the_subnet_check(hass: HomeAssistan
     ):
         assert await hh.async_probe(hass, "phone.lan") == "arp"
     assert seen and all(s == ("192.168.1.20", True) for s in seen)
+
+
+async def test_presence_survives_restarts(hass: HomeAssistant, alarm, freezer) -> None:  # noqa: F811
+    household = await _household(hass, alarm, {"192.168.1.20": "tcp", "192.168.1.21": None})
+    assert alarm.bastion.data["household"]["aaaa1111"]["home"] is True
+    assert alarm.bastion.data["household"]["bbbb2222"]["home"] is False
+    registry = er.async_get(hass)
+    ben = next(e.entity_id for e in registry.entities.values() if e.unique_id.endswith("_presence_bbbb2222"))
+    assert hass.states.get(ben).state == "off", "away, not unavailable"
+    # restart: state comes back, Anna's phone sleeps -> still home during the grace period
+    household.unload()
+    household.status = {}
+    household.probe = _fake_probe({})
+    household.setup()
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert household.is_home("aaaa1111") is True
+    assert household.is_home("bbbb2222") is False
+    await _advance(hass, freezer, 11)
+    assert household.is_home("aaaa1111") is False
+    household.unload()

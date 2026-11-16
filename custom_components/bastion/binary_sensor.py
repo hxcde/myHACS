@@ -110,7 +110,7 @@ class AnyoneHomeSensor(BastionEntity, BinarySensorEntity):
 
     @property
     def available(self) -> bool:
-        return bool(self.bastion.household.people) and self.bastion.household.anyone_home() is not None
+        return bool(self.bastion.household.people)
 
     @property
     def is_on(self) -> bool:
@@ -152,7 +152,7 @@ class PersonPresenceSensor(BastionEntity, BinarySensorEntity):
 
     @property
     def available(self) -> bool:
-        return self.bastion.household.is_home(self.person_id) is not None
+        return bool(self._person)
 
     @property
     def is_on(self) -> bool:
