@@ -22,7 +22,7 @@ custom_components/bastion/
   crypto.py              scrypt + AES-256-GCM für Secrets im Repo
   probe.py               Client der externen Prüfung + Port-Bewertung
   guard.py               Token-Wächter: umhüllt hass.auth.async_validate_access_token (LLAT-Nutzung + IP, Köder-Abweisung)
-  canary.py              Köder: Benutzer „api-backup“ (nur lesen, nur lokal), Token, Webhook, .env fürs Git-Repo
+  canary.py              Köder: Benutzer „api-backup“ (nur lesen, nur lokal), Token, Webhook, .env fürs Git-Repo; Worker-Köder (Token + Webhook, aus ALARM_SECRET abgeleitet)
   responder.py           Aktions-Buttons in Benachrichtigungen (Nonce, 48 h), Sperren: Token/IP/Benutzer
   report.py              Wochenbericht aus Score-Verlauf, Befunden, Login-Log, Köder, Git, Probe
   services.py            Service-Aktionen (nur Admins)
@@ -40,7 +40,9 @@ custom_components/bastion/
     supervisor.py        Add-on-Rechte (nur mit Supervisor)
   alarm/
     engine.py            Zustandsmaschine (disarmed/arming/armed_*/pending/triggered), Räume, Sensoren, Codes (scrypt), Aktionen
-    relay.py             Worker-Anbindung (HMAC-SHA256): Lebenszeichen mit Kontext, Ereignisse, Kamerabilder, Quittierungen
+    relay.py             Worker-Anbindung (HMAC-SHA256): Lebenszeichen mit Kontext, Ereignisse, Kamerabilder, Quittierungen,
+                         Meldungen des Workers (notices), Fernbefehle abholen/prüfen/ausführen, Passkey-Verwaltung (/remote)
+    presence.py          Erinnerung „niemand zuhause, nicht scharf“ (person.*-Zustände, einmal pro Abwesenheit)
     sounds.py            Töne auf Medienplayern: Schleifen (Alarm/Countdown), Einmal-Töne, Lautstärke sichern/wiederherstellen
   alarm_control_panel.py Alarm-Entität (Aus/Zuhause/Nacht/Abwesend/Panik)
   gitsync/
@@ -57,7 +59,14 @@ custom_components/bastion/
   strings.json, translations/{en,de}.json, services.yaml, manifest.json
 extras/cloudflare-worker/     Worker: Port-Prüfung, Totmannschalter, Protokoll in D1, Pushover, Vorfallseite, Dashboard
   src/worker.js        Routen, Signaturprüfung, Lebenszeichen, Alarm-Ereignisse, Funkstille-Analyse, Cron
-  src/store.js         D1: events, snapshots, receipts, state, secevents, attempts, blocked (Schema legt der Worker selbst an), Aufbewahrung
+  src/store.js         D1: events, snapshots, receipts, state, secevents, attempts, blocked, outages, sessions, canary_hits,
+                       notices, passkeys, challenges, commands (Schema legt der Worker selbst an), Aufbewahrung
+  src/util.js          Gemeinsame Helfer: JSON-Antwort, HMAC, Zeitvergleich, IP/Geo, Schreibbudget, Gerätename aus User-Agent
+  src/webauthn.js      Passkeys ohne Abhängigkeiten: CBOR, COSE-Schlüssel (ES256, RS256, EdDSA), Registrierung, Assertion
+  src/remote.js        Fernsteuerung: Kopplungscode, Passkey anlegen, Befehle (Challenge, Prüfung), /commands und /remote für HA
+  src/canary.js        Worker-Köder erkennen (Bearer-Token, Webhook-Pfad), wie HA antworten, protokollieren, melden
+  src/sessions.js      Zugriffsprotokoll des Dashboards (Sitzungen pro Gerät/IP, Meldung bei neuem Gerät/Land)
+  src/uptime.js        Ausfälle aus Lücken im Lebenszeichen (Art, Ursache), Übernahme alter Ausfälle aus dem Protokoll
   src/notify.js        Kanäle Pushover/Telegram/ntfy/Webhook, Pushover-Receipts (Quittierung, Abbruch)
   src/access.js        Prüfung des Cloudflare-Access-JWT (RS256, Audience, Aussteller, Ablauf)
   src/app.html         Dashboard und Vorfallseite (ein Text-Modul, CSP mit Nonce)
@@ -97,7 +106,7 @@ Restore: repo.decode_entry ─► Pfadprüfung ─► YAML schreiben (Backup + c
 - `custom_components/bastion/__init__.py`: `async_setup` (Services, Websocket, Close-Hook), `async_setup_entry`
 - `coordinator.py`: `Bastion.async_run_audit`, `register_close_listener`
 - `gitsync/manager.py`: `async_commit`, `async_restore`, `apply_pending_restore`, `async_test_connection`
-- `extras/cloudflare-worker/src/worker.js`: `POST /probe`, `/heartbeat`, `/alert`, `/snapshot`, `/backfill`, `/pushover/<token>`, `GET /i/<vorfall>`, `/`, `/api/*`, `scheduled()` (Funkstille, Receipts, Aufbewahrung, Außenprüfung)
+- `extras/cloudflare-worker/src/worker.js`: `POST /probe`, `/heartbeat`, `/alert`, `/snapshot`, `/backfill`, `/commands`, `/remote`, `/pushover/<token>`, `POST /api/passkey/*`, `/api/command/*`, `GET /i/<vorfall>`, `/`, `/api/*`, Köder vor allen Routen, `scheduled()` (Ausfall-Historie, Funkstille, Receipts, Aufbewahrung, Außenprüfung)
 
 ## Alarmanlage
 
@@ -119,7 +128,19 @@ pending/triggered ─► relay.start_snapshots ─► camera.async_get_image ─
 relay (alle 15 s Tick, Intervall bzw. während Alarm) ─► POST /heartbeat {Zustand, offen, nicht erreichbar, Start/Boot, acks_seen,
                                                       security (bei Änderung), security_events (aus bastion_security_event, dedupliziert)}
                                                     ◄─ {acks, attack} ─► engine.record_ack / logins.record("worker_attack")
+                                                    ◄─ {notices: Köder, Dashboard-Zugriff, Passkey} ─► canary.async_trigger / logins.record
+                                                       (bestätigt mit notices_seen im nächsten Lebenszeichen)
 HA-Stopp ─► relay.async_stop ─► Lebenszeichen mit stopping=true (Worker wartet länger, meldet „geplant“)
+
+Fernsteuerung:
+Dashboard (Access) ─► /api/command/begin ─► Challenge (D1, einmalig) ─► navigator.credentials.get (Passkey, UV)
+                   ─► /api/command/finish ─► webauthn.verifyAssertion ─► commands (pending, 90 s), remote_hot
+HA relay (Tick 15 s, bei fast=true alle 2 s) ─► POST /commands {done} ◄─ {commands mit HMAC, fast}
+   ─► Signatur, Alter, Freigabe prüfen ─► engine.async_arm/async_disarm(trusted=True) ─► Ergebnis mit nächstem Poll
+Kopplung: HA ws bastion/alarm/remote pair ─► POST /remote {code_hash} ─► Dashboard /api/passkey/begin {code} ─► finish
+
+Lebenszeichen ─► uptime.onHeartbeat (Lücke/Neustart ─► outages) │ Cron Funkstille ─► uptime.onOffline (offener Ausfall)
+Jeder Request ─► canary.detectCanary (Token/Webhook) ─► 401/200 wie HA, canary_hits, notice, Meldung
 
 Start + 30 s ─► relay.async_backfill ─► POST /backfill {alarm_events, security_events} (uid-dedupliziert)
 Worker-Cron (jede Minute): Funkstille-Analyse (letzter Stand + Ereignisse aus D1), offene Pushover-Receipts prüfen, Aufbewahrung,
@@ -136,4 +157,4 @@ Sensoren mit eigener Aktivierungsverzögerung werden per Timer freigegeben. Ist 
 | `bastion.logins` | Login-Protokoll (max. 1000), Token-/Benutzer-Snapshot, bekannte IPs |
 | `bastion.git` | Git-Status, Hostkey (TOFU), Privatheits-Status |
 | `bastion.anomaly` | Sensor-Modelle, Histogramme, Outbound-Baseline, Ereignisse |
-| `bastion.alarm` | Alarm-Konfiguration (Räume, Sensoren, Zeiten, Aktionen, Code-Hashes, Worker), Zustand, Protokoll |
+| `bastion.alarm` | Alarm-Konfiguration (Räume, Sensoren, Zeiten, Aktionen, Code-Hashes, Worker, Fernsteuerung/Erinnerung), Zustand, Protokoll |

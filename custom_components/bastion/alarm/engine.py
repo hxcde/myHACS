@@ -65,6 +65,7 @@ NOTIFY_EVENTS = (
     "wrong_code",
     "sensor_unavailable",
     "acknowledged",
+    "unarmed",
 )
 
 
@@ -99,6 +100,14 @@ def default_config() -> dict[str, Any]:
             "cameras": [],
             "snapshots": 3,
             "public_url": "",
+        },
+        # Remote control from the worker dashboard (passkey) and the "nobody home" reminder.
+        "remote": {
+            "enabled": False,
+            "disarm": False,
+            "reminder": False,
+            "reminder_minutes": 20,
+            "persons": [],
         },
     }
 
@@ -385,6 +394,10 @@ class AlarmEngine:
         """A Pushover alarm was acknowledged (reported by the worker)."""
         self._record("acknowledged", user=by, channel="pushover", incident=incident, ack=kind)
 
+    def record_unarmed(self, minutes: int, persons: list[str]) -> None:
+        """Everybody left, the alarm is still disarmed (reminder)."""
+        self._record("unarmed", minutes=minutes, persons=persons[:10])
+
     def context(self) -> dict[str, list[str]]:
         """Open and unavailable sensors (for the worker's offline report)."""
         open_now: list[str] = []
@@ -412,13 +425,21 @@ class AlarmEngine:
 
     # ----------------------------------------------------------------- commands
     async def async_arm(
-        self, mode: str, code: str | None = None, *, user: str | None = None, force: bool = False
+        self,
+        mode: str,
+        code: str | None = None,
+        *,
+        user: str | None = None,
+        force: bool = False,
+        trusted: bool = False,
     ) -> None:
-        """Arm in a mode (with exit delay)."""
+        """Arm in a mode (with exit delay). trusted = authenticated elsewhere (passkey)."""
         if mode not in MODES:
             raise AlarmError("invalid_mode", mode)
         # Re-arming silences the sirens, so during an alarm a code is always required.
-        needs_code = self.config["require_code_arm"] or bool(code) or self.state in (TRIGGERED, PENDING)
+        needs_code = not trusted and (
+            self.config["require_code_arm"] or bool(code) or self.state in (TRIGGERED, PENDING)
+        )
         who = await self._async_check_code(code, user) if needs_code else user
         open_now = self.open_sensors(mode)
         if open_now and not force:
@@ -498,9 +519,9 @@ class AlarmEngine:
                 if self.state in (PENDING, TRIGGERED):
                     return
 
-    async def async_disarm(self, code: str | None = None, *, user: str | None = None) -> None:
-        """Disarm (code required when codes exist)."""
-        who = await self._async_check_code(code, user)
+    async def async_disarm(self, code: str | None = None, *, user: str | None = None, trusted: bool = False) -> None:
+        """Disarm (code required when codes exist, unless authenticated elsewhere)."""
+        who = user if trusted else await self._async_check_code(code, user)
         was = self.state
         self._cancel_timer()
         self._cancel_activation()

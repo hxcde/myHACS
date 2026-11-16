@@ -10,13 +10,13 @@
 Home-Assistant-Integration für Sicherheit, Alarmanlage und Konfigurationsschutz:
 
 - **Alarmanlage:** Alarm-Entität mit den Modi Aus, Zuhause, Nacht und Abwesend, Räumen und Sensor-Zuordnung pro Modus. Dazu Aktivierungs- und Auslöseverzögerung pro Sensor, gehashte Codes, Sirenen, Lichter, Töne auf Lautsprechern (mitgeliefert oder eigene MP3) und Benachrichtigungen.
-- **Cloud-Worker (Cloudflare):** Totmannschalter mit letztem bekannten Stand, Alarm-Pushs über Pushover (mit Quittierung und Entwarnung), Telegram oder ntfy, Protokoll und Kamerabilder außer Haus sowie ein lesendes Dashboard hinter Cloudflare Access.
+- **Cloud-Worker (Cloudflare):** Totmannschalter mit letztem bekannten Stand, Alarm-Pushs über Pushover (mit Quittierung und Entwarnung), Telegram oder ntfy, Protokoll und Kamerabilder außer Haus. Dazu ein Dashboard hinter Cloudflare Access mit Verfügbarkeitsverlauf, Zugriffsprotokoll und Fernsteuerung per Passkey (scharf/unscharf, Erinnerung „niemand zuhause“).
 - **Sicherheitsaudit:** prüft Konten, MFA, Tokens, HTTP-Konfiguration, Webhooks, Sprachassistenten-Freigaben, Updates und GitHub-Advisories, Custom-Integrationen, Klartext-Secrets und Backups.
 - **Login-Monitor:** protokolliert Anmeldungen, Fehlversuche, neue IPs, neue Tokens und Benutzer dauerhaft.
 - **Git-Versionierung:** sichert die komplette Smart-Home-Konfiguration in ein **privates** Repository. Secrets landen dort verschlüsselt. Jeder Stand lässt sich vergleichen und wiederherstellen.
 - **Anomalie-Erkennung:** lernt Sensoren (Strom, Wasser, …), Login-Zeiten und sensible Aktionen. Erkennt Sabotage und neue Verbindungsziele.
 - **Reaktion per Knopfdruck:** Benachrichtigungen in der Companion App mit „War ich“ / „Sperren“ (Token widerrufen, IP sperren, Benutzer deaktivieren).
-- **Köder:** Köder-Token und Köder-Webhook, optional als `.env` im Git-Repo. Jede Benutzung wird abgewiesen und meldet Alarm.
+- **Köder:** Köder-Token und Köder-Webhook in HA und im Worker, optional als `.env` im Git-Repo. Jede Benutzung wird abgewiesen und meldet Alarm, die Worker-Köder auch bei ausgefallenem HA.
 - **Wochenbericht:** Score-Verlauf, neue und behobene Befunde, Anmeldungen, Köder, Git, offene Ports.
 - **Firmware-Schwachstellen:** ESPHome-, Tasmota-, WLED- und Zigbee2MQTT-Versionen gegen GitHub-Advisories.
 - **Externe Prüfung:** ein Cloudflare Worker prüft, welche Ports der eigenen öffentlichen IP offen sind.

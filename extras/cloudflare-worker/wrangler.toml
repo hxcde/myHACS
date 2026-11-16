@@ -25,6 +25,8 @@ database_id = "REPLACE_WITH_D1_DATABASE_ID"
 # DASHBOARD_HOST = "bastion.example.com"
 # ACCESS_TEAM_DOMAIN = "<team>.cloudflareaccess.com"
 # ACCESS_AUD = "<Application Audience (AUD) Tag>"
+# ACCESS_ALERT = "new"   # Meldung bei Dashboard-Zugriff: "new" (neues Gerät/Land), "all", "off"
+# ALLOWED_COUNTRIES = "DE"  # Dashboard und Vorfallseiten nur aus diesen Ländern (HA-Anfragen bleiben offen)
 
 # Secrets (nie in diese Datei schreiben):
 #   npx wrangler secret put PROBE_TOKEN
