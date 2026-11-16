@@ -96,7 +96,9 @@ svg.icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: no
 .side-link .badge:empty { display: none; }
 .sidebar .spacer { flex: 1; }
 .side-user { display: flex; align-items: center; gap: 10px; padding: 12px 8px 4px; border-top: 1px solid var(--border); margin-top: 8px; min-width: 0; }
-.side-user .email { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-user .email { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.side-logout { margin-left: auto; }
+body.side-collapsed .side-logout { display: none; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--primary); color: #fff; font-weight: 600; font-size: 12px; }
 .shell { margin-left: 216px; min-height: 100vh; min-height: 100dvh; min-width: 0; }
 body.bare .sidebar { display: none; }
@@ -682,7 +684,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
     <a class="side-link" href="#sicherheit" data-nav="security" title="Sicherheit"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="label">Sicherheit</span><span class="short">Sicherheit</span><span class="badge" id="badge-sec"></span></a>
   </nav>
   <div class="spacer"></div>
-  <div class="side-user"><span class="avatar" id="avatar">B</span><span class="email" id="who"></span></div>
+  <div class="side-user"><span class="avatar" id="avatar">B</span><span class="email" id="who"></span><button class="btn icon-only sm side-logout" id="side-logout" aria-label="Abmelden" title="Abmelden" hidden><svg class="icon" viewBox="0 0 24 24"><path d="M10 4H5v16h5"/><path d="m15 8 4 4-4 4M19 12H9"/></svg></button></div>
 </aside>
 <div class="shell">
   <header class="header">
@@ -704,17 +706,19 @@ body.tablet.tablet-dim::after { opacity: .6; }
     disarmed: "Unscharf", reset: "Zurückgesetzt", arm_failed: "Scharfschalten fehlgeschlagen", wrong_code: "Falscher Code",
     sensor_unavailable: "Sensor nicht erreichbar", acknowledged: "Quittiert", offline: "Funkstille", online: "Wieder erreichbar", restart: "Neustart", attack: "Angriffsversuch am Worker",
     exposure: "Außenprüfung", canary: "Köder benutzt", passkey_added: "Passkey gekoppelt", passkey_removed: "Passkey entfernt", unarmed: "Niemand zuhause, nicht scharf", presence: "Anwesenheit",
+    login: "Anmeldung am Dashboard", logout: "Sitzungen beendet", login_locked: "Anmeldung gesperrt", tamper: "Protokoll verändert",
   };
   const EV_COLOR = {
     triggered: "var(--critical)", pending: "var(--warning)", wrong_code: "var(--serious)", arm_failed: "var(--serious)",
     offline: "var(--serious)", sensor_unavailable: "var(--warning)", disarmed: "var(--good)", online: "var(--good)", acknowledged: "var(--good)",
     armed: "var(--accent)", arming: "var(--accent)", rearmed: "var(--accent)", attack: "var(--critical)", canary: "var(--critical)",
     passkey_added: "var(--warning)", passkey_removed: "var(--gray)", unarmed: "var(--warning)", presence: "var(--violet)",
+    login: "var(--accent)", logout: "var(--gray)", login_locked: "var(--critical)", tamper: "var(--critical)",
   };
   const GROUPS = {
     alarm: ["triggered", "pending", "acknowledged", "sensor_unavailable"],
     ops: ["armed", "arming", "rearmed", "disarmed", "reset", "arm_failed", "wrong_code", "unarmed"],
-    system: ["offline", "online", "restart", "attack", "exposure", "canary", "passkey_added", "passkey_removed", "presence"],
+    system: ["offline", "online", "restart", "attack", "exposure", "canary", "passkey_added", "passkey_removed", "presence", "login", "logout", "login_locked", "tamper"],
   };
   let TZ = "Europe/Berlin";
 
@@ -774,6 +778,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
     try { localStorage.setItem("bastion-sidebar", collapsed ? "collapsed" : "open"); } catch { /* ignore */ }
     if (view.data) setTimeout(() => renderDashboard(), 220);
   });
+  document.getElementById("side-logout").addEventListener("click", () => logout());
   document.getElementById("theme").addEventListener("click", () => {
     theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
     try { localStorage.setItem("bastion-theme", theme); } catch { /* ignore */ }
@@ -817,6 +822,11 @@ body.tablet.tablet-dim::after { opacity: .6; }
       r = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
     } catch {
       throw new Error("Keine Verbindung. Die Daten werden geladen, sobald das Gerät wieder online ist.");
+    }
+    // Passkey login expired: the page itself shows the login.
+    if (r.status === 401) {
+      location.reload();
+      throw new Error("Anmeldung abgelaufen.");
     }
     if (!r.ok) throw new Error(r.status === 404 ? "Nicht gefunden oder keine Berechtigung." : `Fehler ${r.status}`);
     return r.json();
@@ -964,8 +974,10 @@ body.tablet.tablet-dim::after { opacity: .6; }
       det.sensors ? `offen: ${det.sensors.join(", ")}` : "",
       e.event === "attack" && det.total ? `${det.total} abgewiesen` : "",
       e.event === "canary" && det.ip ? `${det.ip}${det.country ? ` (${det.country})` : ""}` : "",
-      det.name && e.event.startsWith("passkey") ? det.name : "",
-      e.event === "presence" ? (det.home ? "ist nach Hause gekommen" : "ist gegangen") : ""].filter(Boolean).join(" · ");
+      det.name && (e.event.startsWith("passkey") || e.event === "logout") ? det.name : "",
+      e.event === "presence" ? (det.home ? "ist nach Hause gekommen" : "ist gegangen") : "",
+      e.event === "login" ? `${det.name || ""}${det.kind === "tablet" ? " (Wandtablet)" : ""}` : "",
+      e.event === "tamper" && det.id ? `ab Eintrag ${det.id}: ${det.what || ""}` : ""].filter(Boolean).join(" · ");
   }
 
   function logCard(d, filter) {
@@ -1001,6 +1013,17 @@ body.tablet.tablet-dim::after { opacity: .6; }
     signature: () => "Home Assistant hat die Signatur abgelehnt (ALARM_SECRET prüfen).",
     stale: () => "Der Befehl war zu alt (Uhrzeit von Home Assistant prüfen).",
   };
+  const loginUi = { msg: "", tone: "", tablet: null };
+  async function loginAction(path, body, done) {
+    try {
+      const res = await post(path, body);
+      if (done) done(res);
+      await loadDashboard();
+    } catch (err) {
+      Object.assign(loginUi, { msg: err.message, tone: "bad" });
+      renderDashboard();
+    }
+  }
   const remoteUi = { busy: false, msg: "", tone: "", force: null, code: "", pairOpen: false, intent: new URLSearchParams(location.search).get("do") };
   // No refresh while a passkey dialog runs or the pairing code is being typed.
   const idle = () => !document.hidden && !remoteUi.busy && !(document.activeElement && document.activeElement.id === "pair-code");
@@ -1020,6 +1043,10 @@ body.tablet.tablet-dim::after { opacity: .6; }
       throw new Error("Keine Verbindung.");
     }
     const data = await r.json().catch(() => ({}));
+    if (r.status === 401 && data.error === "login") {
+      location.reload();
+      throw new Error("Anmeldung abgelaufen.");
+    }
     if (!r.ok) throw new Error(data.error || `Fehler ${r.status}`);
     return data;
   }
@@ -1122,7 +1149,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
   const EV_ICON = {
     triggered: "bell", pending: "alert", arming: "clock", armed: "shield", rearmed: "shield", disarmed: "shieldOff", reset: "shieldOff",
     arm_failed: "alert", wrong_code: "key", sensor_unavailable: "wifiOff", acknowledged: "check", offline: "wifiOff", online: "check",
-    restart: "power", attack: "ban", exposure: "globe", canary: "bird", passkey_added: "key", passkey_removed: "key", unarmed: "home", presence: "home",
+    restart: "power", attack: "ban", exposure: "globe", canary: "bird", passkey_added: "key", passkey_removed: "key", unarmed: "home", presence: "home", login: "key", logout: "out", login_locked: "lock", tamper: "alert",
   };
   const LEVEL_ICON = { ok: "check", warn: "bang", bad: "x" };
   const ago = (ts, extra = "") => `<span data-ts="${ts}"${extra}>${esc(rel(ts))}</span>`;
@@ -1166,6 +1193,9 @@ body.tablet.tablet-dim::after { opacity: .6; }
     add(attempts ? "warn" : "ok", "Angriffe am Worker", attempts ? `${attempts} abgewiesen` : "keine", "letzte 24 Stunden");
     const decoys = (d.canary || []).filter((c) => c.ts >= dayAgo).length;
     if (decoys) add("bad", "Köder", `${decoys}× benutzt`, "Zugangsdaten in fremden Händen");
+    const fails = (d.login_fails || []).filter((f) => f.ts >= dayAgo).length;
+    if (fails) add(fails >= 5 ? "bad" : "warn", "Dashboard-Anmeldung", `${fails} Fehlversuch${fails === 1 ? "" : "e"}`, "letzte 24 Stunden");
+    if (d.chain && d.chain.ok === false) add("bad", "Protokoll", "verändert", esc(d.chain.broken ? `ab Eintrag ${d.chain.broken.id}: ${d.chain.broken.what}` : "Prüfkette gebrochen"));
     const ex = ((d.exposure && d.exposure.results) || []).flatMap((r) => r.checks);
     if (ex.length) {
       const bad = ex.find((c) => c.level === "critical") || ex.find((c) => c.level === "warning");
@@ -1179,7 +1209,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
     const r = d.remote || {};
     const hb = d.hb || {};
     const keys = r.passkeys || [];
-    const live = Boolean(r.enabled && keys.length && hasWebAuthn());
+    const live = Boolean(r.enabled && keys.length && hasWebAuthn() && !r.readonly);
     const current = !hb.state || hb.state === "disarmed" ? "disarm" : hb.mode ? `arm_${hb.mode}` : "";
     const pending = hb.state === "arming" || hb.state === "pending" || hb.state === "triggered";
     const tiles = Object.entries(ACTIONS).map(([k, a]) => {
@@ -1189,7 +1219,8 @@ body.tablet.tablet-dim::after { opacity: .6; }
       return `<button class="mode-btn ${k === current ? "current" : ""} ${usable ? "" : "static"}" ${attrs} title="${esc(`${a.label}: ${state}`)}"><span class="ring">${ICON[a.icon]}</span><span class="ml">${esc(a.label)}</span><small>${esc(state)}</small></button>`;
     }).join("");
     let note = "";
-    if (!r.enabled) {
+    if (r.readonly) note = "Wandtablet: nur Anzeige. Schalten am Handy mit Passkey.";
+    else if (!r.enabled) {
       const old = hb.version && hb.version.localeCompare("0.5.0", undefined, { numeric: true }) < 0;
       note = `Anzeige des aktuellen Modus. Schalten von hier: ${old ? "Bastion auf 0.5.0 aktualisieren, dann " : ""}in Home Assistant unter Alarmanlage → Einstellungen → Cloud-Worker die Fernsteuerung erlauben.`;
     } else if (!hasWebAuthn()) note = "Dieser Browser unterstützt keine Passkeys, Schalten ist hier nicht möglich.";
@@ -1287,7 +1318,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
     return card("Zonen", body, { flush: true, sub: "Räume und Sensoren · Schloss = überwacht", right: `<div class="pills">${pills}</div>` });
   }
 
-  const evCategory = (e) => (e.event === "presence" ? "Anwesenheit" : GROUPS.alarm.includes(e.event) ? "Alarm" : GROUPS.ops.includes(e.event) ? "Bedienung" : ["attack", "canary", "passkey_added", "passkey_removed", "exposure"].includes(e.event) ? "Sicherheit" : "System");
+  const evCategory = (e) => (e.event === "presence" ? "Anwesenheit" : ["login", "logout", "login_locked", "tamper"].includes(e.event) ? "Sicherheit" : GROUPS.alarm.includes(e.event) ? "Alarm" : GROUPS.ops.includes(e.event) ? "Bedienung" : ["attack", "canary", "passkey_added", "passkey_removed", "exposure"].includes(e.event) ? "Sicherheit" : "System");
 
   function dayLabel(ts, now) {
     const k = dayKey(ts);
@@ -1327,7 +1358,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
 
   function remoteCard(d) {
     const r = d.remote;
-    if (!r || !r.enabled || !hasWebAuthn()) return "";
+    if (!r || !r.enabled || !hasWebAuthn() || r.readonly) return "";
     const keys = r.passkeys || [];
     const list = keys.length ? `<div class="table-wrap"><table><thead><tr><th>Passkey</th><th class="hide-sm">Gekoppelt</th><th>Zuletzt benutzt</th></tr></thead><tbody>
       ${keys.map((k) => `<tr><td><span class="name">${esc(k.name || "Passkey")}</span></td><td class="t hide-sm">${esc(dateTime(k.created))}</td><td class="t">${k.last_used ? ago(k.last_used) : "–"}</td></tr>`).join("")}
@@ -1679,6 +1710,38 @@ body.tablet.tablet-dim::after { opacity: .6; }
     return card("Dashboard-Zugriffe", body, { flush: true, sub: `Sitzungen hinter Cloudflare Access${only}`, right: `<span class="faint small">${total}</span>` });
   }
 
+  // Passkey logins: devices, end one or all others, wall tablet code.
+  function loginsCard(d) {
+    if (!d.login) return "";
+    const rows = d.logins || [];
+    const kind = (x) => (x.kind === "tablet" ? `<span class="pill" style="height:18px">Wandtablet</span>` : "");
+    const body = `<div class="table-wrap"><table><thead><tr><th>Gerät</th><th>Herkunft</th><th class="hide-sm">Angemeldet</th><th>Zuletzt</th><th></th></tr></thead><tbody>
+      ${rows.map((x) => `<tr><td><span class="name">${esc(x.label || "Gerät")}</span> ${kind(x)}${x.current ? ` <span class="pill ok" style="height:18px">dieses Gerät</span>` : ""}</td>
+        <td><span class="mono">${esc(x.ip || "")}</span>${x.country ? ` <span class="faint">· ${esc([x.city, x.country].filter(Boolean).join(", "))}</span>` : ""}</td>
+        <td class="t hide-sm">${esc(dateTime(x.created))}</td><td class="t">${ago(x.last)}</td>
+        <td style="text-align:right">${x.current ? `<button class="btn sm" data-logout>Abmelden</button>` : d.login.kind === "tablet" ? "" : `<button class="btn sm" data-revoke="${esc(x.ref)}">Beenden</button>`}</td></tr>`).join("")}
+      </tbody></table></div>`;
+    const tablet = loginUi.tablet && loginUi.tablet.expires > Date.now() / 1000
+      ? `<div class="notice ok" style="margin:0">Code fürs Wandtablet: <b class="mono" style="font-size:16px;letter-spacing:.12em">${esc(loginUi.tablet.code.replace(/(\d{4})(\d{4})/, "$1 $2"))}</b> · gültig bis ${esc(timeOnly(loginUi.tablet.expires).slice(0, 5))} Uhr. Auf dem Tablet: „Als Wandtablet anmelden“.</div>` : "";
+    const tools = d.login.kind === "tablet" ? "" : `<div class="row" style="gap:8px;flex-wrap:wrap">
+        ${rows.length > 1 ? `<button class="btn sm" data-revoke-all>Alle anderen beenden</button>` : ""}<button class="btn sm" data-tablet-code>${ICON.system}Wandtablet koppeln</button></div>`;
+    const msg = loginUi.msg ? `<div class="notice ${loginUi.tone}" style="margin:0">${esc(loginUi.msg)}</div>` : "";
+    return `<section class="card" id="logins"><div class="card-head"><div><h2>Sitzungen</h2><div class="sub">Mit Passkey angemeldete Geräte · Leerlauf und Höchstdauer beenden sie automatisch</div></div>
+      <span class="faint small">${rows.length}</span></div>${body}${tools || tablet || msg ? `<div class="card-body stack">${msg}${tablet}${tools}</div>` : ""}</section>`;
+  }
+
+  function chainCard(d) {
+    const c = d.chain;
+    if (!c || c.ok == null) return "";
+    const tone = c.ok ? "ok" : "bad";
+    const text = c.ok
+      ? `Alle ${c.checked ? "geprüften " : ""}Einträge unverändert${c.full ? ` · zuletzt vollständig geprüft ${rel(c.full)}` : ""}.`
+      : `Prüfkette gebrochen ab Eintrag ${c.broken ? c.broken.id : "?"}: ${c.broken ? c.broken.what : ""}.`;
+    return `<section class="card"><div class="card-head"><div><h2>Protokoll-Prüfkette</h2><div class="sub">HMAC-Kette über das Ereignisprotokoll · Home Assistant hält den neuesten Stand gegen</div></div>
+      <span class="pill ${tone}">${c.ok ? "unverändert" : "verändert"}</span></div><div class="card-body"><div class="notice ${tone}" style="margin:0">${esc(text)}</div>
+      ${c.head ? `<div class="faint small" style="margin-top:8px">Neuester Eintrag ${c.head.id} · <span class="mono">${esc(c.head.hash)}…</span></div>` : ""}</div></section>`;
+  }
+
   function canaryCard(d) {
     const rows = (d.canary || []).slice(0, 15);
     const body = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Köder</th><th>Herkunft</th><th class="hide-sm">Gerät</th></tr></thead><tbody>
@@ -1730,7 +1793,9 @@ body.tablet.tablet-dim::after { opacity: .6; }
         </div>
         <div class="grid two mt">${stackCard({ id: "failed-chart", title: "Fehlversuche pro Tag", sub: "Home Assistant und Worker", rows: s.days, series: SEC_SERIES, fmt: (n) => String(n), showTable: view.secTable, toggle: "sec" })}${sourcesCard(s)}</div>
         <div class="grid two mt">${score.html}${blockedCard(d, s)}</div>
+        ${loginsCard(d) ? `<div class="mt">${loginsCard(d)}</div>` : ""}
         <div class="mt">${sessionsCard(d)}</div>
+        ${chainCard(d) ? `<div class="mt">${chainCard(d)}</div>` : ""}
         <div class="mt">${canaryCard(d)}</div>
         <div class="mt">${secLogCard(d, view.secLog)}</div>`,
       bind: () => {
@@ -2368,6 +2433,7 @@ body.tablet.tablet-dim::after { opacity: .6; }
       const who = view.data.user || "";
       document.getElementById("who").textContent = who;
       document.getElementById("avatar").textContent = (who[0] || "B").toUpperCase();
+      document.getElementById("side-logout").hidden = !view.data.login;
       renderDashboard();
     } catch (err) {
       // A failed refresh keeps the last data on screen; only the first load shows the error.
@@ -2494,6 +2560,17 @@ body.tablet.tablet-dim::after { opacity: .6; }
     const healthAll = app.querySelector("[data-health-all]");
     if (healthAll) healthAll.addEventListener("click", () => { view.healthAll = !view.healthAll; renderDashboard(); });
     bindTimeline();
+    app.querySelectorAll("[data-logout]").forEach((b) => b.addEventListener("click", logout));
+    app.querySelectorAll("[data-revoke]").forEach((b) => b.addEventListener("click", () => loginAction("/api/logins/revoke", { ref: b.dataset.revoke }, () => Object.assign(loginUi, { msg: "Sitzung beendet.", tone: "ok" }))));
+    const revokeAll = app.querySelector("[data-revoke-all]");
+    if (revokeAll) revokeAll.addEventListener("click", () => loginAction("/api/logins/revoke", { all: true }, (r) => Object.assign(loginUi, { msg: `${r.revoked} Sitzung${r.revoked === 1 ? "" : "en"} beendet.`, tone: "ok" })));
+    const tabletCode = app.querySelector("[data-tablet-code]");
+    if (tabletCode) tabletCode.addEventListener("click", () => loginAction("/api/tablet/code", {}, (r) => Object.assign(loginUi, { tablet: r, msg: "" })));
+  }
+
+  async function logout() {
+    try { await post("/api/logout", {}); } catch { /* reload shows the login anyway */ }
+    location.reload();
   }
 
   // ------------------------------------------------------------ incident

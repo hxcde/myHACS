@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eef0f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1012" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bastion">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Bastion · Anmelden</title>
+<style>
+:root {
+  color-scheme: light dark;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+  --bg: #eef0f3; --panel: #ffffff; --chip-bg: #eef0f2; --hover: #f4f5f7; --border: #e2e4e8; --border-strong: #d2d5da;
+  --text: #14161a; --text-2: #5c6067; --text-3: #868a91; --primary: #006fff; --primary-hover: #005fe0;
+  --green: #18a957; --red: #e5383b; --red-soft: #fdecec; --orange: #e8930c; --orange-soft: #fdf3e2; --green-soft: #e7f6ee;
+  --shadow: 0 24px 60px rgb(16 24 40 / 14%), 0 2px 8px rgb(16 24 40 / 6%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1012; --panel: #1b1c1f; --chip-bg: #27282c; --hover: #232428; --border: #2a2b30; --border-strong: #393b41;
+    --text: #f6f7f8; --text-2: #a4a8af; --text-3: #72767d; --primary: #4593fc; --primary-hover: #64a6ff;
+    --green: #2fbf6c; --red: #f2555a; --red-soft: rgb(242 85 90 / 13%); --orange: #f2a93b; --orange-soft: rgb(242 169 59 / 13%); --green-soft: rgb(47 191 108 / 13%);
+    --shadow: 0 24px 60px rgb(0 0 0 / 55%);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1012; --panel: #1b1c1f; --chip-bg: #27282c; --hover: #232428; --border: #2a2b30; --border-strong: #393b41;
+  --text: #f6f7f8; --text-2: #a4a8af; --text-3: #72767d; --primary: #4593fc; --primary-hover: #64a6ff;
+  --green: #2fbf6c; --red: #f2555a; --red-soft: rgb(242 85 90 / 13%); --orange: #f2a93b; --orange-soft: rgb(242 169 59 / 13%); --green-soft: rgb(47 191 108 / 13%);
+  --shadow: 0 24px 60px rgb(0 0 0 / 55%);
+}
+:root[data-theme="light"] { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+body { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  background: radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 60%), var(--bg); }
+h1, h2, p { margin: 0; }
+button, input { font: inherit; color: inherit; }
+svg.icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.box { width: min(400px, 100%); background: var(--panel); border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow); padding: 32px 28px 24px;
+  display: flex; flex-direction: column; gap: 18px; text-align: center; }
+.mark { width: 64px; height: 64px; margin: 0 auto; border-radius: 20px; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--primary) 70%, #fff 30%), var(--primary)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 16%, transparent), 0 14px 30px -12px var(--primary); }
+.mark svg { width: 34px; height: 34px; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.sub { color: var(--text-2); margin-top: 4px; }
+.who { display: inline-flex; align-items: center; gap: 8px; margin: 0 auto; padding: 5px 12px; border-radius: 999px; background: var(--chip-bg); color: var(--text-2); font-size: 12.5px; max-width: 100%; }
+.who b { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--border-strong);
+  background: var(--panel); cursor: pointer; font-weight: 600; transition: background .15s ease, transform .1s ease; }
+.btn:hover { background: var(--hover); }
+.btn:active { transform: scale(.985); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.primary:hover { background: var(--primary-hover); }
+.btn[disabled] { opacity: .55; cursor: not-allowed; transform: none; }
+.btn.link { height: auto; border: 0; background: none; padding: 4px; color: var(--primary); font-weight: 500; }
+.msg { padding: 10px 12px; border-radius: 12px; font-size: 13px; text-align: left; }
+.msg.bad { background: var(--red-soft); color: var(--red); }
+.msg.warn { background: var(--orange-soft); color: var(--orange); }
+.msg.ok { background: var(--green-soft); color: var(--green); }
+.sep { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 12px; }
+.sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.alt { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.alt p { color: var(--text-2); font-size: 12.5px; }
+.code { display: flex; gap: 8px; }
+.code input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--panel);
+  font-size: 18px; letter-spacing: .18em; font-variant-numeric: tabular-nums; text-align: center; }
+.code input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.links { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.foot { color: var(--text-3); font-size: 11.5px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="box" id="box">
+  <div class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 4.5 7v8.2c0 7 4.9 13.2 11.5 14.8 6.6-1.6 11.5-7.8 11.5-14.8V7L16 2.5Z" fill="#fff" fill-opacity=".95"/><circle cx="16" cy="13.8" r="2.7" fill="var(--primary)"/><path d="M14.7 15.2h2.6l.9 5.6h-4.4l.9-5.6Z" fill="var(--primary)"/></svg></div>
+  <div><h1>Bastion</h1><p class="sub">Anmeldung mit Passkey</p></div>
+  <div class="who" id="who" hidden><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><b id="email"></b></div>
+  <div class="msg" id="msg" hidden></div>
+  <button class="btn primary" id="login"><svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/></svg>Mit Passkey anmelden</button>
+  <div class="links"><button class="btn link" data-show="pair">Passkey koppeln</button><button class="btn link" data-show="tablet">Als Wandtablet anmelden</button></div>
+  <div class="alt" id="pair" hidden>
+    <div class="sep">Neuer Passkey</div>
+    <p>In Home Assistant unter <b>Bastion → Alarmanlage → Einstellungen → Cloud-Worker</b> „Passkey koppeln“ wählen und den 8-stelligen Code eingeben.</p>
+    <div class="code"><input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="0000 0000" aria-label="Kopplungscode"><button class="btn primary" id="pair-go">Koppeln</button></div>
+  </div>
+  <div class="alt" id="tablet" hidden>
+    <div class="sep">Wandtablet</div>
+    <p>Auf einem angemeldeten Gerät unter <b>Sicherheit → Sitzungen</b> „Wandtablet koppeln“ wählen und den Code hier eingeben. Das Tablet bleibt lange angemeldet, darf aber nur anzeigen.</p>
+    <div class="code"><input id="tablet-code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="0000 0000" aria-label="Tablet-Code"><button class="btn primary" id="tablet-go">Anmelden</button></div>
+  </div>
+  <p class="foot">Geschützt durch Cloudflare Access und Passkey.</p>
+</main>
+<script>
+(() => {
+  "use strict";
+  try {
+    const t = localStorage.getItem("bastion-theme");
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  } catch { /* storage blocked */ }
+  const $ = (id) => document.getElementById(id);
+  const b64u = {
+    enc: (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+    dec: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)),
+  };
+  let busy = false;
+  const show = (text, tone) => {
+    const m = $("msg");
+    m.hidden = !text;
+    m.className = `msg ${tone || ""}`;
+    m.textContent = text || "";
+  };
+  const setBusy = (on) => {
+    busy = on;
+    document.querySelectorAll("button").forEach((b) => { b.disabled = on; });
+  };
+  const until = (ts) => new Date(ts * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+  async function post(path, body) {
+    let r;
+    try {
+      r = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
+    } catch {
+      throw new Error("Keine Verbindung.");
+    }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err = new Error(data.locked ? `${data.error} Wieder möglich ab ${until(data.locked)} Uhr.` : data.error || `Fehler ${r.status}`);
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+  const passkeyError = (err) => (err && err.name === "NotAllowedError" ? "Abgebrochen oder abgelaufen." : err && err.name === "InvalidStateError" ? "Dieser Passkey ist schon gekoppelt." : (err && err.message) || "Fehler");
+  const done = () => { show("Angemeldet …", "ok"); location.reload(); };
+
+  async function login() {
+    if (busy) return;
+    if (!window.PublicKeyCredential) return show("Dieser Browser unterstützt keine Passkeys.", "bad");
+    setBusy(true);
+    show("");
+    try {
+      const opt = await post("/api/login/begin", {});
+      const pk = opt.publicKey;
+      const cred = await navigator.credentials.get({ publicKey: { ...pk, challenge: b64u.dec(pk.challenge), allowCredentials: pk.allowCredentials.map((c) => ({ ...c, id: b64u.dec(c.id) })) } });
+      const r = cred.response;
+      await post("/api/login/finish", { challengeId: opt.challengeId, credential: {
+        id: cred.id, type: cred.type,
+        response: { clientDataJSON: b64u.enc(r.clientDataJSON), authenticatorData: b64u.enc(r.authenticatorData), signature: b64u.enc(r.signature), userHandle: r.userHandle ? b64u.enc(r.userHandle) : null },
+      } });
+      done();
+    } catch (err) {
+      setBusy(false);
+      if (err.data && err.data.pair) $("pair").hidden = false;
+      show(passkeyError(err), err.data && err.data.pair ? "warn" : "bad");
+    }
+  }
+
+  async function pair() {
+    if (busy) return;
+    if (!window.PublicKeyCredential) return show("Dieser Browser unterstützt keine Passkeys.", "bad");
+    setBusy(true);
+    show("Passkey wird angelegt …", "");
+    try {
+      const opt = await post("/api/passkey/begin", { code: $("pair-code").value });
+      const pk = opt.publicKey;
+      const cred = await navigator.credentials.create({ publicKey: {
+        ...pk, challenge: b64u.dec(pk.challenge), user: { ...pk.user, id: b64u.dec(pk.user.id) },
+        excludeCredentials: pk.excludeCredentials.map((c) => ({ ...c, id: b64u.dec(c.id) })),
+      } });
+      await post("/api/passkey/finish", { challengeId: opt.challengeId, credential: {
+        id: cred.id, type: cred.type,
+        response: { clientDataJSON: b64u.enc(cred.response.clientDataJSON), attestationObject: b64u.enc(cred.response.attestationObject) },
+      } });
+      done();
+    } catch (err) {
+      setBusy(false);
+      show(passkeyError(err), "bad");
+    }
+  }
+
+  async function tablet() {
+    if (busy) return;
+    setBusy(true);
+    show("");
+    try {
+      await post("/api/tablet/finish", { code: $("tablet-code").value });
+      if (!location.hash) history.replaceState(null, "", "/#tablet");
+      done();
+    } catch (err) {
+      setBusy(false);
+      show(passkeyError(err), "bad");
+    }
+  }
+
+  $("login").addEventListener("click", login);
+  $("pair-go").addEventListener("click", pair);
+  $("tablet-go").addEventListener("click", tablet);
+  $("pair-code").addEventListener("keydown", (e) => { if (e.key === "Enter") pair(); });
+  $("tablet-code").addEventListener("keydown", (e) => { if (e.key === "Enter") tablet(); });
+  document.querySelectorAll("[data-show]").forEach((b) => b.addEventListener("click", () => {
+    const el = $(b.dataset.show);
+    el.hidden = !el.hidden;
+    if (!el.hidden) el.querySelector("input").focus();
+  }));
+  fetch("/api/login/state", { credentials: "same-origin", headers: { accept: "application/json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => {
+      if (!s) return;
+      if (s.login) return location.reload();
+      $("email").textContent = s.email;
+      $("who").hidden = !s.email;
+      if (!s.passkeys) {
+        $("pair").hidden = false;
+        show("Für dieses Konto ist noch kein Passkey gekoppelt.", "warn");
+      }
+      if (s.locked) show(`Zu viele Fehlversuche. Wieder möglich ab ${until(s.locked)} Uhr.`, "bad");
+    })
+    .catch(() => {});
+})();
+</script>
+</body>
+</html>

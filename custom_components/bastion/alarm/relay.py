@@ -132,6 +132,8 @@ class AlarmRelay:
         self._presence_beat = 0.0
         self._zones_sent: str | None = None
         self._floorplan_acked: str | None = None
+        # Newest sealed log entry the worker reported; sent back so a cut-back log is noticed.
+        self._chain_seen: dict[str, Any] | None = None
         self.last_commands: list[dict[str, Any]] = []
 
     @property
@@ -384,6 +386,7 @@ class AlarmRelay:
             "presence": self._presence(),
             "zones": self.engine.zones(),
             **self._floorplan_payload(),
+            "chain_seen": self._chain_seen,
         }
 
     def _floorplan_payload(self) -> dict[str, Any]:
@@ -436,6 +439,9 @@ class AlarmRelay:
         if isinstance(result.get("dashboard"), str) and result["dashboard"].startswith("https://"):
             self.dashboard_url = result["dashboard"].rstrip("/")
         self._floorplan_acked = result.get("floorplan_hash") if isinstance(result.get("floorplan_hash"), str) else None
+        head = result.get("chain")
+        if isinstance(head, dict) and isinstance(head.get("id"), int) and isinstance(head.get("hash"), str):
+            self._chain_seen = {"id": head["id"], "hash": head["hash"][:64]}
         self._handle_acks(result.get("acks") or [])
         self._handle_notices(result.get("notices") or [])
         self._handle_attack(result.get("attack"))

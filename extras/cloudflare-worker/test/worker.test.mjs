@@ -32,6 +32,7 @@ class Stmt {
 function d1() {
   const db = new DatabaseSync(":memory:");
   return {
+    raw: db,
     prepare: (sql) => new Stmt(db, sql),
     batch: async (stmts) => {
       const out = [];
@@ -877,4 +878,198 @@ test("presence changes are logged for the day timeline", async () => {
   assert.equal(rows.length, 1, "unknown → home is no change");
   assert.equal(rows[0].user, "Anna");
   assert.deepEqual(JSON.parse(rows[0].detail), { home: false });
+});
+
+// ------------------------------------------------------------ passkey login
+const LOGIN = { ...ACCESS, LOGIN: "passkey" };
+const UA_IPAD = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+// A browser behind Access that keeps the session cookie.
+let browserKeys = null;
+async function browser(env, { email = "owner@example.com", ua = UA_IPHONE, iat = Math.floor(Date.now() / 1000) - 60, ip = "203.0.113.24", city = "Berlin" } = {}) {
+  // One Access key for all browsers of the tests; re-installed before each request (other tests replace it).
+  if (!browserKeys) browserKeys = { jwt: await accessSetup(), jwks: accessJwks };
+  const { jwt } = browserKeys;
+  const token = await jwt({ aud: ["aud123"], iss: "https://team.cloudflareaccess.com", exp: Math.floor(Date.now() / 1000) + 600, iat, email });
+  const b = { cookie: "" };
+  const req = (path, init = {}) => {
+    accessJwks = browserKeys.jwks;
+    const r = new Request(`${ORIGIN}${path}`, { ...init, headers: { "cf-access-jwt-assertion": token, "user-agent": ua, "cf-connecting-ip": ip, ...(b.cookie ? { cookie: b.cookie } : {}), ...(init.headers || {}) } });
+    Object.defineProperty(r, "cf", { value: { country: "DE", city } });
+    return r;
+  };
+  const keep = (res) => {
+    const set = res.headers.get("set-cookie");
+    if (set) b.cookie = set.split(";")[0].endsWith("=") ? "" : set.split(";")[0];
+    return res;
+  };
+  b.get = async (path) => keep(await worker.fetch(req(path), env, ctx));
+  b.post = async (path, body) => keep(await worker.fetch(req(path, { method: "POST", body: JSON.stringify(body), headers: { origin: ORIGIN, "content-type": "application/json" } }), env, ctx));
+  return b;
+}
+
+async function pairedLogin(env, b, auth) {
+  const code = "48213977";
+  await worker.fetch(signed("/remote", { op: "pair", code_hash: createHash("sha256").update(code).digest("hex"), expires: Math.floor(Date.now() / 1000) + 600 }), env);
+  const begin = await (await b.post("/api/passkey/begin", { code })).json();
+  return b.post("/api/passkey/finish", { challengeId: begin.challengeId, credential: auth.create(begin) });
+}
+
+async function passkeyLogin(b, auth, opts) {
+  const begin = await (await b.post("/api/login/begin", {})).json();
+  return b.post("/api/login/finish", { challengeId: begin.challengeId, credential: await auth.get(begin, opts) });
+}
+
+test("passkey login: login page first, pairing logs in, sessions end", async () => {
+  const env = makeEnv(LOGIN);
+  await worker.fetch(signed("/heartbeat", { ...HB, remote: { enabled: true, disarm: true } }), env);
+  const b = await browser(env);
+  const page = await b.get("/");
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Mit Passkey anmelden/);
+  assert.equal((await b.get("/api/summary")).status, 401);
+  assert.equal((await b.get("/api/live")).status, 401);
+  assert.equal((await b.post("/api/command/begin", { action: "arm", mode: "away" })).status, 401);
+  const state = await (await b.get("/api/login/state")).json();
+  assert.deepEqual([state.email, state.passkeys, state.login], ["owner@example.com", 0, false]);
+  assert.equal((await b.post("/api/login/begin", {})).status, 409, "no passkey yet");
+
+  // Pairing with the code from Home Assistant logs this device in.
+  const auth = await authenticator();
+  sent.length = 0;
+  const fin = await pairedLogin(env, b, auth);
+  assert.equal(fin.status, 200);
+  assert.match(fin.headers.get("set-cookie"), /^__Host-bastion=[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Lax; Max-Age=43200$/);
+  const sum = await (await b.get("/api/summary")).json();
+  assert.equal(sum.login.kind, "passkey");
+  assert.equal(sum.logins.length, 1);
+  assert.equal(sum.logins[0].current, true);
+  assert.ok(pushes("Anmeldung am Dashboard").length >= 1, "new device is pushed");
+  assert.match((await (await b.get("/")).text()), /Hausansicht/, "dashboard after login");
+
+  // The cookie alone is not enough: other Access identity or other device.
+  const other = await browser(env, { email: "other@example.com" });
+  other.cookie = b.cookie;
+  assert.equal((await other.get("/api/summary")).status, 401);
+  const ipad = await browser(env, { ua: UA_IPAD });
+  ipad.cookie = b.cookie;
+  assert.equal((await ipad.get("/api/summary")).status, 401);
+
+  // Second login on another device; "all others" ends the first one.
+  const mac = await browser(env, { ip: "198.51.100.7", city: "Hamburg" });
+  sent.length = 0;
+  assert.equal((await passkeyLogin(mac, auth)).status, 200);
+  assert.ok(pushes("neues Netz").length + pushes("neuer Ort").length >= 1);
+  assert.equal((await (await b.get("/api/summary")).json()).logins.length, 2);
+  assert.equal((await (await mac.post("/api/logins/revoke", { all: true })).json()).revoked, 1);
+  assert.equal((await b.get("/api/summary")).status, 401);
+  assert.equal((await mac.get("/api/summary")).status, 200);
+
+  // Idle timeout and logout.
+  env.DB.raw.prepare("UPDATE logins SET last = last - 3600").run();
+  assert.equal((await mac.get("/api/summary")).status, 401, "30 minutes idle");
+  assert.equal((await passkeyLogin(mac, auth)).status, 200);
+  const out = await mac.post("/api/logout", {});
+  assert.match(out.headers.get("set-cookie"), /Max-Age=0/);
+  assert.equal((await mac.get("/api/summary")).status, 401);
+  const events = (await (await (await browser(env)).get("/api/login/state")).json());
+  assert.equal(events.login, false);
+});
+
+test("passkey login: failed attempts lock the login and push", async () => {
+  const env = makeEnv(LOGIN);
+  const b = await browser(env);
+  const auth = await authenticator();
+  await pairedLogin(env, b, auth);
+  const fresh = await browser(env, { ip: "192.0.2.50" });
+  sent.length = 0;
+  for (let i = 0; i < 5; i++) {
+    const r = await passkeyLogin(fresh, auth, { origin: "https://evil.example" });
+    assert.equal(r.status, i < 4 ? 403 : 429);
+  }
+  assert.equal(pushes("gesperrt").length, 1);
+  assert.equal((await fresh.post("/api/login/begin", {})).status, 429, "locked for the account");
+  assert.ok((await (await fresh.get("/api/login/state")).json()).locked > Math.floor(Date.now() / 1000));
+  assert.ok((await events(env)).some((e) => e.event === "login_locked"));
+});
+
+test("wall tablet: code from a logged-in device, long session, look only", async () => {
+  const env = makeEnv(LOGIN);
+  await worker.fetch(signed("/heartbeat", { ...HB, remote: { enabled: true, disarm: true } }), env);
+  const phone = await browser(env);
+  const auth = await authenticator();
+  await pairedLogin(env, phone, auth);
+  const tab = await browser(env, { ua: UA_IPAD });
+  assert.equal((await tab.post("/api/tablet/finish", { code: "12345678" })).status, 403, "no code yet");
+  assert.equal((await tab.post("/api/tablet/code", {})).status, 401, "creating a code needs a login");
+  const { code } = await (await phone.post("/api/tablet/code", {})).json();
+  assert.match(code, /^\d{8}$/);
+  const fin = await tab.post("/api/tablet/finish", { code });
+  assert.equal(fin.status, 200);
+  assert.match(fin.headers.get("set-cookie"), /Max-Age=7776000/);
+  assert.equal((await tab.post("/api/tablet/finish", { code })).status, 403, "single use");
+  const sum = await (await tab.get("/api/summary")).json();
+  assert.equal(sum.login.kind, "tablet");
+  assert.equal(sum.remote.readonly, true);
+  assert.deepEqual(sum.remote.passkeys, []);
+  assert.equal((await tab.post("/api/command/begin", { action: "arm", mode: "away" })).status, 403);
+  assert.equal((await tab.post("/api/tablet/code", {})).status, 403);
+  // No idle timeout for the tablet.
+  env.DB.raw.prepare("UPDATE logins SET last = last - 86400 WHERE kind = 'tablet'").run();
+  assert.equal((await tab.get("/api/summary")).status, 200);
+});
+
+test("Access hardening: allowed e-mails and age of the Access login", async () => {
+  const env = makeEnv({ ...ACCESS, ALLOWED_EMAILS: "Owner@Example.com, second@example.com" });
+  await worker.fetch(signed("/heartbeat", HB), env);
+  assert.equal((await (await browser(env)).get("/api/summary")).status, 200);
+  assert.equal((await (await browser(env, { email: "intruder@example.com" })).get("/api/summary")).status, 404);
+  assert.equal((await (await browser(env, { iat: Math.floor(Date.now() / 1000) - 8 * 86400 })).get("/api/summary")).status, 404);
+});
+
+test("rate limit for the dashboard", async () => {
+  const env = makeEnv({ ...ACCESS, API_RATE: "3" });
+  const b = await browser(env, { ip: "198.51.100.99" });
+  for (let i = 0; i < 3; i++) assert.equal((await b.get("/api/live")).status, 200);
+  assert.equal((await b.get("/api/live")).status, 429);
+});
+
+test("event log chain: sealed, verified, tampering and cut-back found", async () => {
+  const env = makeEnv(ACCESS);
+  for (let i = 0; i < 5; i++) await worker.fetch(signed("/alert", { event: "armed", push: false, state: "armed_away", mode: "away" }), env);
+  const res = await (await worker.fetch(signed("/heartbeat", HB), env)).json();
+  const rows = await events(env);
+  assert.ok(rows.every((r) => /^[a-f0-9]{64}$/.test(r.chain)), "all events sealed");
+  assert.equal(res.chain.id, rows[rows.length - 1].id);
+  await cron(env);
+  const b = await browser(env);
+  assert.equal((await (await b.get("/api/summary")).json()).chain.ok, true);
+  // Someone edits a row in D1.
+  env.DB.raw.prepare("UPDATE events SET mode = 'home' WHERE id = ?").run(rows[1].id);
+  sent.length = 0;
+  await cron(env);
+  const sum = await (await b.get("/api/summary")).json();
+  assert.equal(sum.chain.ok, false);
+  assert.equal(sum.chain.broken.id, rows[1].id);
+  assert.equal(pushes("Protokoll verändert").length, 1);
+  // Someone deletes the newest rows: Home Assistant's copy no longer matches.
+  const env2 = makeEnv(ACCESS);
+  await worker.fetch(signed("/alert", { event: "armed", push: false, state: "armed_away", mode: "away" }), env2);
+  const head = (await (await worker.fetch(signed("/heartbeat", HB), env2)).json()).chain;
+  env2.DB.raw.prepare("DELETE FROM events WHERE id = ?").run(head.id);
+  await worker.fetch(signed("/heartbeat", { ...HB, chain_seen: head }), env2);
+  assert.ok((await events(env2)).some((e) => e.event === "tamper"));
+});
+
+test("event log chain: retention keeps the chain valid", async () => {
+  const env = makeEnv({ ...ACCESS, LOG_DAYS: "30" });
+  const old = Math.floor(Date.now() / 1000) - 40 * 86400;
+  for (let i = 0; i < 3; i++) await worker.fetch(signed("/alert", { event: "armed", push: false, state: "armed_away", mode: "away", ts: old + i }), env);
+  await worker.fetch(signed("/alert", { event: "disarmed", push: false, state: "disarmed" }), env);
+  await cron(env);
+  const rows = await events(env);
+  assert.deepEqual(rows.map((r) => r.event), ["disarmed"]);
+  await cron(env);
+  const b = await browser(env);
+  assert.equal((await (await b.get("/api/summary")).json()).chain.ok, true);
 });

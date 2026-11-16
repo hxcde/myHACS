@@ -129,3 +129,14 @@ async def test_zone_health(hass: HomeAssistant, alarm) -> None:  # noqa: F811
     assert zones["Window"]["battery"] == 80
     assert zones["Door"]["seen"] > 0
     assert "battery" not in alarm.zones(health=False)[0]
+
+
+async def test_chain_head_is_echoed(hass: HomeAssistant, alarm, aioclient_mock) -> None:  # noqa: F811
+    relay = await _enable_worker(hass, alarm, aioclient_mock)
+    assert _payload(_calls(aioclient_mock, "/heartbeat")[-1])["chain_seen"] is None
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(f"{WORKER}/heartbeat", json={"ok": True, "acks": [], "chain": {"id": 42, "hash": "ab" * 32}})
+    await relay._async_heartbeat()
+    await relay._async_heartbeat()
+    assert _payload(_calls(aioclient_mock, "/heartbeat")[-1])["chain_seen"] == {"id": 42, "hash": "ab" * 32}
+    relay.unload()
