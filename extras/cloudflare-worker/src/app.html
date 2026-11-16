@@ -332,6 +332,10 @@ td .name { font-weight: 600; }
 .btn.ctl svg.icon { width: 22px; height: 22px; color: var(--primary); }
 .btn.ctl small { font-weight: 400; color: var(--text-2); font-size: 11px; }
 .btn.ctl.current { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); background: var(--primary-soft); }
+.btn.ctl.static { cursor: default; opacity: .55; }
+.btn.ctl.static.current { opacity: 1; }
+.btn.ctl.static:active { transform: none; }
+.btn[disabled].ctl.current { opacity: 1; cursor: default; }
 .notice { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-s); background: var(--panel-2); border: 1px solid var(--border); font-size: 13px; line-height: 1.5; }
 .notice.ok { background: var(--green-soft); border-color: transparent; }
 .notice.warn { background: var(--orange-soft); border-color: transparent; }
@@ -862,23 +866,33 @@ td .name { font-weight: 600; }
     return rows;
   }
 
+  // The four modes are always shown; they are buttons only with remote control and a passkey.
   function controls(d) {
-    const r = d.remote;
-    if (!r || !r.enabled) return "";
+    const r = d.remote || {};
     const hb = d.hb || {};
     const keys = r.passkeys || [];
-    if (!hasWebAuthn()) return `<div class="faint small">Fernsteuerung: Dieser Browser unterstützt keine Passkeys.</div>`;
-    if (!keys.length) {
-      return `<div class="notice" style="margin:0">Fernsteuerung ist freigegeben, aber noch kein Passkey gekoppelt. <button class="btn sm" data-scroll="remote">Passkey koppeln</button></div>`;
-    }
+    const live = Boolean(r.enabled && keys.length && hasWebAuthn());
     const current = !hb.state || hb.state === "disarmed" ? "disarm" : hb.mode ? `arm_${hb.mode}` : "";
-    const intent = remoteUi.intent && ACTIONS[remoteUi.intent] && (remoteUi.intent !== "disarm" || r.disarm) ? remoteUi.intent : null;
+    const pending = hb.state === "arming" || hb.state === "pending" || hb.state === "triggered";
+    const tiles = Object.entries(ACTIONS).map(([k, a]) => {
+      const usable = live && (k !== "disarm" || r.disarm) && !hb.offline && !remoteUi.busy;
+      const state = k === current ? (pending ? STATE_VIEW[hb.state][0] : "Aktiv") : k === "disarm" ? "Ausschalten" : "Scharf";
+      const attrs = usable ? `data-remote="${k}"` : `disabled aria-disabled="true"`;
+      return `<button class="btn ctl ${k === current ? "current" : ""} ${usable ? "" : "static"}" ${attrs}>${ICON[a.icon]}<span>${esc(a.label)}</span><small>${esc(state)}</small></button>`;
+    }).join("");
+    let note = "";
+    if (!r.enabled) {
+      const old = hb.version && hb.version.localeCompare("0.5.0", undefined, { numeric: true }) < 0;
+      note = `Anzeige des aktuellen Modus. Schalten von hier: ${old ? "Bastion auf 0.5.0 aktualisieren, dann " : ""}in Home Assistant unter Alarmanlage → Einstellungen → Cloud-Worker die Fernsteuerung erlauben.`;
+    } else if (!hasWebAuthn()) note = "Dieser Browser unterstützt keine Passkeys, Schalten ist hier nicht möglich.";
+    else if (!keys.length) note = `Noch kein Passkey gekoppelt. <button class="btn sm" data-scroll="remote">Passkey koppeln</button>`;
+    else if (!r.disarm) note = "Unscharf schalten aus der Ferne ist in Home Assistant nicht freigegeben.";
+    const intent = live && remoteUi.intent && ACTIONS[remoteUi.intent] && (remoteUi.intent !== "disarm" || r.disarm) ? remoteUi.intent : null;
     const msg = remoteUi.msg ? `<div class="notice ${remoteUi.tone}" style="margin:0">${esc(remoteUi.msg)}${remoteUi.force ? `<br><button class="btn sm" data-remote-force="${remoteUi.force}">Trotzdem scharf schalten</button>` : ""}</div>` : "";
-    const buttons = Object.entries(ACTIONS).filter(([k]) => k !== "disarm" || r.disarm).map(([k, a]) => `<button class="btn ctl ${k === current ? "current" : ""}" data-remote="${k}" ${remoteUi.busy || hb.offline ? "disabled" : ""}>
-      ${ICON[a.icon]}<span>${esc(a.label)}</span><small>${k === current ? "Aktuell" : k === "disarm" ? "Ausschalten" : "Scharf"}</small></button>`).join("");
     return `${intent ? `<div class="notice warn" style="margin:0">Aus der Erinnerung: <b>${esc(ACTIONS[intent].label)}</b> scharf schalten?<br>
         <button class="btn sm primary" data-remote="${intent}" ${remoteUi.busy ? "disabled" : ""}>Mit Passkey bestätigen</button><button class="btn sm" data-remote-dismiss>Nein</button></div>` : ""}
-      <div class="ctl-grid">${buttons}</div>${msg}`;
+      <div class="ctl-grid">${tiles}</div>${msg}
+      ${note ? `<div class="faint small">${note}</div>` : ""}`;
   }
 
   function consoleCard(d, a) {
