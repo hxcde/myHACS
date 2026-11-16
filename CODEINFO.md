@@ -45,6 +45,7 @@ custom_components/bastion/
                          Meldungen des Workers (notices), Fernbefehle abholen/prüfen/ausführen, Passkey-Verwaltung (/remote)
     presence.py          Erinnerung „niemand zuhause, nicht scharf“ (Haushalt oder person.*, einmal pro Abwesenheit)
     household.py         Personen im Haushalt: verknüpfter Tracker oder Handy-IP alle 30 s (TCP, ICMP, ARP mit Neuprüfung)
+    floorplan.py         Grundriss-JSON prüfen (clean_floorplan, nur bekannte Felder, ≤ 64 KB) und Prüfsumme (plan_hash)
     sounds.py            Töne auf Medienplayern: Schleifen (Alarm/Countdown), Einmal-Töne, Lautstärke sichern/wiederherstellen
   alarm_control_panel.py Alarm-Entität (Aus/Zuhause/Nacht/Abwesend/Panik)
   gitsync/
@@ -70,8 +71,12 @@ extras/cloudflare-worker/     Worker: Port-Prüfung, Totmannschalter, Protokoll 
   src/sessions.js      Zugriffsprotokoll des Dashboards (Sitzungen pro Gerät/IP, Meldung bei neuem Gerät/Land)
   src/uptime.js        Ausfälle aus Lücken im Lebenszeichen (Art, Ursache), Übernahme alter Ausfälle aus dem Protokoll
   src/notify.js        Kanäle Pushover/Telegram/ntfy/Webhook, Pushover-Receipts (Quittierung, Abbruch)
-  src/access.js        Prüfung des Cloudflare-Access-JWT (RS256, Audience, Aussteller, Ablauf)
-  src/app.html         Dashboard und Vorfallseite (ein Text-Modul, CSP mit Nonce)
+  src/access.js        Prüfung des Cloudflare-Access-JWT (RS256, Audience, Aussteller, Ablauf, Alter), ALLOWED_EMAILS
+  src/login.js         Passkey-Login nach Access (LOGIN=passkey): Sitzungen, Leerlauf/Höchstdauer, Sperre, Wandtablet-Code, Push
+  src/chain.js         HMAC-Kette über das Ereignisprotokoll: versiegeln, scheibenweise prüfen, Echo von HA, Aufbewahrung
+  src/app.html         Dashboard und Vorfallseite (ein Text-Modul, CSP mit Nonce): Alarmanlage mit Tagesverlauf,
+                       Hausansicht (3D-Grundriss, Sensor-Gesundheit), Wandtablet (#tablet), Verfügbarkeit, Sicherheit
+  src/login.html       Login-Seite (Passkey, Koppeln mit HA-Code, Wandtablet-Code)
   src/pwa.js           Web-App-Manifest, Service Worker (nur Offline-Hinweis, kein Cache), Icons (base64)
   test/                node:test mit D1-Nachbildung über node:sqlite
 extras/sounds/build.py        Erzeugt die Alarmtöne synthetisch (ffmpeg)
@@ -140,6 +145,14 @@ Dashboard (Access) ─► /api/command/begin ─► Challenge (D1, einmalig) ─
 HA relay (Tick 15 s, bei fast=true alle 2 s) ─► POST /commands {done} ◄─ {commands mit HMAC, fast}
    ─► Signatur, Alter, Freigabe prüfen ─► engine.async_arm/async_disarm(trusted=True) ─► Ergebnis mit nächstem Poll
 Kopplung: HA ws bastion/alarm/remote pair ─► POST /remote {code_hash} ─► Dashboard /api/passkey/begin {code} ─► finish
+
+Grundriss: Panel ─► ws bastion/alarm/save {floorplan} ─► clean_floorplan ─► config (ersetzt, nicht gemischt)
+   relay ─► Lebenszeichen {floorplan_hash, floorplan nur wenn Worker die Prüfsumme nicht bestätigt hat}
+         ◄─ {floorplan_hash} ─► nächste Lebenszeichen nur mit Prüfsumme; Zonen mit battery/seen (engine._health)
+Dashboard-Login (LOGIN=passkey): Access-JWT ─► login.currentLogin (Cookie-Hash in logins, Identität, Gerät, Leerlauf)
+   ohne Sitzung: GET / = login.html, /api/* = 401 ─► /api/login/begin|finish (Passkey) ─► Set-Cookie
+Prüfkette: Lebenszeichen/Cron ─► chain.seal (HMAC über Vorgänger + Eintrag) ─► Antwort {chain} ─► relay ─► chain_seen
+   Cron ─► chain.verifySlice (500 Einträge pro Minute, endlos) ─► state chain_check ─► Dashboard/Push bei Bruch
 
 Lebenszeichen ─► uptime.onHeartbeat (Lücke/Neustart ─► outages) │ Cron Funkstille ─► uptime.onOffline (offener Ausfall)
 Jeder Request ─► canary.detectCanary (Token/Webhook) ─► 401/200 wie HA, canary_hits, notice, Meldung

@@ -137,6 +137,8 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
    - Pro Person entstehen ein Anwesenheitssensor `binary_sensor.bastion_anwesenheit_<name>` und `device_tracker.bastion_<name>` (lässt sich HA-Personen zuordnen), dazu `binary_sensor.bastion_jemand_zuhause` und das Event `bastion_presence` bei Kommen und Gehen. Erlaubt sind private IP-Adressen und Hostnamen. Damit es zuverlässig klappt: im Router eine feste IP pro Handy vergeben, am iPhone „Private WLAN-Adresse“ für das Heim-WLAN auf „Fest“ oder „Aus“, bei Android „Zufällige MAC“ aus. Das Dashboard zeigt nur Namen und zuhause/weg, keine Adressen.
 8. **Fernsteuerung** (Cloud-Worker, unten): „Fernsteuerung erlauben“ schaltet Scharf- und Unscharfschalten aus dem Worker-Dashboard frei, „Auch unscharf schalten erlauben“ zusätzlich das Unscharfschalten. Passkeys koppeln und entfernen geht nur hier (siehe Cloud-Worker → Fernsteuerung).
 9. **Erinnerung „niemand zuhause“:** Sind alle gewählten Personen (leer = die Personen aus Punkt 7, sonst alle `person.*`) weg und die Anlage ist unscharf, kommt nach der eingestellten Zeit (Standard 20 Min.) eine Erinnerung aufs Handy und über den Worker. Mit Fernsteuerung öffnet der Link das Dashboard mit „Abwesend scharf schalten?“, bestätigt per Passkey. Eine Erinnerung pro Abwesenheit, sie setzt sich zurück, sobald jemand heimkommt. Im Protokoll steht sie als „Niemand zuhause, nicht scharf“.
+10. **Grundriss:** Den Grundriss der Wohnung als JSON-Datei importieren (oder einfügen). Er bleibt in HA und im Worker hinter Access, Bastion liefert keinen mit. Danach die Flächen den Bastion-Räumen zuordnen (leer = automatisch über Name oder Stichwörter) und den Glastüren und der Wohnungstür ihren Sensor. HA schickt den Plan nur, wenn er sich geändert hat (Prüfsumme).
+   - Format: `size` [Breite, Höhe], `areas` (id, label, rect [x, y, b, h], outdoor, room, keywords, label_at), `walls` (points, exterior), `glazing` (from, to, panels, door_panels, transom, sensor), `dividers`, `entrance` (from, to, sensor), `boxes` (points, height, bottom, kind furniture/soft/screen/shade, group). Einheiten frei, Wände sind 50 hoch. Höchstens 64 KB.
 
 **Vorfälle:** Vorwarnung und anschließender Alarm bilden einen Vorfall mit eigener ID. Er endet mit dem Unscharf- oder erneuten Scharfschalten. Alle Protokolleinträge und Kamerabilder des Vorfalls tragen diese ID.
 
@@ -211,6 +213,10 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 
 **Dashboard (hinter Cloudflare Access):**
 - Tab „Alarmanlage“: Status mit Modus-Knöpfen (schaltbar mit Fernsteuerung), Systemstatus, Anwesenheit, Zonen (Räume und Sensoren mit bereit/offen/gestört und ob sie gerade überwacht sind; HA meldet Änderungen innerhalb von 15 Sekunden), Ereignisprotokoll, Kennzahlen (Alarme, Vorwarnungen, Scharf-Anteil, Quittierzeit, Funkstille, falsche Codes), Scharf-Zeit pro Tag nach Modus, häufigste Auslöser, Vorfälle mit Kamerabildern und das Protokoll.
+- Tagesverlauf (Tab „Alarmanlage“): pro Tag die Zustände der Anlage (scharf nach Modus, Vorwarnung, Alarm), wer zuhause war, Funkstille und Ereignisse wie falsche Codes. Mit den Pfeilen durch die Tage blättern, Hover zeigt Uhrzeit und Dauer. Kommen und Gehen meldet HA mit dem Lebenszeichen, es steht auch im Ereignisprotokoll.
+- Tab „Hausansicht“: der Grundriss als 3D-Modell (Kamera schräg von vorn) mit Live-Zustand pro Raum: überwacht, offen, gestört, Vorwarnung und Alarm pulsieren. Offene Glastüren leuchten orange, über der Wohnungstür steht „Tür zu/offen“. Raum antippen zeigt seine Sensoren mit Batterie. Ohne Grundriss erscheinen die Zonen.
+- Sensor-Gesundheit (Tab „Hausansicht“): Batterie und letzte Meldung pro Sensor (vom Gerät des Sensors, auch über einen eigenen Batterie-Sensor). Schwach unter 25 %, fast leer unter 10 %, „meldet sich nicht“ nach 48 Stunden ohne Meldung. Schwache Batterien stehen auch im Systemstatus.
+- Wandtablet (`#tablet`, Knopf in der Hausansicht): Vollbild mit Uhr, Zustand, Modi, Personen, Hinweisen und Grundriss. Der Bildschirm bleibt an (Wake Lock), der Inhalt wandert jede Minute ein paar Pixel gegen Einbrennen, 22–6 Uhr gedimmt (Antippen hellt eine Minute auf, bei Alarm nie gedimmt). Mit Passkey-Login das Tablet über einen Code koppeln (siehe unten), dann bleibt es lange angemeldet und kann nur anzeigen.
 - Tab „Verfügbarkeit“: siehe unten.
 - Tab „Sicherheit“: siehe unten.
 - Einrichten:
@@ -231,6 +237,33 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Im Alarm-Protokoll steht als Benutzer „Dashboard (<E-Mail>)“. Dashboard und HA zeigen die letzten Befehle mit Ergebnis.
 - Passkeys entfernen: in HA unter Fernsteuerung (einzeln oder alle). Ein neuer Passkey, ein entfernter Passkey und jeder fehlgeschlagene Passkey-Versuch werden gemeldet bzw. als Angriff gezählt.
 - Passkeys hängen an der Dashboard-Domain (`DASHBOARD_HOST`). Wechselt die Domain, müssen sie neu gekoppelt werden.
+
+**Passkey-Login (`LOGIN=passkey`):**
+- Nach Cloudflare Access verlangt das Dashboard eine Anmeldung mit Passkey. Ohne gültige Anmeldung liefert der Worker nur die Login-Seite, jede API antwortet 401.
+- Sitzung: Cookie `__Host-bastion` (Secure, HttpOnly, SameSite=Lax), der Worker speichert nur den SHA-256 des Tokens. Sie gilt nur mit derselben Access-Identität und demselben Gerät (Browser/System), endet nach `LOGIN_IDLE_MINUTES` (Standard 30) ohne geöffnete Seite und spätestens nach `LOGIN_MAX_HOURS` (Standard 12).
+- Erster Passkey: auf der Login-Seite „Passkey koppeln“ mit dem Code aus HA (wie bei der Fernsteuerung). Das Koppeln meldet das Gerät gleich an. Vorhandene Passkeys der Fernsteuerung gelten auch für den Login.
+- Push bei Anmeldung von neuem Gerät, neuem Netz (/24 bzw. /48), neuem Ort oder Land (`LOGIN_ALERT`: `new` Standard, `all`, `off`). Jede Anmeldung steht im Ereignisprotokoll.
+- Sperre: `LOGIN_FAILS` (Standard 5) fehlgeschlagene Anmeldungen eines Kontos oder einer IP in 15 Minuten sperren die Anmeldung für 15 Minuten, mit Push und Eintrag „Anmeldung gesperrt“. Fehlversuche zählen außerdem zur Angriffserkennung.
+- Tab „Sicherheit“ → „Sitzungen“: angemeldete Geräte mit Herkunft, einzeln beenden, „Alle anderen beenden“, Abmelden (auch unten in der Seitenleiste).
+- Wandtablet koppeln: unter „Sitzungen“ „Wandtablet koppeln“ erzeugt einen 8-stelligen Code (10 Minuten, einmalig). Auf dem Tablet nach Access „Als Wandtablet anmelden“ wählen und den Code eingeben. Das Tablet bleibt `TABLET_DAYS` (Standard 90) angemeldet, ohne Leerlauf-Ende, darf aber nicht schalten, keine Passkeys koppeln und keine Codes erzeugen.
+- Läuft die Access-Sitzung ab, lädt das Dashboard die Seite neu und geht über den Access-Login (bei automatischer Weiterleitung zum Identity-Provider meist ohne Eingabe).
+
+**Härtung des Zugriffs:**
+- `ALLOWED_EMAILS` (als Secret): nur diese Access-Identitäten, auch wenn die Access-Regel falsch eingestellt ist.
+- `ACCESS_MAX_AGE_HOURS` (Standard 168): ältere Access-Anmeldungen (iat) lehnt der Worker ab, auch wenn Access sie noch akzeptiert.
+- `API_RATE` (Standard 240): Anfragen pro IP und Minute an Dashboard und API. Mit einem Rate-Limit-Binding `RATE_LIMITER` zählt Cloudflare über alle Instanzen.
+- Header: CSP mit Nonce, HSTS, COOP/CORP, Permissions-Policy (Kamera, Mikrofon, Ort aus; Passkeys nur eigene Seite), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`.
+- Empfohlen in Cloudflare (Dashboard → Security → WAF → Custom rules), damit Fremde schon am Rand abprallen:
+  - `(http.host eq "<DASHBOARD_HOST>" and ip.src.country ne "DE" and not starts_with(http.request.uri.path, "/pushover/"))` → Block
+  - `(http.host eq "<DASHBOARD_HOST>" and (cf.client.bot or ip.src.country eq "T1"))` → Block
+  - Rate limiting rule: `http.host eq "<DASHBOARD_HOST>"`, 100 Anfragen in 10 Sekunden pro IP → Block.
+- Access: nur ein Identity-Provider mit MFA (kein E-Mail-Code), automatische Weiterleitung, kurze Sitzungsdauer. Liefert der Provider `amr`, zusätzlich „Require → Authentication method → mfa“.
+
+**Prüfkette des Protokolls:**
+- Jedes Ereignis bekommt eine HMAC über seinen Inhalt und den Wert des vorigen Ereignisses. Der Schlüssel wird aus `ALARM_SECRET` abgeleitet, liegt also nicht in D1. Wer in D1 einen Eintrag ändert, einfügt oder löscht, bricht die Kette und kann sie ohne das Secret nicht neu berechnen.
+- Versiegelt wird mit jedem Lebenszeichen und jede Minute, geprüft jede Minute in Scheiben zu 500 Einträgen, immer wieder von vorn. HA bekommt den neuesten versiegelten Eintrag und schickt ihn mit dem nächsten Lebenszeichen zurück. Fehlt er oder ist er anders, wurde das Protokoll gekürzt.
+- Ein Bruch meldet „Protokoll verändert“ über alle Kanäle, steht im Systemstatus und unter Sicherheit → „Protokoll-Prüfkette“.
+- Die Aufbewahrung löscht nur vom ältesten Ende und merkt sich den letzten gelöschten Wert als neuen Anfang.
 
 **Verfügbarkeit:**
 - Jede Lücke im Lebenszeichen wird als Ausfall gespeichert: geplanter Neustart (HA hat das Herunterfahren gemeldet), Rechner neu gestartet (Stromausfall), Neustart ohne Ankündigung (Absturz), Netzwerk/Internet (HA lief durch) und laufende Funkstille.
@@ -277,6 +310,7 @@ Tests: `node --import ./test/register.mjs --test test/worker.test.mjs` (Node ≥
 - Befehle nimmt der Worker nur mit Access-Login und Passkey an und nur, wenn HA die Fernsteuerung erlaubt. HA prüft Signatur, Alter und Freigabe jedes Befehls noch einmal selbst. Aktionen im Dashboard verlangen zusätzlich dieselbe Herkunft (Origin), Kopplungscodes und Passkey-Challenges sind einmalig.
 - Pushover-Rückrufe tragen ein geheimes Pfad-Token und werden zusätzlich bei Pushover gegengeprüft.
 - Die Seiten senden eine strikte Content-Security-Policy und `Referrer-Policy: no-referrer`, damit Vorfall-Tokens nicht weitergegeben werden.
+- Mit `LOGIN=passkey` verlangt jeder Abruf von Daten zusätzlich eine Passkey-Sitzung; das Wandtablet darf nur lesen.
 
 **Port-Prüfung:**
 
@@ -319,4 +353,10 @@ Der Worker baut eine TCP-Verbindung zur IP des Aufrufers auf (`CF-Connecting-IP`
 | Befehl „Nicht abgeholt“ | HA offline oder Worker-URL/Secret in HA falsch | Cloud-Worker → Testen. Befehle gelten 90 Sekunden |
 | HA lehnt Befehle mit „signature“ ab | `ALARM_SECRET` im Worker und in HA verschieden | Secret abgleichen |
 | Passkey wird nicht angeboten | Dashboard über andere Domain als bei der Kopplung geöffnet | Über `DASHBOARD_HOST` öffnen oder neu koppeln |
+| Login-Seite: „Zu viele Fehlversuche“ | 5 fehlgeschlagene Passkey-Anmeldungen in 15 Min. (Konto oder IP) | 15 Minuten warten. Waren das nicht du: Sicherheit → Sitzungen prüfen, Passkeys in HA kontrollieren |
+| Dashboard fragt ständig nach dem Passkey | Leerlauf (`LOGIN_IDLE_MINUTES`) zu kurz, oder Browser/System des Geräts hat sich geändert (Update ändert den Gerätenamen nicht, ein anderer Browser schon) | Leerlauf erhöhen, im selben Browser bleiben |
+| Wandtablet zeigt „offline“ | Access-Sitzung abgelaufen und der Identity-Provider verlangt eine Eingabe | Am Tablet einmal anmelden; Sitzungsdauer in Access bzw. beim Provider verlängern |
+| Hausansicht ohne Grundriss | Plan in HA nicht gespeichert oder HA noch ohne Lebenszeichen seit dem Speichern | In HA unter Grundriss speichern, ein Intervall warten |
+| Raum im Grundriss bleibt grau | Fläche keinem Bastion-Raum zugeordnet | In HA unter Grundriss die Fläche dem Raum zuordnen |
+| „Protokoll verändert“ | Prüfkette gebrochen: Daten in D1 geändert oder gelöscht, oder `ALARM_SECRET` gewechselt | Bei gewechseltem Secret ist das erwartbar (alte Einträge gegen neuen Schlüssel); sonst D1-Zugriffe und API-Tokens prüfen |
 | Fehlversuche werden nicht gezählt | Logger `homeassistant.components.http.ban` steht in der Logger-Konfiguration auf `error` | Bastion setzt ihn auf `warning`. Diese Einstellung in `logger:` nicht wieder überschreiben |

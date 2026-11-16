@@ -816,13 +816,25 @@ body.tablet.tablet-dim::after { opacity: .6; }
   const where = (e) => [e.sensor, e.room].filter(Boolean).join(" · ");
   const isArmed = (state) => Boolean(state && (state.startsWith("armed_") || state === "pending" || state === "triggered"));
 
+  // Cloudflare Access answers an expired session with a redirect to its login: the page reloads
+  // and runs through Access (silently while the identity provider still knows the device).
+  const accessExpired = (r) => {
+    if (r.type !== "opaqueredirect" && r.status !== 302) return false;
+    if (!view.reloading) {
+      view.reloading = true;
+      location.reload();
+    }
+    return true;
+  };
+
   async function api(path) {
     let r;
     try {
-      r = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
+      r = await fetch(path, { credentials: "same-origin", redirect: "manual", headers: { accept: "application/json" } });
     } catch {
       throw new Error("Keine Verbindung. Die Daten werden geladen, sobald das Gerät wieder online ist.");
     }
+    if (accessExpired(r)) throw new Error("Anmeldung bei Cloudflare Access abgelaufen.");
     // Passkey login expired: the page itself shows the login.
     if (r.status === 401) {
       location.reload();
@@ -1038,10 +1050,11 @@ body.tablet.tablet-dim::after { opacity: .6; }
   async function post(path, body) {
     let r;
     try {
-      r = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
+      r = await fetch(path, { method: "POST", credentials: "same-origin", redirect: "manual", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
     } catch {
       throw new Error("Keine Verbindung.");
     }
+    if (accessExpired(r)) throw new Error("Anmeldung bei Cloudflare Access abgelaufen.");
     const data = await r.json().catch(() => ({}));
     if (r.status === 401 && data.error === "login") {
       location.reload();
