@@ -3,6 +3,8 @@
 // The dashboard is only served when the request carries a valid token for this
 // application (audience ACCESS_AUD, issuer https://ACCESS_TEAM_DOMAIN). That way
 // the workers.dev address, which Access does not cover, cannot bypass the login.
+// Defense in depth against a misconfigured Access policy: ALLOWED_EMAILS limits the
+// identities, ACCESS_MAX_AGE_HOURS the age of the Access login (iat).
 
 const keyCache = new Map(); // team -> { at, keys: Map(kid -> CryptoKey) }
 const KEY_TTL = 3600 * 1000;
@@ -40,6 +42,10 @@ async function loadKeys(team, force = false) {
   return map;
 }
 
+export function allowedEmails(env) {
+  return String(env.ALLOWED_EMAILS || "").toLowerCase().split(/[\s,;]+/).filter((e) => e.includes("@"));
+}
+
 export function accessConfigured(env) {
   return Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
 }
@@ -64,6 +70,8 @@ export async function verifyAccess(request, env) {
   const now = Date.now() / 1000;
   if (typeof payload.exp !== "number" || payload.exp < now) return null;
   if (payload.nbf && payload.nbf > now + 60) return null;
+  const maxAge = (Number(env.ACCESS_MAX_AGE_HOURS) || 168) * 3600;
+  if (typeof payload.iat === "number" && (payload.iat > now + 60 || now - payload.iat > maxAge)) return null;
   if (payload.iss !== `https://${team}`) return null;
   const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
   if (!audiences.includes(env.ACCESS_AUD)) return null;
@@ -77,5 +85,9 @@ export async function verifyAccess(request, env) {
     b64urlBytes(parts[2]),
     new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
   );
-  return ok ? { email: payload.email || payload.common_name || "" } : null;
+  if (!ok) return null;
+  const email = String(payload.email || payload.common_name || "");
+  const allowed = allowedEmails(env);
+  if (allowed.length && !allowed.includes(email.toLowerCase())) return null;
+  return { email };
 }

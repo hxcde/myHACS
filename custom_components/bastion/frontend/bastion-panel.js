@@ -42,7 +42,7 @@ const I18N = {
       open_title: "Offene Sensoren",
       open_text: "Diese Sensoren sind offen. Trotzdem scharf schalten? Sie werden überbrückt, bis sie wieder schließen.",
       force: "Trotzdem scharf schalten",
-      sections: { rooms: "Räume & Sensoren", people: "Personen", modes: "Modi & Zeiten", actions: "Aktionen", sounds: "Töne", codes: "Codes", worker: "Cloud-Worker" },
+      sections: { rooms: "Räume & Sensoren", people: "Personen", floorplan: "Grundriss", modes: "Modi & Zeiten", actions: "Aktionen", sounds: "Töne", codes: "Codes", worker: "Cloud-Worker" },
       import_areas: "Räume aus HA-Bereichen übernehmen",
       add_room: "Raum hinzufügen",
       room_name: "Name",
@@ -51,6 +51,18 @@ const I18N = {
       icon_search: "Suchen, z. B. Küche, Bad, bed …",
       icon_custom: "Anderes MDI-Icon",
       icon_apply: "Übernehmen",
+      fp_help: "Grundriss der Wohnung für das Worker-Dashboard (3D-Ansicht und Wandtablet). Als JSON-Datei importieren; er bleibt in Home Assistant und im Worker hinter Access und wird nicht mit Bastion veröffentlicht.",
+      fp_import: "JSON-Datei wählen",
+      fp_paste: "… oder JSON hier einfügen",
+      fp_apply: "Übernehmen",
+      fp_remove: "Grundriss entfernen",
+      fp_invalid: "Kein gültiges JSON",
+      fp_areas: "Flächen → Räume",
+      fp_doors: "Türen → Sensoren",
+      fp_auto: "automatisch",
+      fp_none: "kein Sensor",
+      fp_entrance: "Wohnungstür",
+      fp_saved_hint: "Mit „Speichern“ übernehmen. Das Dashboard zeigt den Grundriss nach dem nächsten Lebenszeichen.",
       people: "Personen",
       people_help: "Personen im Haushalt. Am zuverlässigsten ist ein vorhandener Tracker, z. B. aus der UniFi- oder FRITZ!Box-Integration: Der Router weiß, ob das Handy im WLAN ist. Ohne Tracker prüft Bastion alle 30 Sekunden die IP-Adresse des Handys. Pro Person entstehen ein Anwesenheitssensor und ein device_tracker, dazu „Jemand zuhause“. Die Erinnerung „niemand zuhause“ nutzt diese Personen.",
       people_tracker: "Tracker",
@@ -320,7 +332,7 @@ const I18N = {
       open_title: "Open sensors",
       open_text: "These sensors are open. Arm anyway? They are bypassed until they close again.",
       force: "Arm anyway",
-      sections: { rooms: "Rooms & sensors", people: "People", modes: "Modes & timing", actions: "Actions", sounds: "Sounds", codes: "Codes", worker: "Cloud worker" },
+      sections: { rooms: "Rooms & sensors", people: "People", floorplan: "Floor plan", modes: "Modes & timing", actions: "Actions", sounds: "Sounds", codes: "Codes", worker: "Cloud worker" },
       import_areas: "Create rooms from HA areas",
       add_room: "Add room",
       room_name: "Name",
@@ -329,6 +341,18 @@ const I18N = {
       icon_search: "Search, e.g. kitchen, bath, bed …",
       icon_custom: "Other MDI icon",
       icon_apply: "Apply",
+      fp_help: "Floor plan of the home for the worker dashboard (3D view and wall tablet). Import it as a JSON file; it stays in Home Assistant and in the worker behind Access and is never published with Bastion.",
+      fp_import: "Choose JSON file",
+      fp_paste: "… or paste JSON here",
+      fp_apply: "Apply",
+      fp_remove: "Remove floor plan",
+      fp_invalid: "Not valid JSON",
+      fp_areas: "Areas → rooms",
+      fp_doors: "Doors → sensors",
+      fp_auto: "automatic",
+      fp_none: "no sensor",
+      fp_entrance: "Front door",
+      fp_saved_hint: "Apply with 'Save'. The dashboard shows the plan after the next heartbeat.",
       people: "People",
       people_help: "People of the household. Most reliable is an existing tracker, e.g. from the UniFi or FRITZ!Box integration: the router knows whether the phone is on the WLAN. Without a tracker Bastion checks the phone's IP address every 30 seconds. Each person gets a presence sensor and a device_tracker, plus 'Someone home'. The 'nobody home' reminder uses these people.",
       people_tracker: "Tracker",
@@ -1444,6 +1468,7 @@ class BastionPanel extends HTMLElement {
     let body = "";
     if (this._section === "rooms") body = this._settingsRooms(d);
     else if (this._section === "people") body = this._settingsPeople(d);
+    else if (this._section === "floorplan") body = this._settingsFloorplan(d);
     else if (this._section === "modes") body = this._settingsModes(d);
     else if (this._section === "actions") body = this._settingsActions(d);
     else if (this._section === "sounds") body = this._settingsSounds(d);
@@ -1471,6 +1496,66 @@ class BastionPanel extends HTMLElement {
           <button class="btn small" data-icon-apply>${esc(a.icon_apply)}</button>
         </div>
       </div>`;
+  }
+
+  _sensorNames() {
+    const names = [];
+    for (const room of this._draft.rooms) {
+      for (const e of room.sensors) {
+        const own = (this._draft.sensors[e] || {}).name;
+        names.push(own || this._hass.states[e]?.attributes?.friendly_name || e);
+      }
+    }
+    return [...new Set(names)].sort((x, y) => x.localeCompare(y));
+  }
+
+  _planSvg(plan) {
+    const [w, h] = plan.size;
+    const pts = (list) => list.map(([x, y]) => `${x},${y}`).join(" ");
+    const areas = plan.areas.map((a) => {
+      const [x, y, aw, ah] = a.rect;
+      const [lx, ly] = a.label_at || [x + aw / 2, y + ah / 2];
+      return `<rect x="${x}" y="${y}" width="${aw}" height="${ah}" class="fp-area ${a.outdoor ? "out" : ""}"/>
+        <text x="${lx}" y="${ly}" class="fp-label">${esc(a.label)}</text>`;
+    }).join("");
+    const walls = plan.walls.map((wl) => `<polyline points="${pts(wl.points)}" class="fp-wall ${wl.exterior ? "ext" : ""}"/>`).join("");
+    const glass = (plan.glazing || []).map((g) => `<line x1="${g.from[0]}" y1="${g.from[1]}" x2="${g.to[0]}" y2="${g.to[1]}" class="fp-glass"/>`).join("");
+    const div = (plan.dividers || []).map((dv) => `<polyline points="${pts(dv)}" class="fp-div"/>`).join("");
+    const boxes = (plan.boxes || []).map((b) => `<polygon points="${pts(b.points)}" class="fp-box"/>`).join("");
+    const e = plan.entrance ? `<line x1="${plan.entrance.from[0]}" y1="${plan.entrance.from[1]}" x2="${plan.entrance.to[0]}" y2="${plan.entrance.to[1]}" class="fp-door"/>` : "";
+    return `<svg class="fp-svg" viewBox="-20 -20 ${w + 40} ${h + 40}" role="img">${areas}${boxes}${div}${walls}${glass}${e}</svg>`;
+  }
+
+  _settingsFloorplan(d) {
+    const a = this.t.alarm;
+    const plan = d.floorplan;
+    const importer = `
+      <div class="actionbar tight">
+        <label class="btn small upload">${icon("mdi:file-upload-outline")}<span>${esc(a.fp_import)}</span><input type="file" accept="application/json,.json" data-fp-file></label>
+        ${plan ? `<button class="btn small ghost danger" data-action="fp-remove">${icon("mdi:delete-outline")}${esc(a.fp_remove)}</button>` : ""}
+      </div>
+      ${plan ? "" : `<textarea class="input fp-text" data-fp-text placeholder="${esc(a.fp_paste)}" spellcheck="false"></textarea>
+        <div class="actionbar tight"><button class="btn small" data-action="fp-apply">${esc(a.fp_apply)}</button></div>`}`;
+    if (!plan) return `<section class="card"><div class="muted small">${esc(a.fp_help)}</div>${importer}</section>`;
+    const rooms = d.rooms.map((r) => r.name);
+    const sensors = this._sensorNames();
+    // A stored name that no longer exists stays visible instead of silently switching to "automatic".
+    const select = (attr, value, options, empty = a.fp_auto) => `<select class="input" ${attr}><option value="">${esc(empty)}</option>
+      ${(value && !options.includes(value) ? [value, ...options] : options).map((o) => `<option value="${esc(o)}" ${o === value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    return `
+      <section class="card">
+        <div class="muted small">${esc(a.fp_help)}</div>
+        ${importer}
+        <div class="fp-wrap">${this._planSvg(plan)}</div>
+        <div class="muted small">${esc(a.fp_saved_hint)}</div>
+      </section>
+      <section class="card">
+        <h3 class="card-title">${icon("mdi:floor-plan")}${esc(a.fp_areas)}</h3>
+        ${plan.areas.map((ar, i) => `<div class="fp-row"><span>${esc(ar.label)}</span>${select(`data-fp-room="${i}"`, ar.room || "", rooms)}</div>`).join("")}
+        ${(plan.glazing || []).length || plan.entrance ? `<h3 class="card-title" style="margin-top:14px">${icon("mdi:door")}${esc(a.fp_doors)}</h3>` : ""}
+        ${(plan.glazing || []).map((g, i) => `<div class="fp-row"><span>${esc(g.label || g.id)}</span>${select(`data-fp-glass="${i}"`, g.sensor || "", sensors, a.fp_none)}</div>`).join("")}
+        ${plan.entrance ? `<div class="fp-row"><span>${esc(a.fp_entrance)}</span>${select("data-fp-entrance", plan.entrance.sensor || "", sensors, a.fp_none)}</div>` : ""}
+      </section>`;
   }
 
   _settingsPeople(d) {
@@ -1817,6 +1902,7 @@ class BastionPanel extends HTMLElement {
       worker: { url: cfg.worker.url, interval: cfg.worker.interval, enabled: cfg.worker.enabled, cameras: cfg.worker.cameras || [], snapshots: cfg.worker.snapshots ?? 3, public_url: cfg.worker.public_url || "" },
       remote: { enabled: false, disarm: false, reminder: false, reminder_minutes: 20, persons: [], ...(cfg.remote || {}) },
       people: (cfg.people || []).map((x) => ({ ...x })),
+      floorplan: cfg.floorplan ? JSON.parse(JSON.stringify(cfg.floorplan)) : null,
       presence: { away_minutes: 10, ...(cfg.presence || {}) },
       sounds: { players: [], volume: 0.9, notice_volume: 0.5, triggered: "", pending: "", arming: "", armed: "", disarmed: "", ...(cfg.sounds || {}) },
     }));
@@ -1914,6 +2000,24 @@ class BastionPanel extends HTMLElement {
       const value = (root.querySelector("[data-icon-custom]")?.value || "").trim();
       if (this._iconFor != null && /^mdi:[a-z0-9-]+$/.test(value)) { d.rooms[this._iconFor].icon = value; this._iconFor = null; this._render(); }
     });
+    // floor plan
+    const takePlan = (text) => {
+      try {
+        d.floorplan = JSON.parse(text);
+        this._render();
+      } catch {
+        this._notify(this.t.alarm.fp_invalid);
+      }
+    };
+    on("[data-fp-file]", (el) => {
+      const file = el.files && el.files[0];
+      if (file) file.text().then(takePlan);
+    }, "change");
+    on('[data-action="fp-apply"]', () => takePlan(root.querySelector("[data-fp-text]")?.value || ""));
+    on('[data-action="fp-remove"]', () => { d.floorplan = null; this._render(); });
+    on("[data-fp-room]", (el) => { const ar = d.floorplan.areas[+el.dataset.fpRoom]; if (el.value) ar.room = el.value; else delete ar.room; }, "change");
+    on("[data-fp-glass]", (el) => { const g = d.floorplan.glazing[+el.dataset.fpGlass]; if (el.value) g.sensor = el.value; else delete g.sensor; }, "change");
+    on("[data-fp-entrance]", (el) => { if (el.value) d.floorplan.entrance.sensor = el.value; else delete d.floorplan.entrance.sensor; }, "change");
     // people
     on("[data-person-name]", (el) => { d.people[+el.dataset.personName].name = el.value; }, "input");
     on("[data-person-ip]", (el) => { d.people[+el.dataset.personIp].ip = el.value.trim(); }, "input");
@@ -2520,6 +2624,19 @@ const STYLE = `
   .icon-opt[hidden] { display:none; }
   .icon-custom { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .icon-custom .input { width:200px; }
+  .fp-wrap { margin:12px 0 6px; padding:12px; border-radius: var(--radius-sm); background: var(--surface-2); border:1px solid var(--line); }
+  .fp-svg { display:block; width:100%; max-height:460px; }
+  .fp-area { fill: color-mix(in srgb, var(--accent) 7%, transparent); stroke:none; }
+  .fp-area.out { fill: transparent; stroke: var(--line); stroke-dasharray: 6 6; }
+  .fp-label { fill: var(--secondary-text-color); font-size:18px; text-anchor:middle; dominant-baseline:middle; font-family: inherit; }
+  .fp-wall { fill:none; stroke: var(--primary-text-color); stroke-width:8; stroke-linecap:square; stroke-linejoin:miter; opacity:.75; }
+  .fp-wall.ext { stroke-width:12; }
+  .fp-glass { stroke:#6ab7ff; stroke-width:6; }
+  .fp-div { fill:none; stroke: var(--secondary-text-color); stroke-width:2; stroke-dasharray:4 8; }
+  .fp-box { fill: color-mix(in srgb, var(--primary-text-color) 12%, transparent); stroke:none; }
+  .fp-door { stroke: ${SEV.medium.color}; stroke-width:6; stroke-linecap:round; }
+  .fp-text { width:100%; height:auto; min-height:140px; font-family: var(--mono); font-size:12px; padding:10px; margin-top:8px; }
+  .fp-row { display:grid; grid-template-columns: minmax(120px, 1fr) minmax(160px, 260px); gap:10px; align-items:center; padding:6px 0; border-top:1px solid var(--line); }
   .person-row { display:grid; grid-template-columns: 38px minmax(120px, 1fr) minmax(200px, 300px) 104px 96px 36px; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
   .person-src { display:flex; flex-direction:column; gap:6px; min-width:0; }
   .person-src .input { width:100%; }

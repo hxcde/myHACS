@@ -63,6 +63,13 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS commands_status ON commands(status, expires)`,
   `CREATE INDEX IF NOT EXISTS notices_seen ON notices(seen, id)`,
   `CREATE INDEX IF NOT EXISTS sessions_email ON sessions(email, country)`,
+  // Passkey logins of the dashboard (id = SHA-256 of the cookie token) and failed attempts.
+  `CREATE TABLE IF NOT EXISTS logins (
+     id TEXT PRIMARY KEY, email TEXT NOT NULL, kind TEXT NOT NULL, passkey TEXT, label TEXT, ip TEXT, country TEXT,
+     city TEXT, created INTEGER NOT NULL, last INTEGER NOT NULL, expires INTEGER NOT NULL, revoked INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS logins_email ON logins(email, expires)`,
+  `CREATE TABLE IF NOT EXISTS login_fails (ts INTEGER NOT NULL, email TEXT, ip TEXT, reason TEXT)`,
+  `CREATE INDEX IF NOT EXISTS login_fails_ts ON login_fails(ts)`,
 ];
 
 const ready = new WeakMap();
@@ -76,6 +83,12 @@ async function migrate(db) {
     /* column exists */
   }
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS events_uid ON events(uid)").run();
+  // v3: events.chain = HMAC chain over the log (tamper evidence, see chain.js).
+  try {
+    await db.prepare("ALTER TABLE events ADD COLUMN chain TEXT").run();
+  } catch {
+    /* column exists */
+  }
 }
 
 export async function database(env) {
@@ -636,7 +649,6 @@ export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
   const db = await database(env);
   const now = nowS();
   await db.batch([
-    db.prepare("DELETE FROM events WHERE ts < ?").bind(now - logDays * 86400),
     db.prepare("DELETE FROM snapshots WHERE ts < ?").bind(now - snapshotDays * 86400),
     db.prepare("DELETE FROM receipts WHERE ts < ?").bind(now - 30 * 86400),
     db.prepare("DELETE FROM secevents WHERE ts < ?").bind(now - logDays * 86400),
@@ -648,5 +660,100 @@ export async function cleanup(env, { logDays = 365, snapshotDays = 30 } = {}) {
     db.prepare("DELETE FROM notices WHERE ts < ?").bind(now - 30 * 86400),
     db.prepare("DELETE FROM challenges WHERE expires < ?").bind(now),
     db.prepare("DELETE FROM commands WHERE ts < ?").bind(now - logDays * 86400),
+    db.prepare("DELETE FROM logins WHERE expires < ?").bind(now - logDays * 86400),
+    db.prepare("DELETE FROM login_fails WHERE ts < ?").bind(now - 7 * 86400),
   ]);
+}
+
+// ------------------------------------------------------------------ logins
+export async function addLogin(env, l) {
+  const db = await database(env);
+  await db
+    .prepare("INSERT INTO logins (id, email, kind, passkey, label, ip, country, city, created, last, expires) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(l.id, str(l.email), l.kind, str(l.passkey, 80), str(l.label, 80), str(l.ip, 64), str(l.country, 4), str(l.city, 60), l.created, l.created, l.expires)
+    .run();
+}
+
+export async function getLogin(env, id) {
+  const db = await database(env);
+  return db.prepare("SELECT * FROM logins WHERE id = ?").bind(id).first();
+}
+
+export async function touchLogin(env, id, ts) {
+  const db = await database(env);
+  await db.prepare("UPDATE logins SET last = ? WHERE id = ?").bind(ts, id).run();
+}
+
+export async function activeLogins(env, email, now) {
+  const db = await database(env);
+  return (await db.prepare("SELECT * FROM logins WHERE email = ? AND expires > ? AND revoked IS NULL ORDER BY last DESC LIMIT 50").bind(email, now).all()).results;
+}
+
+export async function loginHistory(env, email, since) {
+  const db = await database(env);
+  return (await db.prepare("SELECT label, ip, country, city FROM logins WHERE email = ? AND created >= ? ORDER BY created DESC LIMIT 200").bind(email, since).all()).results;
+}
+
+// One session ({id}), one by reference ({email, prefix}) or all others ({email, except}).
+export async function revokeLogins(env, { id = null, email = null, prefix = null, except = null }) {
+  const db = await database(env);
+  const now = nowS();
+  let r;
+  if (id) r = await db.prepare("UPDATE logins SET revoked = ? WHERE id = ? AND revoked IS NULL").bind(now, id).run();
+  else if (prefix) r = await db.prepare("UPDATE logins SET revoked = ? WHERE email = ? AND substr(id, 1, 16) = ? AND revoked IS NULL").bind(now, email, prefix).run();
+  else r = await db.prepare("UPDATE logins SET revoked = ? WHERE email = ? AND id != ? AND revoked IS NULL AND expires > ?").bind(now, email, except || "", now).run();
+  return (r.meta && r.meta.changes) || 0;
+}
+
+export async function addLoginFail(env, f) {
+  const db = await database(env);
+  await db.prepare("INSERT INTO login_fails (ts, email, ip, reason) VALUES (?, ?, ?, ?)").bind(nowS(), str(f.email), str(f.ip, 64), str(f.reason, 60)).run();
+}
+
+export async function loginFails(env, since, email, ip) {
+  const db = await database(env);
+  return (await db.prepare("SELECT ts, email, ip FROM login_fails WHERE ts >= ? AND (email = ? OR ip = ?) LIMIT 200").bind(since, email, ip).all()).results;
+}
+
+export async function loginFailsSince(env, since) {
+  const db = await database(env);
+  return (await db.prepare("SELECT ts, email, ip, reason FROM login_fails WHERE ts >= ? ORDER BY ts DESC LIMIT 100").bind(since).all()).results;
+}
+
+// ------------------------------------------------------------------- chain
+export async function unsealedEvents(env, limit = 500) {
+  const db = await database(env);
+  return (await db.prepare("SELECT * FROM events WHERE chain IS NULL ORDER BY id LIMIT ?").bind(limit).all()).results;
+}
+
+export async function lastSealed(env) {
+  const db = await database(env);
+  return db.prepare("SELECT id, chain FROM events WHERE chain IS NOT NULL ORDER BY id DESC LIMIT 1").first();
+}
+
+export async function sealEvents(env, rows) {
+  if (!rows.length) return;
+  const db = await database(env);
+  await db.batch(rows.map((r) => db.prepare("UPDATE events SET chain = ? WHERE id = ? AND chain IS NULL").bind(r.chain, r.id)));
+}
+
+export async function eventsAfter(env, id, limit) {
+  const db = await database(env);
+  return (await db.prepare("SELECT * FROM events WHERE id > ? ORDER BY id LIMIT ?").bind(id, limit).all()).results;
+}
+
+export async function eventChain(env, id) {
+  const db = await database(env);
+  return db.prepare("SELECT id, chain FROM events WHERE id = ?").bind(id).first();
+}
+
+// Deletes the oldest events up to and including id (retention keeps the chain intact).
+export async function pruneEvents(env, cutoff) {
+  const db = await database(env);
+  const keep = await db.prepare("SELECT MIN(id) AS v FROM events WHERE ts >= ?").bind(cutoff).first();
+  const limit = keep && keep.v != null ? keep.v : Number.MAX_SAFE_INTEGER;
+  const last = await db.prepare("SELECT id, chain FROM events WHERE id < ? ORDER BY id DESC LIMIT 1").bind(limit).first();
+  if (!last || !last.chain) return null;
+  await db.prepare("DELETE FROM events WHERE id <= ?").bind(last.id).run();
+  return last;
 }

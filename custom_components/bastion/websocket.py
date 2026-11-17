@@ -19,6 +19,7 @@ from homeassistant.helpers import (
 import probatio
 
 from .alarm.engine import MODES, NOTIFY_EVENTS, SENSOR_TYPES, SUPPORTED_DOMAINS, AlarmError
+from .alarm.floorplan import FloorPlanError, clean_floorplan
 from .alarm.household import async_probe, valid_address
 from .alarm.sounds import BUILTIN, SOUND_KEYS, async_media_files
 from .const import ALL_AREAS, DOMAIN
@@ -374,8 +375,20 @@ _PERSON = probatio.All(
     ),
     _ip_or_tracker,
 )
+
+
+def _floorplan(value: Any) -> dict[str, Any] | None:
+    if value in (None, {}):
+        return None
+    try:
+        return clean_floorplan(value)
+    except FloorPlanError as err:
+        raise probatio.Invalid(str(err)) from err
+
+
 _ALARM_CONFIG = probatio.Schema(
     {
+        probatio.Optional("floorplan"): _floorplan,
         probatio.Optional("rooms"): [_ROOM],
         probatio.Optional("sensors"): {cv.entity_id: _SENSOR},
         probatio.Optional("modes"): {

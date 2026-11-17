@@ -13,6 +13,8 @@
 //                           /manifest.webmanifest, /sw.js, icons). Every visit is logged.
 //   POST /api/passkey/*     Add a passkey (one-time code from Home Assistant), Access only.
 //   POST /api/command/*     Arm/disarm with a passkey, Access only; GET /api/command/<id> = status.
+//   POST /api/login/*       Passkey login after Access (LOGIN=passkey), /api/logout, /api/logins/revoke,
+//                           /api/tablet/code + /api/tablet/finish (wall tablet, look only).
 //   any  decoy token/URL    Decoys from Bastion's decoy file: answered like HA, logged, alerted.
 //   cron (every minute)     Offline detection with last known state, receipt polling, retention,
 //                           outside check of Home Assistant's public address (every 6 hours).
@@ -35,12 +37,19 @@
 //   ACCESS_ALERT         "new" (default: push for a new device or country), "all", "off"
 //   ALLOWED_COUNTRIES    optional, e.g. "DE": dashboard, incident pages and app files only from these
 //                        countries. Signed requests of Home Assistant and Pushover callbacks stay open.
+//   ALLOWED_EMAILS       optional, comma separated: only these Access identities (second check after Access)
+//   ACCESS_MAX_AGE_HOURS default 168: older Access logins are refused even if Access still accepts them
+//   LOGIN                "passkey": passkey login after Access (see login.js for LOGIN_* and TABLET_DAYS)
+//   API_RATE             default 240 dashboard requests per IP and minute (RATE_LIMITER binding if present)
 // D1 binding: DB
 
 import { connect } from "cloudflare:sockets";
 import APP_HTML from "./app.html";
+import LOGIN_HTML from "./login.html";
 import { accessConfigured, verifyAccess } from "./access.js";
 import { canaryResponse, detectCanary } from "./canary.js";
+import * as chain from "./chain.js";
+import * as login from "./login.js";
 import { EMERGENCY_EXPIRE, notify, pushoverCancel, pushoverEnabled, pushoverReceipt } from "./notify.js";
 import { pwaAsset } from "./pwa.js";
 import * as remote from "./remote.js";
@@ -83,6 +92,7 @@ const LABELS = {
   passkey_added: "Passkey gekoppelt",
   passkey_removed: "Passkey entfernt",
   unarmed: "Niemand zuhause, nicht scharf",
+  presence: "Anwesenheit",
 };
 const ATTACK_LABELS = {
   signature: "falsche Signatur",
@@ -383,6 +393,8 @@ async function handleHeartbeat(request, env, url, ctx) {
         state: ["open", "closed", "unavailable"].includes(z.state) ? z.state : "unavailable",
         type: ["instant", "delayed", "always"].includes(z.type) ? z.type : "delayed",
         watched: Boolean(z.watched),
+        battery: Number.isInteger(z.battery) && z.battery >= 0 && z.battery <= 100 ? z.battery : null,
+        seen: Number.isFinite(z.seen) && z.seen > 0 ? Math.floor(z.seen) : null,
       }))
       : null,
     // People of the household (names and home/away only, no addresses).
@@ -397,6 +409,28 @@ async function handleHeartbeat(request, env, url, ctx) {
     offline_notified: false,
   };
   await uptime.onHeartbeat(env, prev, record);
+  // Tamper evidence: seal new events, compare Home Assistant's copy of the newest one.
+  await chain.checkEcho(env, data.chain_seen);
+  await chain.seal(env);
+  // Somebody came or left: kept in the log for the day timeline.
+  if (prev && Array.isArray(prev.presence) && Array.isArray(record.presence)) {
+    const before = new Map(prev.presence.map((p) => [p.name, p.home]));
+    for (const p of record.presence) {
+      if (typeof p.home === "boolean" && typeof before.get(p.name) === "boolean" && before.get(p.name) !== p.home) {
+        await store.addEvent(env, { event: "presence", user: p.name, detail: { home: p.home } });
+      }
+    }
+  }
+  // Floor plan: Home Assistant sends it only when the worker does not have this version.
+  const fpHash = typeof data.floorplan_hash === "string" && /^[a-f0-9]{8,64}$/.test(data.floorplan_hash) ? data.floorplan_hash : null;
+  const fpStored = await store.getState(env, "floorplan");
+  let floorplanHash = fpStored && fpHash && fpStored.hash === fpHash ? fpHash : null;
+  if (!fpHash) {
+    if (fpStored) await store.setState(env, "floorplan", null);
+  } else if (data.floorplan && typeof data.floorplan === "object" && !Array.isArray(data.floorplan) && JSON.stringify(data.floorplan).length <= 70000) {
+    await store.setState(env, "floorplan", { hash: fpHash, plan: data.floorplan, received: nowS() });
+    floorplanHash = fpHash;
+  }
   if (prev && prev.offline) {
     const minutes = Math.round((Date.now() - prev.received) / 60000);
     const cause = uptime.recoveryCause(prev, record);
@@ -431,6 +465,8 @@ async function handleHeartbeat(request, env, url, ctx) {
     exposure: await store.getState(env, "exposure"),
     notices: await store.unseenNotices(env),
     dashboard: remote.dashboardUrl(env),
+    floorplan_hash: floorplanHash,
+    chain: await chain.head(env),
   });
 }
 
@@ -706,14 +742,21 @@ async function pollReceipts(env) {
 async function retention(env) {
   const last = (await store.getState(env, "cleanup")) || 0;
   if (Date.now() - last < 3600 * 1000) return;
-  await store.cleanup(env, { logDays: Number(env.LOG_DAYS || 365), snapshotDays: Number(env.SNAPSHOT_DAYS || 30) });
+  const logDays = Number(env.LOG_DAYS || 365);
+  await store.cleanup(env, { logDays, snapshotDays: Number(env.SNAPSHOT_DAYS || 30) });
+  await chain.prune(env, nowS() - logDays * 86400);
   await store.setState(env, "cleanup", Date.now());
 }
 
+async function checkChain(env) {
+  await chain.seal(env);
+  await chain.verifySlice(env);
+}
+
 // ------------------------------------------------------------- web pages
-function page(env) {
+function page(env, html = APP_HTML) {
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  return new Response(APP_HTML.replace(/<script>/g, `<script nonce="${nonce}">`), {
+  return new Response(html.replace(/<script>/g, `<script nonce="${nonce}">`), {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
@@ -721,8 +764,33 @@ function page(env) {
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
     },
   });
+}
+
+// Requests per IP and minute for the dashboard (per isolate; RATE_LIMITER binding if configured).
+const rate = new Map();
+async function rateLimited(request, env) {
+  const ip = clientIp(request);
+  if (env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === "function") {
+    try {
+      const { success } = await env.RATE_LIMITER.limit({ key: ip });
+      if (!success) return true;
+    } catch {
+      /* binding unavailable: fall back to the isolate counter */
+    }
+  }
+  const minute = Math.floor(Date.now() / 60000);
+  const k = `${minute}|${ip}`;
+  if (rate.size > 5000) rate.clear();
+  for (const key of rate.keys()) if (!key.startsWith(`${minute}|`)) rate.delete(key);
+  const n = (rate.get(k) || 0) + 1;
+  rate.set(k, n);
+  return n > (Number(env.API_RATE) || 240);
 }
 
 function onDashboardHost(env, url) {
@@ -735,11 +803,19 @@ async function dashboardUser(request, env, url) {
   return verifyAccess(request, env);
 }
 
+// Access identity plus, with LOGIN=passkey, a valid passkey login: { user, login } or null parts.
+async function dashboardSession(request, env, url) {
+  const user = await dashboardUser(request, env, url);
+  if (!user) return { user: null, login: null };
+  if (!login.loginEnabled(env)) return { user, login: { kind: "access", id: "", ref: "" } };
+  return { user, login: await login.currentLogin(request, env, user) };
+}
+
 // Incident data needs either the link token or a dashboard login.
 async function incidentAllowed(request, env, url, incident) {
   const token = url.searchParams.get("t") || "";
   if (env.ALARM_SECRET && token && timingSafeEqual(token, await incidentToken(env, incident))) return true;
-  return Boolean(await dashboardUser(request, env, url));
+  return Boolean((await dashboardSession(request, env, url)).login);
 }
 
 async function apiIncident(request, env, url, incident, ctx) {
@@ -777,7 +853,8 @@ async function liveState(env) {
   const parts = hb
     ? [hb.state, hb.mode, hb.offline, (hb.open || []).join(","), (hb.unavailable || []).join(","), JSON.stringify(hb.remote || {}), hb.version, JSON.stringify(hb.presence || null), JSON.stringify(hb.zones || null)]
     : ["-"];
-  const rev = [...parts, await store.marks(env), ex ? ex.checked : 0, pairing ? pairing.expires : 0].join("|");
+  const fp = await store.getState(env, "floorplan");
+  const rev = [...parts, await store.marks(env), ex ? ex.checked : 0, pairing ? pairing.expires : 0, fp ? fp.hash : ""].join("|");
   return { hb, rev: (await hmacHex("rev", rev)).slice(0, 16) };
 }
 
@@ -786,7 +863,7 @@ async function apiLive(env) {
   return json({ now: nowS(), rev, received: hb ? Math.floor(hb.received / 1000) : null, offline: Boolean(hb && hb.offline) });
 }
 
-async function apiSummary(env, url, user) {
+async function apiSummary(env, url, user, session = null) {
   await uptime.ensureHistory(env);
   const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 365);
   const since = nowS() - days * 86400;
@@ -810,13 +887,24 @@ async function apiSummary(env, url, user) {
     attempts: await store.attemptsSince(env, since),
     blocked: await store.blockedList(env, since),
     exposure: await store.getState(env, "exposure"),
+    floorplan: ((await store.getState(env, "floorplan")) || {}).plan || null,
     countries: allowedCountries(env),
     outages: await store.outagesSince(env, since),
     uptime_since: await store.getState(env, "uptime_since"),
     sessions: await store.sessionsSince(env, since),
     canary: await store.canaryHitsSince(env, since),
-    remote: await remote.remoteSummary(env, user, hb),
+    remote: await remoteFor(env, user, hb, session),
+    login: session && session.kind !== "access" ? { kind: session.kind, ref: session.ref, expires: session.expires, label: session.label } : null,
+    logins: session && session.kind !== "access" ? await login.loginList(env, user, session) : [],
+    login_fails: await store.loginFailsSince(env, since),
+    chain: await chain.status(env),
   });
+}
+
+// The wall tablet only looks: no switching, no passkeys.
+async function remoteFor(env, user, hb, session) {
+  const r = await remote.remoteSummary(env, user, hb);
+  return session && session.kind === "tablet" ? { ...r, readonly: true, passkeys: [], commands: [] } : r;
 }
 
 async function handleGet(request, env, url, ctx) {
@@ -826,40 +914,62 @@ async function handleGet(request, env, url, ctx) {
   if (asset) return asset;
   const known = path === "/" || path.startsWith("/i/") || path.startsWith("/api/");
   if (known && (await isBlocked(env, request))) return tooMany();
+  if (known && (await rateLimited(request, env))) return tooMany();
   if (path.startsWith("/i/")) return validIncident(path.slice(3)) ? page(env) : json({ error: "not found" }, 404);
   let m = path.match(/^\/api\/incident\/([a-f0-9]{8,32})$/);
   if (m) return apiIncident(request, env, url, m[1], ctx);
   m = path.match(/^\/api\/img\/(\d+)$/);
   if (m) return apiImage(request, env, url, m[1], ctx);
+  if (path === "/api/login/state" && login.loginEnabled(env)) {
+    const { user, login: session } = await dashboardSession(request, env, url);
+    if (!user) return json({ error: "not found" }, 404);
+    return login.loginState(env, request, user, session);
+  }
   m = path.match(/^\/api\/command\/([a-f0-9]{16})$/);
   if (path === "/" || path === "/api/summary" || path === "/api/live" || m) {
-    const user = await dashboardUser(request, env, url);
+    const { user, login: session } = await dashboardSession(request, env, url);
     if (!user) {
       // Behind Access every request carries a valid token; anything else is a bypass attempt.
       if (accessConfigured(env) && onDashboardHost(env, url) && env.DASHBOARD_HOST) await rejected(request, env, ctx, "access", url);
       return json({ error: "not found" }, 404);
     }
-    if (path === "/api/live") return apiLive(env);
     if (!m) await trackAccess(request, env, ctx, user);
+    // Passkey login missing or expired: only the login page, every API answers 401.
+    if (!session) return path === "/" ? page(env, LOGIN_HTML) : json({ error: "login" }, 401);
+    if (path === "/api/live") return apiLive(env);
     if (m) return remote.commandStatus(env, m[1]);
-    return path === "/" ? page(env) : apiSummary(env, url, user);
+    return path === "/" ? page(env) : apiSummary(env, url, user, session);
   }
   return json({ error: "not found" }, 404);
 }
 
-// Dashboard actions (passkeys, commands): Access, same origin, JSON.
+// Dashboard actions: Access, same origin, JSON. `need`: null = Access is enough (login itself,
+// pairing with a code from Home Assistant), "login" = any login, "full" = not the wall tablet.
 const DASHBOARD_POST = {
-  "/api/passkey/begin": (env, url, user, body) => remote.passkeyBegin(env, url, user, body),
-  "/api/passkey/finish": (env, url, user, body, request) => remote.passkeyFinish(env, url, user, body, request.headers.get("user-agent")),
-  "/api/command/begin": (env, url, user, body) => remote.commandBegin(env, url, user, body),
-  "/api/command/finish": (env, url, user, body) => remote.commandFinish(env, url, user, body),
+  "/api/login/begin": [null, (env, url, user, body, request) => login.loginBegin(env, url, user, request)],
+  "/api/login/finish": [null, (env, url, user, body, request) => login.loginFinish(env, url, user, body, request)],
+  "/api/tablet/finish": [null, (env, url, user, body, request) => login.tabletFinish(env, user, body, request)],
+  "/api/passkey/begin": [null, (env, url, user, body) => remote.passkeyBegin(env, url, user, body)],
+  "/api/passkey/finish": [null, async (env, url, user, body, request) => {
+    const res = await remote.passkeyFinish(env, url, user, body, request.headers.get("user-agent"));
+    // A new passkey (user verification + code from Home Assistant) logs this device in.
+    if (res.response.status === 200 && login.loginEnabled(env)) res.response = login.withCookie(res.response, await login.createLogin(env, request, user));
+    return res;
+  }],
+  "/api/logout": ["login", (env, url, user, body, request, session) => login.logout(env, request, session)],
+  "/api/logins/revoke": ["full", (env, url, user, body, request, session) => login.revoke(env, user, session, body)],
+  "/api/tablet/code": ["full", (env, url, user) => login.tabletCode(env, user)],
+  "/api/command/begin": ["full", (env, url, user, body) => remote.commandBegin(env, url, user, body)],
+  "/api/command/finish": ["full", (env, url, user, body) => remote.commandFinish(env, url, user, body)],
 };
 
 async function handleDashboardPost(request, env, url, ctx) {
-  const handler = DASHBOARD_POST[url.pathname];
-  if (!handler) return json({ error: "not found" }, 404);
+  const route = DASHBOARD_POST[url.pathname];
+  if (!route) return json({ error: "not found" }, 404);
+  const [need, handler] = route;
   if (await isBlocked(env, request)) return tooMany();
-  const user = await dashboardUser(request, env, url);
+  if (await rateLimited(request, env)) return tooMany();
+  const { user, login: session } = await dashboardSession(request, env, url);
   if (!user) {
     if (accessConfigured(env) && onDashboardHost(env, url) && env.DASHBOARD_HOST) await rejected(request, env, ctx, "access", url);
     return json({ error: "not found" }, 404);
@@ -874,8 +984,11 @@ async function handleDashboardPost(request, env, url, ctx) {
   }
   if (!body || typeof body !== "object") return json({ error: "invalid json" }, 400);
   await trackAccess(request, env, ctx, user);
-  const res = await handler(env, url, user, body, request);
-  if (res.attack) await rejected(request, env, ctx, url.pathname.startsWith("/api/passkey/begin") ? "pairing" : "passkey", url);
+  if (need && !session) return json({ error: "login" }, 401);
+  if (need === "full" && session.kind === "tablet") return json({ error: "Das Wandtablet darf nur anzeigen." }, 403);
+  const res = await handler(env, url, user, body, request, session);
+  const kind = url.pathname.startsWith("/api/passkey/begin") ? "pairing" : url.pathname.startsWith("/api/login") || url.pathname.startsWith("/api/tablet") ? "login" : "passkey";
+  if (res.attack) await rejected(request, env, ctx, kind, url);
   return res.response;
 }
 
@@ -934,7 +1047,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       (async () => {
-        for (const job of [uptime.ensureHistory, checkHeartbeat, pollReceipts, retention, checkExposure]) {
+        for (const job of [uptime.ensureHistory, checkHeartbeat, pollReceipts, retention, checkExposure, checkChain]) {
           try {
             await job(env);
           } catch (err) {
