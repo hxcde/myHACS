@@ -1512,13 +1512,13 @@ class BastionPanel extends HTMLElement {
   _planSvg(plan) {
     const [w, h] = plan.size;
     const pts = (list) => list.map(([x, y]) => `${x},${y}`).join(" ");
-    const areas = plan.areas.map((a) => {
+    const areas = (plan.areas || []).map((a) => {
       const [x, y, aw, ah] = a.rect;
       const [lx, ly] = a.label_at || [x + aw / 2, y + ah / 2];
       return `<rect x="${x}" y="${y}" width="${aw}" height="${ah}" class="fp-area ${a.outdoor ? "out" : ""}"/>
         <text x="${lx}" y="${ly}" class="fp-label">${esc(a.label)}</text>`;
     }).join("");
-    const walls = plan.walls.map((wl) => `<polyline points="${pts(wl.points)}" class="fp-wall ${wl.exterior ? "ext" : ""}"/>`).join("");
+    const walls = (plan.walls || []).map((wl) => `<polyline points="${pts(wl.points)}" class="fp-wall ${wl.exterior ? "ext" : ""}"/>`).join("");
     const glass = (plan.glazing || []).map((g) => `<line x1="${g.from[0]}" y1="${g.from[1]}" x2="${g.to[0]}" y2="${g.to[1]}" class="fp-glass"/>`).join("");
     const div = (plan.dividers || []).map((dv) => `<polyline points="${pts(dv)}" class="fp-div"/>`).join("");
     const boxes = (plan.boxes || []).map((b) => `<polygon points="${pts(b.points)}" class="fp-box"/>`).join("");
@@ -2001,13 +2001,21 @@ class BastionPanel extends HTMLElement {
       if (this._iconFor != null && /^mdi:[a-z0-9-]+$/.test(value)) { d.rooms[this._iconFor].icon = value; this._iconFor = null; this._render(); }
     });
     // floor plan
+    // Optional lists may be missing (the backend fills them in too); the preview must render
+    // before the draft takes the plan, so a broken file never replaces a working one.
     const takePlan = (text) => {
+      let plan;
       try {
-        d.floorplan = JSON.parse(text);
-        this._render();
+        plan = JSON.parse(text);
+        if (!plan || typeof plan !== "object" || !Array.isArray(plan.size) || !Array.isArray(plan.areas) || !plan.areas.length) throw new Error("plan");
+        for (const key of ["walls", "glazing", "dividers", "boxes"]) if (!Array.isArray(plan[key])) plan[key] = [];
+        this._planSvg(plan);
       } catch {
         this._notify(this.t.alarm.fp_invalid);
+        return;
       }
+      d.floorplan = plan;
+      this._render();
     };
     on("[data-fp-file]", (el) => {
       const file = el.files && el.files[0];

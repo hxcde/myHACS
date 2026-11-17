@@ -1073,3 +1073,80 @@ test("event log chain: retention keeps the chain valid", async () => {
   const b = await browser(env);
   assert.equal((await (await b.get("/api/summary")).json()).chain.ok, true);
 });
+
+// Runs `fn` once, right before (or after) the first query matching `re` reads from D1 (an overlapping request).
+function hookOnce(env, re, fn, { after = false } = {}) {
+  const real = env.DB;
+  let fired = false;
+  return {
+    ...real,
+    prepare: (sql) => {
+      const st = real.prepare(sql);
+      if (fired || !re.test(sql)) return st;
+      const bind = st.bind.bind(st);
+      st.bind = (...args) => {
+        const b = bind(...args);
+        for (const m of ["first", "all"]) {
+          const orig = b[m].bind(b);
+          b[m] = async () => {
+            if (fired) return orig();
+            fired = true;
+            if (!after) await fn(real);
+            const out = await orig();
+            if (after) await fn(real);
+            return out;
+          };
+        }
+        return b;
+      };
+      return st;
+    },
+  };
+}
+
+test("event log chain: overlapping sealers never store or publish a wrong value", async () => {
+  const { seal, verifySlice } = await import("../src/chain.js");
+  const env = makeEnv();
+  const alert = (e) => worker.fetch(signed("/alert", { event: "armed", push: false, state: "armed_away", mode: "away" }), e);
+  for (let i = 0; i < 3; i++) await alert(env);
+  // Run A reads the unsealed rows; before it reads their predecessor, run B seals them and a newer one.
+  const racing = { ...env, DB: hookOnce(env, /WHERE id < \? ORDER BY id DESC LIMIT 1/, async (db) => {
+    await alert({ ...env, DB: db });
+    await seal({ ...env, DB: db });
+  }) };
+  await seal(racing);
+  await Promise.all([seal(env), alert(env), seal(env), alert(env), seal(env)]);
+  await seal(env);
+  const rows = await events(env);
+  const head = JSON.parse(env.DB.raw.prepare("SELECT v FROM state WHERE k = 'chain_head'").get().v);
+  const stored = rows.find((r) => r.id === head.id);
+  assert.equal(head.hash, stored.chain, "published head is what the database holds");
+  assert.equal(head.id, rows[rows.length - 1].id);
+  sent.length = 0;
+  const check = await verifySlice(env);
+  assert.equal(check.ok, true);
+  assert.equal(pushes("Protokoll verändert").length, 0);
+  // A link computed against a predecessor value that is not stored is never written.
+  const store = await import("../src/store.js");
+  await alert(env);
+  const last = (await events(env)).at(-1);
+  await store.sealEvents(env, [{ id: last.id, chain: "f".repeat(64), prevId: last.id - 1, prevChain: "0".repeat(64) }]);
+  assert.equal((await events(env)).at(-1).chain, null);
+});
+
+test("event log chain: a head newer than the verification walk is no alarm", async () => {
+  const { seal, verifySlice } = await import("../src/chain.js");
+  const env = makeEnv();
+  const alert = (e) => worker.fetch(signed("/alert", { event: "armed", push: false, state: "armed_away", mode: "away" }), e);
+  for (let i = 0; i < 3; i++) await alert(env);
+  await seal(env);
+  // While the walk reads its slice, a heartbeat seals a new event and publishes it as head.
+  const racing = { ...env, DB: hookOnce(env, /WHERE id > \? ORDER BY id LIMIT/, async (db) => {
+    await alert({ ...env, DB: db });
+    await seal({ ...env, DB: db });
+  }, { after: true }) };
+  sent.length = 0;
+  const check = await verifySlice(racing);
+  assert.equal(check.ok, true);
+  assert.equal(pushes("Protokoll verändert").length, 0);
+});
