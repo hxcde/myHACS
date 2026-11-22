@@ -343,33 +343,33 @@ class AnomalyEngine:
             "direction": words["above"] if anomaly["value"] > anomaly["high"] else words["below"],
         }
 
-    async def async_accept(self, entity_id: str) -> bool:
-        """The user marks the current deviation of a sensor as normal; it is never reported again."""
+    async def async_accept(self, entity_id: str, value: float | None = None) -> bool:
+        """The user marks one deviation as normal: the chosen value, else the current one.
+
+        Only that value (and values close to it) becomes normal - never the rest of the history,
+        which may hold a real incident.
+        """
         model = self.models.get(entity_id)
         if model is None:
             return False
-        values = [a["value"] for a in self.active.get(entity_id, []) if a.get("type") == "deviation"]
-        values += [
-            e["value"]
-            for e in self.events
-            if e.get("entity_id") == entity_id
-            and e.get("type") == "deviation"
-            and not e.get("accepted")
-            and isinstance(e.get("value"), (int, float))
+        if value is None:
+            current = [a["value"] for a in self.active.get(entity_id, []) if a.get("type") == "deviation"]
+            if not current:
+                return False
+            value = current[-1]
+        model.accept(float(value))
+        self.active[entity_id] = [
+            a
+            for a in self.active.get(entity_id, [])
+            if a.get("type") != "deviation" or not model.is_accepted(a["value"])
         ]
-        state = self.hass.states.get(entity_id)
-        if not values and state is not None:
-            try:
-                values = [float(state.state)]
-            except (TypeError, ValueError):
-                values = []
-        if not values:
-            return False
-        for value in values:
-            model.accept(float(value))
-        self.active[entity_id] = [a for a in self.active.get(entity_id, []) if a.get("type") != "deviation"]
         for event in self.events:
-            if event.get("entity_id") == entity_id and event.get("type") == "deviation":
+            if (
+                event.get("entity_id") == entity_id
+                and event.get("type") == "deviation"
+                and isinstance(event.get("value"), (int, float))
+                and model.is_accepted(event["value"])
+            ):
                 event["accepted"] = True
         self._schedule_save()
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)

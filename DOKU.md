@@ -159,7 +159,7 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
   | VOC, Feinstaub, Helligkeit | – | 60–100 % des Mittels | 30 Min. |
 
   Andere Sensoren (Strom, Wasser, …) bleiben streng: 15 Minuten außerhalb genügen. Brand (z. B. 45 °C) oder Auskühlen werden weiter erkannt.
-- **„Ist normal“:** Im Panel unter Anomalien bei einer Abweichung oder beim Sensor antippen. Der Wert gilt dann für diesen Sensor als normal und wird nicht mehr gemeldet; der Sensor zeigt „als normal markiert“ mit dem Bereich.
+- **„Ist normal“:** Im Panel unter Anomalien bei einer Abweichung oder beim Sensor antippen. Nur dieser Wert (und Werte knapp daneben) gilt dann für den Sensor als normal und wird nicht mehr gemeldet, andere Abweichungen im Verlauf bleiben bestehen. Beim Ereignis gilt dessen Wert, beim Sensor die aktuelle Abweichung. Der Sensor zeigt „als normal markiert“ mit den Werten.
 - Wiederholte Abweichungen desselben Sensors innerhalb von 6 Stunden sind ein Eintrag.
 - **Sabotage:** Fallen innerhalb des Zeitfensters mehrere Tür-, Fenster-, Bewegungs- oder ähnliche Sensoren aus, meldet Bastion Sabotageverdacht. Nicht gezählt werden Bastions eigene Entitäten (Alarmanlage, Köder, Anwesenheit, Sabotageverdacht) und Entitäten einer Integration, die gerade neu geladen oder aktualisiert wird (Zustand mit `restored`). Ein echter Funkausfall zählt weiter.
 

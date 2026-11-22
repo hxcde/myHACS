@@ -7,6 +7,7 @@ import time
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from custom_components.bastion.anomaly.engine import PROFILES, sensor_profile
 from custom_components.bastion.anomaly.stats import SensorModel
@@ -80,7 +81,18 @@ def test_marked_as_normal() -> None:
     assert _run(model, day + timedelta(days=1), 158.0, 15) == []
     assert _run(model, day + timedelta(days=2), 400.0, 15), "only the accepted values"
     clone = SensorModel.from_dict(model.to_dict())
-    assert clone.accepted == [160.0, 160.0]
+    assert clone.accepted == [[160.0, 160.0]]
+    assert SensorModel.from_dict({"a": [150.0, 160.0]}).accepted == [[150.0, 160.0]], "0.7.1 format"
+
+
+def test_accepting_two_values_does_not_accept_the_range_between() -> None:
+    model = _trained({}, base=100.0, wobble=2.0)
+    model.accept(160.0)
+    model.accept(400.0)
+    assert model.accepted == [[160.0, 160.0], [400.0, 400.0]]
+    assert _run(model, MONDAY + timedelta(days=28), 280.0, 15), "280 lies between, still unusual"
+    model.accept(161.0)
+    assert model.accepted == [[160.0, 161.0], [400.0, 400.0]], "close values join"
 
 
 async def test_one_event_per_episode_and_accept(hass: HomeAssistant, alarm, hass_ws_client) -> None:  # noqa: F811
@@ -98,25 +110,36 @@ async def test_one_event_per_episode_and_accept(hass: HomeAssistant, alarm, hass
             for _ in range(3):
                 await engine._async_sample()
 
+    # An earlier, real incident stays in the log.
+    await sample(900, now - timedelta(days=3))  # Friday morning
+    engine.events[-1]["time"] = (dt_util.utcnow() - timedelta(days=3)).isoformat()
+    await sample(100, now - timedelta(days=3, minutes=-20))
     await sample(170, now)
-    events = [e for e in engine.events if e.get("entity_id") == "sensor.bad_feuchte"]
+    events = [e for e in engine.events if e.get("entity_id") == "sensor.bad_feuchte" and e["value"] == 170]
     assert len(events) == 1
     assert events[0]["detail"].startswith("170,0 % liegt über dem üblichen Bereich") or events[0]["detail"].startswith(
         "170.0% is above"
     )
     await sample(100, now + timedelta(minutes=20))
     await sample(170, now + timedelta(minutes=40))
-    assert len([e for e in engine.events if e.get("entity_id") == "sensor.bad_feuchte"]) == 1, "same episode, one entry"
+    assert len([e for e in engine.events if e.get("entity_id") == "sensor.bad_feuchte"]) == 2, "same episode, one entry"
 
     client = await hass_ws_client(hass)
     await client.send_json_auto_id({"type": "bastion/anomaly/accept", "entity_id": "sensor.bad_feuchte"})
     msg = await client.receive_json()
     assert msg["success"]
     sensor = next(s for s in msg["result"]["anomaly"]["sensors"] if s["entity_id"] == "sensor.bad_feuchte")
-    assert sensor["accepted"] == [170.0, 170.0] and sensor["active"] == []
-    assert all(
-        e.get("accepted") for e in msg["result"]["anomaly"]["events"] if e.get("entity_id") == "sensor.bad_feuchte"
-    )
+    assert sensor["accepted"] == [[170.0, 170.0]] and sensor["active"] == []
+    events = [e for e in msg["result"]["anomaly"]["events"] if e.get("entity_id") == "sensor.bad_feuchte"]
+    assert {e["value"]: e.get("accepted", False) for e in events} == {170: True, 900: False}, "not the real incident"
+    # Event button: exactly that value.
+    await client.send_json_auto_id({"type": "bastion/anomaly/accept", "entity_id": "sensor.bad_feuchte", "value": 900})
+    msg = await client.receive_json()
+    sensor = next(s for s in msg["result"]["anomaly"]["sensors"] if s["entity_id"] == "sensor.bad_feuchte")
+    assert sensor["accepted"] == [[170.0, 170.0], [900.0, 900.0]]
+    # Sensor button without a current deviation: nothing to accept.
+    await client.send_json_auto_id({"type": "bastion/anomaly/accept", "entity_id": "sensor.bad_feuchte"})
+    assert not (await client.receive_json())["success"]
     await client.send_json_auto_id({"type": "bastion/anomaly/accept", "entity_id": "sensor.unknown"})
     assert not (await client.receive_json())["success"]
 

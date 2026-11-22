@@ -1264,7 +1264,7 @@ class BastionPanel extends HTMLElement {
             <div class="row-main">
               <div><b>${esc(s.name)}</b> ${s.active.map((x) => `<span class="chip tiny" style="--c:${SEV.high.color}">${esc(t.types[x.type] || x.type)}</span>`).join(" ")}</div>
               <div class="meter" data-tip="${esc(s.learned_buckets)}/48 ${esc(t.learned)}"><div style="width:${Math.round((s.learned_buckets / 48) * 100)}%"></div></div>
-              <div class="muted small">${esc(s.samples)} ${esc(t.samples)} · ${esc(s.learned_buckets)}/48 ${esc(t.learned)}${s.accepted ? ` · ${esc(t.accepted_range)} ${esc(this._range(s.accepted[0], s.accepted[1]))}${s.unit ? ` ${esc(s.unit)}` : ""}` : ""}</div>
+              <div class="muted small">${esc(s.samples)} ${esc(t.samples)} · ${esc(s.learned_buckets)}/48 ${esc(t.learned)}${s.accepted && s.accepted.length ? ` · ${esc(t.accepted_range)} ${esc(s.accepted.map((r) => this._range(r[0], r[1])).join(", "))}${s.unit ? ` ${esc(s.unit)}` : ""}` : ""}</div>
             </div>
             ${s.active.some((x) => x.type === "deviation") ? `<button class="btn small" data-action="anomaly-accept" data-entity="${esc(s.entity_id)}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}
           </div>`).join("")}
@@ -1277,7 +1277,7 @@ class BastionPanel extends HTMLElement {
           return `<div class="row${e.accepted ? " faded" : ""}">${icon(e.accepted ? "mdi:check-circle-outline" : ic, e.accepted ? GOOD : color)}
             <div class="row-main"><div><b>${esc(t.types[e.type] || e.type)}</b> ${esc(e.name || e.actor || e.user || e.entity || e.target || "")}${e.accepted ? ` <span class="chip tiny" style="--c:${GOOD}">${esc(t.marked_normal)}</span>` : ""}</div>
             <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))} · ${esc(e.detail || e.reason || e.entities || "")}</div></div>
-            ${canAccept ? `<button class="btn small ghost" data-action="anomaly-accept" data-entity="${esc(e.entity_id)}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}</div>`;
+            ${canAccept ? `<button class="btn small ghost" data-action="anomaly-accept" data-entity="${esc(e.entity_id)}" data-value="${esc(e.value ?? "")}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}</div>`;
         }).join("")}
       </div>
       ${a.outbound.enabled ? `
@@ -2240,7 +2240,10 @@ class BastionPanel extends HTMLElement {
       this._data = await this._ws("bastion/finding/dismiss", { finding_id: el.dataset.id, dismissed: el.dataset.dismissed === "1" });
     }));
     on('[data-action="anomaly-accept"]', (el) => this._action(async () => {
-      this._data = await this._ws("bastion/anomaly/accept", { entity_id: el.dataset.entity });
+      // An event button accepts exactly its value; the sensor button the current deviation.
+      const payload = { entity_id: el.dataset.entity };
+      if (el.dataset.value) payload.value = Number(el.dataset.value);
+      this._data = await this._ws("bastion/anomaly/accept", payload);
     }));
     on('[data-action="accept"]', (el) => this._action(async () => {
       this._data = await this._ws("bastion/integrity/accept", el.dataset.domain ? { domain: el.dataset.domain } : {});

@@ -89,8 +89,9 @@ class SensorModel:
     runs: list[float] = field(default_factory=list)
     daily: dict[str, list[float]] = field(default_factory=dict)
     deviation_count: int = 0
-    # Values the user marked as normal ("ist normal"): never reported again.
-    accepted: list[float] | None = None
+    # Values the user marked as normal ("ist normal"), as small separate ranges: never reported again.
+    # Separate ranges, so that accepting 28 °C and later 45 °C does not make everything in between normal.
+    accepted: list[list[float]] | None = None
     # Set per sensor kind by the engine (not stored): smallest reported distance from the learned mean
     # (absolute, and relative to the mean) and how many 5-minute samples a value must stay outside.
     margin: float = 0.0
@@ -124,8 +125,12 @@ class SensorModel:
         model.runs = [float(x) for x in data.get("r", [])]
         model.daily = {k: [float(v[0]), float(v[1])] for k, v in (data.get("d") or {}).items()}
         accepted = data.get("a")
-        if isinstance(accepted, list) and len(accepted) == 2:
-            model.accepted = [float(accepted[0]), float(accepted[1])]
+        if isinstance(accepted, list) and len(accepted) == 2 and all(isinstance(x, (int, float)) for x in accepted):
+            accepted = [accepted]  # 0.7.1 stored one range
+        if isinstance(accepted, list):
+            model.accepted = [
+                [float(r[0]), float(r[1])] for r in accepted if isinstance(r, list) and len(r) == 2
+            ] or None
         return model
 
     def configure(
@@ -151,21 +156,30 @@ class SensorModel:
         half = max(z * spread, self.margin, self.margin_rel * abs(pooled.mean))
         return pooled.mean - half, pooled.mean, pooled.mean + half
 
+    def _tolerance(self, value: float) -> float:
+        return max(self.margin * 0.2, abs(value) * 0.02, 1e-6)
+
     def accept(self, value: float) -> None:
-        """The user says this value is normal."""
-        if self.accepted is None:
-            self.accepted = [value, value]
-        else:
-            self.accepted = [min(self.accepted[0], value), max(self.accepted[1], value)]
+        """The user says this value is normal (only it and values close to it)."""
+        ranges = sorted([*(self.accepted or []), [value, value]])
+        merged: list[list[float]] = []
+        for lo, hi in ranges:
+            if merged and lo - merged[-1][1] <= self._tolerance(lo):
+                merged[-1][1] = max(merged[-1][1], hi)
+            else:
+                merged.append([lo, hi])
+        self.accepted = merged[-20:]
         self.deviation_count = 0
 
     def _is_accepted(self, value: float) -> bool:
         if self.ordinary is not None and self.ordinary[0] <= value <= self.ordinary[1]:
             return True
-        if self.accepted is None:
-            return False
-        tol = max(self.margin * 0.2, abs(self.accepted[1]) * 0.02, 1e-6)
-        return self.accepted[0] - tol <= value <= self.accepted[1] + tol
+        tol = self._tolerance(value)
+        return any(lo - tol <= value <= hi + tol for lo, hi in self.accepted or [])
+
+    def is_accepted(self, value: float) -> bool:
+        """True if the user marked this value (or one close to it) as normal."""
+        return self._is_accepted(value)
 
     # ---------------------------------------------------------------- learning
     def idle_level(self) -> float:

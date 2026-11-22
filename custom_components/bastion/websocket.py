@@ -102,7 +102,11 @@ async def ws_dismiss(hass, connection, msg) -> None:
 
 
 @websocket_api.websocket_command(
-    {probatio.Required("type"): "bastion/anomaly/accept", probatio.Required("entity_id"): cv.entity_id}
+    {
+        probatio.Required("type"): "bastion/anomaly/accept",
+        probatio.Required("entity_id"): cv.entity_id,
+        probatio.Optional("value"): probatio.Coerce(float),
+    }
 )
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -110,8 +114,8 @@ async def ws_anomaly_accept(hass, connection, msg) -> None:
     """Mark the deviation of a sensor as normal (learned, never reported again)."""
     if (bastion := _guard(connection, msg)) is None:
         return
-    if not await bastion.anomaly.async_accept(msg["entity_id"]):
-        connection.send_error(msg["id"], "not_found", "Sensor wird nicht überwacht oder hat keinen Wert.")
+    if not await bastion.anomaly.async_accept(msg["entity_id"], msg.get("value")):
+        connection.send_error(msg["id"], "not_found", "Sensor wird nicht überwacht oder hat keine aktuelle Abweichung.")
         return
     connection.send_result(msg["id"], _overview(bastion))
 
