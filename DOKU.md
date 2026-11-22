@@ -146,7 +146,26 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
 
 **Neustart:** Der Zustand bleibt erhalten. Eine laufende Ausgangsverzögerung wird fortgesetzt. Ein Neustart während der Vorwarnung, etwa bei einem Stromausfall nach dem Öffnen der Tür, löst den Alarm aus.
 
+## Anomalie-Erkennung
+
+- **Sensoren:** Bastion lernt pro Sensor den üblichen Bereich je Stunde (Werktag/Wochenende), die Nachbarstunden zählen mit. Startwerte kommen aus den Langzeit-Statistiken der letzten 30 Tage (Stundenmittel, -minimum und -maximum, damit kurze Spitzen wie beim Duschen im Bereich liegen). Gemeldet wird eine Abweichung erst, wenn der Wert mehrere Messungen hintereinander außerhalb liegt. Ungewöhnliche Werte lernt Bastion gedämpft mit: Wiederkehrende Spitzen erweitern den Bereich mit der Zeit, ein einzelner Extremwert kaum.
+- **Raumklima** ist großzügiger, weil Duschen, Kochen und Lüften normal sind:
+
+  | Sensor | nie ungewöhnlich | Mindestabstand | Dauer |
+  |---|---|---|---|
+  | Temperatur | 15–27 °C | 3 K | 30 Min. |
+  | Luftfeuchte | 25–75 % | 20 % | 30 Min. |
+  | CO₂ | bis 1400 ppm | 400 ppm | 30 Min. |
+  | VOC, Feinstaub, Helligkeit | – | 60–100 % des Mittels | 30 Min. |
+
+  Andere Sensoren (Strom, Wasser, …) bleiben streng: 15 Minuten außerhalb genügen. Brand (z. B. 45 °C) oder Auskühlen werden weiter erkannt.
+- **„Ist normal“:** Im Panel unter Anomalien bei einer Abweichung oder beim Sensor antippen. Nur dieser Wert (und Werte knapp daneben) gilt dann für den Sensor als normal und wird nicht mehr gemeldet, andere Abweichungen im Verlauf bleiben bestehen. Beim Ereignis gilt dessen Wert, beim Sensor die aktuelle Abweichung. Der Sensor zeigt „als normal markiert“ mit den Werten.
+- Wiederholte Abweichungen desselben Sensors innerhalb von 6 Stunden sind ein Eintrag.
+- **Sabotage:** Fallen innerhalb des Zeitfensters mehrere Tür-, Fenster-, Bewegungs- oder ähnliche Sensoren aus, meldet Bastion Sabotageverdacht. Nicht gezählt werden Bastions eigene Entitäten (Alarmanlage, Köder, Anwesenheit, Sabotageverdacht) und Entitäten einer Integration, die gerade neu geladen oder aktualisiert wird (Zustand mit `restored`). Ein echter Funkausfall zählt weiter.
+
 ## Reaktion, Köder, Wochenbericht
+
+**Neue IP:** Ein Konto meldet sich von einer Adresse an, die es noch nicht benutzt hat. IPv6 zählt pro Netz (/64): Handys und Router wechseln die hintere Hälfte ihrer IPv6-Adresse absichtlich alle paar Stunden (Privacy Extensions), das ist keine neue IP. Mit GeoIP merkt sich Bastion zusätzlich die Anbieter (ASN und Land) eines Kontos. Eine neue Adresse bei einem schon benutzten Anbieter (Mobilfunk, Heimanschluss, iCloud Private Relay) steht als „Neue IP · bekannter Anbieter“ im Protokoll, ohne Push. Ein neuer Anbieter oder ein neues Land meldet sich wie bisher.
 
 **Aktionen in Benachrichtigungen:** Benachrichtigungsziele vom Typ `notify.mobile_app_*` bekommen bei Anmeldungen, neuen IPs, neuen Tokens und Benutzern die Buttons „War ich“ und „Sperren“. „Sperren“ hat folgende Wirkung:
 

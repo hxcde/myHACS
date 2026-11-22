@@ -26,20 +26,28 @@ async function base(env) {
   return (await store.getState(env, "chain_base")) || { id: 0, hash: GENESIS };
 }
 
+// Heartbeat and cron may seal at the same time. Each value is computed from the stored
+// predecessor and only written while that predecessor still holds the value it was computed
+// from, so an overlapping run can never store a wrong link; the published head is read back
+// from the database, never taken from this run's own computation.
 export async function seal(env) {
   if (!env.ALARM_SECRET) return 0;
   const rows = await store.unsealedEvents(env, SLICE);
   if (!rows.length) return 0;
-  const last = await store.lastSealed(env);
-  let prev = last && last.id < rows[0].id ? last.chain : (await base(env)).hash;
+  const before = await store.previousEvent(env, rows[0].id);
+  if (before && before.chain == null) return 0; // another run is sealing right now; the next one continues
+  let prevId = before ? before.id : null;
+  let prev = before ? before.chain : (await base(env)).hash;
   const sealed = [];
   for (const row of rows) {
-    prev = await link(env, prev, row);
-    sealed.push({ id: row.id, chain: prev });
+    const chain = await link(env, prev, row);
+    sealed.push({ id: row.id, chain, prevId, prevChain: prev });
+    prevId = row.id;
+    prev = chain;
   }
   await store.sealEvents(env, sealed);
-  const head = sealed[sealed.length - 1];
-  await store.setState(env, "chain_head", { id: head.id, hash: head.chain });
+  const head = await store.lastSealed(env);
+  if (head) await store.setState(env, "chain_head", { id: head.id, hash: head.chain });
   return sealed.length;
 }
 
@@ -77,8 +85,12 @@ export async function verifySlice(env) {
   check.checked = (check.checked || 0) + rows.length;
   if (rows.length < SLICE) {
     // End of the log reached: one full pass done, start again from the base.
+    // The newest published entry must still be there (it may be newer than this walk).
     const head = await store.getState(env, "chain_head");
-    if (head && head.id > check.cursor) await broken(env, check, head.id, "neueste Einträge fehlen");
+    if (head && head.id > b.id) {
+      const row = await store.eventChain(env, head.id);
+      if (!row || row.chain !== head.hash) await broken(env, check, head.id, row ? "neuester Eintrag geändert" : "neueste Einträge fehlen");
+    }
     check.full = nowS();
     // A cut-back log (reported by Home Assistant) stays visible for a week; the walk itself decides the rest.
     const echo = check.broken && check.broken.source === "echo" && nowS() - check.broken.at < 7 * 86400;

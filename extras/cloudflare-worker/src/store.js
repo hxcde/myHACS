@@ -731,10 +731,18 @@ export async function lastSealed(env) {
   return db.prepare("SELECT id, chain FROM events WHERE chain IS NOT NULL ORDER BY id DESC LIMIT 1").first();
 }
 
+export async function previousEvent(env, id) {
+  const db = await database(env);
+  return db.prepare("SELECT id, chain FROM events WHERE id < ? ORDER BY id DESC LIMIT 1").bind(id).first();
+}
+
+// One transaction; a row is only sealed while its predecessor holds the value the link was computed from.
 export async function sealEvents(env, rows) {
   if (!rows.length) return;
   const db = await database(env);
-  await db.batch(rows.map((r) => db.prepare("UPDATE events SET chain = ? WHERE id = ? AND chain IS NULL").bind(r.chain, r.id)));
+  await db.batch(rows.map((r) => (r.prevId == null
+    ? db.prepare("UPDATE events SET chain = ? WHERE id = ? AND chain IS NULL AND NOT EXISTS (SELECT 1 FROM events WHERE id < ?)").bind(r.chain, r.id, r.id)
+    : db.prepare("UPDATE events SET chain = ? WHERE id = ? AND chain IS NULL AND (SELECT chain FROM events WHERE id = ?) = ?").bind(r.chain, r.id, r.prevId, r.prevChain))));
 }
 
 export async function eventsAfter(env, id, limit) {

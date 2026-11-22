@@ -65,6 +65,23 @@ def is_public_ip(ip: str | None) -> bool:
     return addr.is_global
 
 
+def network_of(ip: str) -> str:
+    """What counts as "the same address": IPv4 exactly, IPv6 its /64.
+
+    Phones and routers change the lower half of an IPv6 address on purpose (privacy
+    extensions, RFC 8981) - every few hours a new address in the same network.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if addr.version == 6:
+        if addr.ipv4_mapped:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
+
+
 class _BanLogHandler(logging.Handler):
     """Forward ban middleware log records into the event loop."""
 
@@ -113,10 +130,12 @@ class LoginMonitor:
         self.tokens: dict[str, dict[str, Any]] = {}
         self.users: dict[str, dict[str, Any]] = {}
         self.known_ips: dict[str, list[str]] = {}
+        # Providers (ASN + country) a user has logged in from: a new address there is no news.
+        self.known_providers: dict[str, list[str]] = {}
+        self._lookup_cache: dict[str, dict[str, Any]] = {}
         self._pending_logins: dict[str, float] = {}
         self._failed_times: deque[float] = deque(maxlen=500)
         self._brute_alerted: float | None = None
-        self._geo_cache: dict[str, str] = {}
         self._handler: _BanLogHandler | None = None
         self._unsubs: list[CALLBACK_TYPE] = []
         self._first_poll = True
@@ -134,6 +153,7 @@ class LoginMonitor:
             self.tokens = data.get("tokens", {})
             self.users = data.get("users", {})
             self.known_ips = data.get("known_ips", {})
+            self.known_providers = data.get("known_providers", {})
             self.token_usage = data.get("token_usage", {})
             self.usage_since = data.get("usage_since")
             self._first_poll = not bool(self.tokens or self.users)
@@ -165,6 +185,7 @@ class LoginMonitor:
             "tokens": self.tokens,
             "users": self.users,
             "known_ips": self.known_ips,
+            "known_providers": self.known_providers,
             "token_usage": self.token_usage,
             "usage_since": self.usage_since,
         }
@@ -189,7 +210,7 @@ class LoginMonitor:
         usage = self.token_usage.setdefault(token.id, {"ips": []})
         usage["last_used_at"] = dt_util.utcnow().isoformat()
         usage["last_ip"] = ip
-        if ip and ip not in usage["ips"]:
+        if ip and network_of(ip) not in {network_of(x) for x in usage["ips"]}:
             first = not usage["ips"]
             usage["ips"].append(ip)
             del usage["ips"][:-50]
@@ -200,7 +221,13 @@ class LoginMonitor:
     async def _async_token_new_ip(self, token, ip: str) -> None:
         opts = self._options()
         public = is_public_ip(ip)
-        notify = bool(opts.get(CONF_NOTIFY_LOGINS, True)) and (public or not opts.get(CONF_NOTIFY_PUBLIC_ONLY, True))
+        look = await self._async_lookup(ip)
+        known_provider = self._remember_provider(token.user.id, look)
+        notify = (
+            bool(opts.get(CONF_NOTIFY_LOGINS, True))
+            and (public or not opts.get(CONF_NOTIFY_PUBLIC_ONLY, True))
+            and not known_provider
+        )
         data = {
             "user": token.user.name,
             "user_id": token.user.id,
@@ -208,7 +235,9 @@ class LoginMonitor:
             "token_id": token.id,
             "ip": ip,
             "public": public,
-            "geo": await self._async_geo(ip),
+            "geo": look["geo"],
+            "isp": look["isp"],
+            "known_provider": known_provider,
         }
         await self._async_event("token_new_ip", data, notify=notify, rate_key=f"tokenip_{token.id}_{ip}", rate=3600)
 
@@ -361,18 +390,31 @@ class LoginMonitor:
             self._schedule_save()
 
     def _remember_ip(self, user_id: str, ip: str) -> bool:
-        """Store ip for user, True if it was new."""
+        """Store ip for user, True if its network was new (IPv6: the /64, see network_of)."""
         ips = self.known_ips.setdefault(user_id, [])
-        if ip in ips:
+        if network_of(ip) in {network_of(x) for x in ips}:
             return False
         ips.append(ip)
         del ips[:-200]
         return True
 
+    def _remember_provider(self, user_id: str, look: dict[str, Any]) -> bool:
+        """Remember the provider of an address, True if the user has used it before."""
+        if not look.get("asn"):
+            return False
+        key = f"{look['asn']}|{look.get('country') or ''}"
+        known = self.known_providers.setdefault(user_id, [])
+        if key in known:
+            return True
+        known.append(key)
+        del known[:-50]
+        return False
+
     async def _async_login(self, info: dict[str, Any], token_id: str, notify_logins: bool, public_only: bool) -> None:
         ip = info["last_used_ip"]
         new_ip = bool(ip) and self._remember_ip(info["user_id"], ip)
-        geo = await self._async_geo(ip)
+        look = await self._async_lookup(ip)
+        known_provider = self._remember_provider(info["user_id"], look)
         data = {
             "user": info["user"],
             "user_id": info["user_id"],
@@ -380,8 +422,9 @@ class LoginMonitor:
             "client": info["name"],
             "token_id": token_id,
             "public": is_public_ip(ip),
-            "geo": geo,
-            "new_ip": new_ip,
+            "geo": look["geo"],
+            "isp": look["isp"],
+            "new_ip": new_ip and not known_provider,
         }
         notify = notify_logins and (not public_only or is_public_ip(ip))
         await self._async_event("login", data, notify=notify, rate_key=f"login_{info['user_id']}_{ip}", rate=300)
@@ -393,7 +436,8 @@ class LoginMonitor:
     ) -> None:
         if not self._remember_ip(info["user_id"], ip):
             return
-        geo = await self._async_geo(ip)
+        look = await self._async_lookup(ip)
+        known_provider = self._remember_provider(info["user_id"], look)
         data = {
             "user": info["user"],
             "user_id": info["user_id"],
@@ -401,30 +445,49 @@ class LoginMonitor:
             "client": info["name"],
             "token_id": token_id,
             "public": is_public_ip(ip),
-            "geo": geo,
+            "geo": look["geo"],
+            "isp": look["isp"],
+            "known_provider": known_provider,
         }
-        notify = notify_logins and (not public_only or is_public_ip(ip))
+        # A new address of a provider this user already uses (mobile network, home connection,
+        # iCloud Private Relay) is logged, but no push.
+        notify = notify_logins and (not public_only or is_public_ip(ip)) and not known_provider
         await self._async_event("new_ip", data, notify=notify, rate_key=f"newip_{info['user_id']}_{ip}", rate=3600)
 
     async def _async_geo(self, ip: str | None) -> str:
-        """Optional country lookup (opt-in, public IPs only)."""
+        """Optional city/country lookup (opt-in, public IPs only)."""
+        return (await self._async_lookup(ip))["geo"]
+
+    async def _async_lookup(self, ip: str | None) -> dict[str, Any]:
+        """City, country and provider (ASN) of a public IP (opt-in geo lookup)."""
+        empty = {"geo": "", "asn": None, "isp": "", "country": ""}
         if not ip or not is_public_ip(ip) or not self._options().get(CONF_GEOIP):
-            return ""
-        if ip in self._geo_cache:
-            return self._geo_cache[ip]
+            return empty
+        if ip in self._lookup_cache:
+            return self._lookup_cache[ip]
         session = async_get_clientsession(self.hass)
-        result = ""
+        result = empty
         try:
             async with session.get(
-                f"https://ipwho.is/{ip}?fields=country,city,connection",
+                f"https://ipwho.is/{ip}?fields=country,country_code,city,connection",
                 timeout=aiohttp.ClientTimeout(total=8),
             ) as resp:
                 data = await resp.json(content_type=None)
+            if isinstance(data, dict):
+                conn = data.get("connection") if isinstance(data.get("connection"), dict) else {}
                 parts = [data.get("city"), data.get("country")]
-                result = ", ".join(p for p in parts if p)
+                asn = conn.get("asn")
+                result = {
+                    "geo": ", ".join(str(p) for p in parts if p),
+                    "asn": int(asn) if isinstance(asn, int) or (isinstance(asn, str) and asn.isdigit()) else None,
+                    "isp": str(conn.get("isp") or conn.get("org") or "")[:80],
+                    "country": str(data.get("country_code") or "")[:4],
+                }
         except (aiohttp.ClientError, TimeoutError, ValueError):
-            result = ""
-        self._geo_cache[ip] = result
+            result = empty
+        if len(self._lookup_cache) > 500:
+            self._lookup_cache.clear()
+        self._lookup_cache[ip] = result
         return result
 
     # ---------------------------------------------------------------- queries

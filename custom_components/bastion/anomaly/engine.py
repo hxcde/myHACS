@@ -12,6 +12,7 @@ from typing import Any
 
 from homeassistant.const import EVENT_CALL_SERVICE, EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
@@ -26,13 +27,14 @@ from ..const import (
     CONF_ANOMALY_SENSITIVITY,
     CONF_SABOTAGE_COUNT,
     CONF_SABOTAGE_WINDOW,
+    DOMAIN,
     EVENT_ANOMALY,
     EVENT_SECURITY,
     SIGNAL_UPDATE,
     STORAGE_KEY_ANOMALY,
     STORAGE_VERSION,
 )
-from ..texts import ANOMALY_DETAIL, event_text, fmt, lang
+from ..texts import ANOMALY_DETAIL, ANOMALY_WORDS, event_text, fmt, lang
 from .stats import HourHistogram, SensorModel, bucket_index
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,6 +72,42 @@ SABOTAGE_CLASSES = {
     "moisture",
 }
 SABOTAGE_DOMAINS = {"camera", "alarm_control_panel", "lock"}
+# A repeated deviation of the same sensor within this time is one event, not a new one.
+EVENT_REPEAT = 6 * 3600
+
+# Room climate swings for everyday reasons (shower, cooking, airing, heating). Per kind of sensor:
+# smallest reported distance from the learned mean (absolute in the unit, or relative to the mean),
+# how many 5-minute samples a value must stay outside the range before it is reported, and an
+# ordinary range that is never unusual (22 °C after a shower is a room temperature, not an alarm).
+PROFILES = {
+    "temperature": {"margin": 3.0, "need": 6, "ordinary": (15.0, 27.0)},
+    "temperature_f": {"margin": 5.4, "need": 6, "ordinary": (59.0, 80.6)},
+    "humidity": {"margin": 20.0, "need": 6, "ordinary": (25.0, 75.0)},
+    "carbon_dioxide": {"margin": 400.0, "need": 6, "ordinary": (0.0, 1400.0)},
+    "volatile_organic_compounds": {"margin_rel": 0.6, "need": 6},
+    "volatile_organic_compounds_parts": {"margin_rel": 0.6, "need": 6},
+    "pm25": {"margin_rel": 1.0, "need": 6},
+    "pm10": {"margin_rel": 1.0, "need": 6},
+    "pm1": {"margin_rel": 1.0, "need": 6},
+    "illuminance": {"margin_rel": 1.0, "need": 6},
+}
+
+
+def sensor_profile(state) -> tuple[str, dict[str, float]]:
+    """Kind of sensor and its tolerance, from device class and unit."""
+    attrs = state.attributes if state is not None else {}
+    device_class = attrs.get("device_class")
+    unit = attrs.get("unit_of_measurement") or ""
+    if device_class == "temperature" or unit in ("°C", "°F", "K"):
+        kind = "temperature_f" if unit == "°F" else "temperature"
+    else:
+        kind = device_class or "generic"
+    return kind, PROFILES.get(kind, {})
+
+
+def _number(value: float, language: str) -> str:
+    text = f"{value:.1f}" if abs(value) < 1000 else f"{value:.0f}"
+    return text.replace(".", ",") if lang(language) == "de" else text
 
 
 def _read_proc_connections() -> set[str]:
@@ -139,6 +177,7 @@ class AnomalyEngine:
         self._setup_time = time.monotonic()
         self._unsubs: list[CALLBACK_TYPE] = []
         self._notified: dict[str, float] = {}
+        self._own: set[str] = set()
 
     # --------------------------------------------------------------- lifecycle
     async def async_setup(self) -> None:
@@ -226,21 +265,22 @@ class AnomalyEngine:
             end = dt_util.utcnow()
             start = end - timedelta(days=30)
             stats = await get_instance(self.hass).async_add_executor_job(
-                statistics_during_period, self.hass, start, end, {entity_id}, "hour", None, {"mean"}
+                statistics_during_period, self.hass, start, end, {entity_id}, "hour", None, {"mean", "min", "max"}
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("No statistics for %s: %s", entity_id, err)
             return
         model = self.models[entity_id]
         for row in stats.get(entity_id, []):
-            mean = row.get("mean")
-            if mean is None:
-                continue
             start_ts = row.get("start")
             ts = dt_util.utc_from_timestamp(start_ts) if isinstance(start_ts, (int, float)) else start_ts
             if ts is None:
                 continue
-            model.seed(dt_util.as_local(ts), float(mean))
+            # Mean, lowest and highest value of the hour: hourly means alone hide short peaks
+            # (a shower) and make the usual range far too narrow.
+            for key in ("mean", "min", "max"):
+                if (value := row.get(key)) is not None:
+                    model.seed(dt_util.as_local(ts), float(value))
 
     # ---------------------------------------------------------------- sensors
     async def _async_sample(self, _now: datetime | None = None) -> None:
@@ -256,16 +296,19 @@ class AnomalyEngine:
                 value = float(state.state)
             except (TypeError, ValueError):
                 continue
+            model.configure(**sensor_profile(state)[1])
             anomalies = model.observe(now, value, z)
             previous = {a["type"] for a in self.active.get(entity_id, [])}
             self.active[entity_id] = anomalies
             new_types = {a["type"] for a in anomalies} - previous
             changed = changed or bool(new_types) or (bool(previous) and not anomalies)
             for anomaly in anomalies:
-                if anomaly["type"] not in new_types:
+                if anomaly["type"] not in new_types or self._recent_event(entity_id, anomaly["type"]):
                     continue
                 name = state.attributes.get("friendly_name") or entity_id
-                detail = fmt(ANOMALY_DETAIL[anomaly["type"]][lang(language)], anomaly)
+                detail = fmt(
+                    ANOMALY_DETAIL[anomaly["type"]][lang(language)], self._detail_values(anomaly, state, language)
+                )
                 await self._async_emit(
                     "anomaly",
                     {"entity_id": entity_id, "name": name, "detail": detail, **anomaly},
@@ -275,6 +318,62 @@ class AnomalyEngine:
         self._schedule_save()
         if changed:
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+
+    def _recent_event(self, entity_id: str, kind: str) -> bool:
+        """An event of this kind for this sensor within EVENT_REPEAT: the same episode, no new entry."""
+        limit = dt_util.utcnow() - timedelta(seconds=EVENT_REPEAT)
+        for event in reversed(self.events):
+            if event.get("entity_id") == entity_id and event.get("type") == kind and not event.get("accepted"):
+                return (dt_util.parse_datetime(event.get("time") or "") or limit) > limit
+        return False
+
+    @staticmethod
+    def _detail_values(anomaly: dict[str, Any], state, language: str) -> dict[str, Any]:
+        """Readable numbers with unit and direction for the event text."""
+        if anomaly["type"] != "deviation":
+            return anomaly
+        unit = state.attributes.get("unit_of_measurement") or ""
+        sep = "" if unit in ("", "%") else " "
+        words = ANOMALY_WORDS[lang(language)]
+        return {
+            **anomaly,
+            "value": f"{_number(anomaly['value'], language)}{sep}{unit}",
+            "low": _number(anomaly["low"], language),
+            "high": f"{_number(anomaly['high'], language)}{sep}{unit}",
+            "direction": words["above"] if anomaly["value"] > anomaly["high"] else words["below"],
+        }
+
+    async def async_accept(self, entity_id: str, value: float | None = None) -> bool:
+        """The user marks one deviation as normal: the chosen value, else the current one.
+
+        Only that value (and values close to it) becomes normal - never the rest of the history,
+        which may hold a real incident.
+        """
+        model = self.models.get(entity_id)
+        if model is None:
+            return False
+        if value is None:
+            current = [a["value"] for a in self.active.get(entity_id, []) if a.get("type") == "deviation"]
+            if not current:
+                return False
+            value = current[-1]
+        model.accept(float(value))
+        self.active[entity_id] = [
+            a
+            for a in self.active.get(entity_id, [])
+            if a.get("type") != "deviation" or not model.is_accepted(a["value"])
+        ]
+        for event in self.events:
+            if (
+                event.get("entity_id") == entity_id
+                and event.get("type") == "deviation"
+                and isinstance(event.get("value"), (int, float))
+                and model.is_accepted(event["value"])
+            ):
+                event["accepted"] = True
+        self._schedule_save()
+        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+        return True
 
     def entity_state(self, entity_id: str) -> dict[str, Any]:
         """State for the per sensor binary sensor."""
@@ -287,6 +386,7 @@ class AnomalyEngine:
             info["expected_std"] = round(bucket.std, 3) if bucket.n > 1 else None
             info["samples"] = model.samples
             info["learned_buckets"] = sum(1 for b in model.buckets if b.n >= 36)
+            info["accepted"] = model.accepted
         return info
 
     # ----------------------------------------------------------------- logins
@@ -370,6 +470,16 @@ class AnomalyEngine:
         self._schedule_save()
 
     # --------------------------------------------------------------- sabotage
+    def _is_own(self, entity_id: str) -> bool:
+        """Bastion's own entities (alarm panel, decoy, sabotage, presence) are no sensors to watch."""
+        if entity_id in self._own:
+            return True
+        entry = er.async_get(self.hass).async_get(entity_id)
+        if entry is not None and entry.platform == DOMAIN:
+            self._own.add(entity_id)
+            return True
+        return False
+
     def _watched(self, entity_id: str, state) -> bool:
         domain = entity_id.split(".", 1)[0]
         if domain in SABOTAGE_DOMAINS:
@@ -386,9 +496,13 @@ class AnomalyEngine:
         if new is None:
             return False
         ref = old if old is not None else new
-        if not self._watched(entity_id, ref):
+        if not self._watched(entity_id, ref) or self._is_own(entity_id):
             return False
         if new.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            # "restored" marks entities of an integration that is being unloaded or reloaded
+            # (update, restart of the integration): no radio loss, no sabotage.
+            if new.attributes.get("restored"):
+                return False
             return old is not None and old.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
         return (
             new.attributes.get("device_class") == "tamper" and new.state == "on" and (old is None or old.state != "on")
@@ -466,6 +580,8 @@ class AnomalyEngine:
                     "samples": model.samples,
                     "learned_buckets": sum(1 for b in model.buckets if b.n >= 36),
                     "active": self.active.get(entity_id, []),
+                    "accepted": model.accepted,
+                    "unit": (state.attributes.get("unit_of_measurement") or "") if state else "",
                 }
             )
         return {

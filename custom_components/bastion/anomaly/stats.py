@@ -54,6 +54,22 @@ def bucket_index(ts: datetime) -> int:
     return (24 if ts.weekday() >= 5 else 0) + ts.hour
 
 
+def _neighbours(index: int) -> list[int]:
+    """The hour before, the hour itself and the hour after (same weekday/weekend half)."""
+    base, hour = (index // 24) * 24, index % 24
+    return [base + (hour - 1) % 24, index, base + (hour + 1) % 24]
+
+
+def _pool(parts: list[Running]) -> Running:
+    """Mean and variance of several running statistics together."""
+    n = sum(p.n for p in parts)
+    if not n:
+        return Running()
+    mean = sum(p.n * p.mean for p in parts) / n
+    m2 = sum(p.m2 + p.n * (p.mean - mean) ** 2 for p in parts)
+    return Running(n, mean, m2)
+
+
 def _p95(values: list[float]) -> float:
     if not values:
         return 0.0
@@ -73,6 +89,15 @@ class SensorModel:
     runs: list[float] = field(default_factory=list)
     daily: dict[str, list[float]] = field(default_factory=dict)
     deviation_count: int = 0
+    # Values the user marked as normal ("ist normal"), as small separate ranges: never reported again.
+    # Separate ranges, so that accepting 28 °C and later 45 °C does not make everything in between normal.
+    accepted: list[list[float]] | None = None
+    # Set per sensor kind by the engine (not stored): smallest reported distance from the learned mean
+    # (absolute, and relative to the mean) and how many 5-minute samples a value must stay outside.
+    margin: float = 0.0
+    margin_rel: float = 0.0
+    need: int = CONSECUTIVE
+    ordinary: tuple[float, float] | None = None
 
     # ------------------------------------------------------------ persistence
     def to_dict(self) -> dict[str, Any]:
@@ -84,6 +109,7 @@ class SensorModel:
             "rs": self.run_start,
             "r": self.runs[-50:],
             "d": dict(sorted(self.daily.items())[-45:]),
+            "a": self.accepted,
         }
 
     @classmethod
@@ -98,7 +124,62 @@ class SensorModel:
         model.run_start = data.get("rs")
         model.runs = [float(x) for x in data.get("r", [])]
         model.daily = {k: [float(v[0]), float(v[1])] for k, v in (data.get("d") or {}).items()}
+        accepted = data.get("a")
+        if isinstance(accepted, list) and len(accepted) == 2 and all(isinstance(x, (int, float)) for x in accepted):
+            accepted = [accepted]  # 0.7.1 stored one range
+        if isinstance(accepted, list):
+            model.accepted = [
+                [float(r[0]), float(r[1])] for r in accepted if isinstance(r, list) and len(r) == 2
+            ] or None
         return model
+
+    def configure(
+        self,
+        margin: float = 0.0,
+        margin_rel: float = 0.0,
+        need: int = CONSECUTIVE,
+        ordinary: tuple[float, float] | None = None,
+    ) -> None:
+        """Tolerance for the kind of sensor (temperature, humidity, …)."""
+        self.margin, self.margin_rel, self.need, self.ordinary = margin, margin_rel, max(1, need), ordinary
+
+    def band(self, ts: datetime, z: float) -> tuple[float, float, float] | None:
+        """Usual range at this time: (low, mean, high), None while still learning.
+
+        The neighbouring hours count too, so a shower at 7:40 instead of 7:10 is no surprise.
+        """
+        index = bucket_index(ts)
+        if self.buckets[index].n < MIN_BUCKET_SAMPLES:
+            return None
+        pooled = _pool([self.buckets[i] for i in _neighbours(index)])
+        spread = max(pooled.std, abs(pooled.mean) * 0.05, 1e-6)
+        half = max(z * spread, self.margin, self.margin_rel * abs(pooled.mean))
+        return pooled.mean - half, pooled.mean, pooled.mean + half
+
+    def _tolerance(self, value: float) -> float:
+        return max(self.margin * 0.2, abs(value) * 0.02, 1e-6)
+
+    def accept(self, value: float) -> None:
+        """The user says this value is normal (only it and values close to it)."""
+        ranges = sorted([*(self.accepted or []), [value, value]])
+        merged: list[list[float]] = []
+        for lo, hi in ranges:
+            if merged and lo - merged[-1][1] <= self._tolerance(lo):
+                merged[-1][1] = max(merged[-1][1], hi)
+            else:
+                merged.append([lo, hi])
+        self.accepted = merged[-20:]
+        self.deviation_count = 0
+
+    def _is_accepted(self, value: float) -> bool:
+        if self.ordinary is not None and self.ordinary[0] <= value <= self.ordinary[1]:
+            return True
+        tol = self._tolerance(value)
+        return any(lo - tol <= value <= hi + tol for lo, hi in self.accepted or [])
+
+    def is_accepted(self, value: float) -> bool:
+        """True if the user marked this value (or one close to it) as normal."""
+        return self._is_accepted(value)
 
     # ---------------------------------------------------------------- learning
     def idle_level(self) -> float:
@@ -120,17 +201,22 @@ class SensorModel:
         """Evaluate a new sample, then learn from it. Returns active anomalies."""
         anomalies: list[dict[str, Any]] = []
         bucket = self.buckets[bucket_index(ts)]
-        if bucket.n >= MIN_BUCKET_SAMPLES:
-            spread = max(bucket.std, abs(bucket.mean) * 0.05, 1e-6)
-            low, high = bucket.mean - z * spread, bucket.mean + z * spread
-            if value < low or value > high:
+        band = self.band(ts, z)
+        learn = value
+        if band is not None:
+            low, mean, high = band
+            if (value < low or value > high) and not self._is_accepted(value):
                 self.deviation_count += 1
             else:
                 self.deviation_count = 0
-            if self.deviation_count >= CONSECUTIVE:
+            if self.deviation_count >= self.need:
                 anomalies.append(
                     {"type": "deviation", "value": round(value, 3), "low": round(low, 3), "high": round(high, 3)}
                 )
+            # Learn from unusual values too, but limited: recurring peaks (shower, cooking) widen the
+            # range over time, a single extreme value (fire, burst pipe) barely moves it.
+            reach = 1.5 * (high - mean)
+            learn = min(max(value, mean - reach), mean + reach)
 
         now = ts.timestamp()
         idle = abs(value) <= self.idle_level()
@@ -180,10 +266,8 @@ class SensorModel:
                         }
                     )
 
-        # Learn. Do not learn from values that are currently deviating.
-        if self.deviation_count == 0:
-            bucket.add(value)
-            self.overall.add(value)
+        bucket.add(learn)
+        self.overall.add(learn)
         self.samples += 1
         if idle:
             self.idle_samples += 1

@@ -31,6 +31,8 @@ async def _enable_worker(hass, alarm, aioclient_mock, acks=None, **worker):  # n
     aioclient_mock.post(f"{WORKER}/heartbeat", json={"ok": True, "acks": acks or []})
     aioclient_mock.post(f"{WORKER}/alert", json={"ok": True, "channels": []})
     aioclient_mock.post(f"{WORKER}/snapshot", json={"ok": True, "id": 1})
+    # The relay resends its log 30 s after setup; tests that move the clock reach it.
+    aioclient_mock.post(f"{WORKER}/backfill", json={"ok": True, "alarm": 0, "security": 0})
     await alarm.async_update_config({"worker": {"url": WORKER, "enabled": True, "interval": 60, **worker}})
     alarm.bastion.relay.setup()
     await hass.async_block_till_done()

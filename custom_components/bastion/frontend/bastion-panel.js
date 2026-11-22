@@ -275,6 +275,10 @@ const I18N = {
     sabotage: "Sabotageverdacht",
     sensors: "Angelernte Sensoren",
     learned: "gelernt",
+    is_normal: "Ist normal",
+    known_provider: "bekannter Anbieter",
+    marked_normal: "als normal markiert",
+    accepted_range: "als normal markiert:",
     samples: "Messwerte",
     no_sensors: "Keine Sensoren ausgewählt (Konfigurieren → Anomalie-Erkennung).",
     events: "Sicherheitsereignisse",
@@ -565,6 +569,10 @@ const I18N = {
     sabotage: "Sabotage suspicion",
     sensors: "Learned sensors",
     learned: "learned",
+    is_normal: "This is normal",
+    known_provider: "known provider",
+    marked_normal: "marked as normal",
+    accepted_range: "marked normal:",
     samples: "samples",
     no_sensors: "No sensors selected (Configure → Anomaly detection).",
     events: "Security events",
@@ -726,6 +734,14 @@ class BastionPanel extends HTMLElement {
 
   get t() {
     return I18N[(this._hass?.language || "en").startsWith("de") ? "de" : "en"];
+  }
+
+  _num(value) {
+    return Number(value).toLocaleString((this._hass?.language || "en").startsWith("de") ? "de-DE" : "en-US", { maximumFractionDigits: 1 });
+  }
+
+  _range(lo, hi) {
+    return lo === hi ? this._num(lo) : `${this._num(lo)}–${this._num(hi)}`;
   }
 
   rel(value) {
@@ -1084,7 +1100,7 @@ class BastionPanel extends HTMLElement {
       <h2>${icon("mdi:timeline-text-outline")}${esc(t.log)}</h2>
       <div class="list card timeline">
         ${log.slice(0, 200).map((e) => {
-          const [ic, color] = LOG_ICON[e.type] || ["mdi:circle-small", "#8a8f98"];
+          const [ic, color] = e.known_provider ? ["mdi:map-marker-check-outline", "#8a8f98"] : LOG_ICON[e.type] || ["mdi:circle-small", "#8a8f98"];
           const who = e.user || e.name || "";
           const detail = e.client || e.result || e.user_agent || e.agent || "";
           const canBlock = (e.ip && e.ip !== "?") || e.token_id;
@@ -1092,8 +1108,8 @@ class BastionPanel extends HTMLElement {
             <div class="row">
               ${icon(ic, color)}
               <div class="row-main">
-                <div><b>${esc(t.types[e.type] || e.type)}</b> ${who ? `· ${esc(who)}` : ""} ${e.ip ? `<span class="chip tiny mono">${esc(e.ip)}${e.geo ? ` · ${esc(e.geo)}` : ""}</span>` : ""}</div>
-                <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))}${detail ? ` · ${esc(detail)}` : ""}</div>
+                <div><b>${esc(t.types[e.type] || e.type)}</b> ${who ? `· ${esc(who)}` : ""} ${e.ip ? `<span class="chip tiny mono">${esc(e.ip)}${e.geo ? ` · ${esc(e.geo)}` : ""}</span>` : ""}${e.known_provider ? ` <span class="chip tiny">${esc(t.known_provider)}</span>` : ""}</div>
+                <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))}${e.isp ? ` · ${esc(e.isp)}` : ""}${detail ? ` · ${esc(detail)}` : ""}</div>
               </div>
               ${canBlock && !["blocked", "confirmed", "token_removed"].includes(e.type)
                 ? `<button class="btn small ghost danger" data-action="block" data-ip="${esc(e.ip && e.ip !== "?" ? e.ip : "")}" data-token="${esc(e.token_id || "")}">${icon("mdi:block-helper")}${esc(t.block)}</button>`
@@ -1248,17 +1264,20 @@ class BastionPanel extends HTMLElement {
             <div class="row-main">
               <div><b>${esc(s.name)}</b> ${s.active.map((x) => `<span class="chip tiny" style="--c:${SEV.high.color}">${esc(t.types[x.type] || x.type)}</span>`).join(" ")}</div>
               <div class="meter" data-tip="${esc(s.learned_buckets)}/48 ${esc(t.learned)}"><div style="width:${Math.round((s.learned_buckets / 48) * 100)}%"></div></div>
-              <div class="muted small">${esc(s.samples)} ${esc(t.samples)} · ${esc(s.learned_buckets)}/48 ${esc(t.learned)}</div>
+              <div class="muted small">${esc(s.samples)} ${esc(t.samples)} · ${esc(s.learned_buckets)}/48 ${esc(t.learned)}${s.accepted && s.accepted.length ? ` · ${esc(t.accepted_range)} ${esc(s.accepted.map((r) => this._range(r[0], r[1])).join(", "))}${s.unit ? ` ${esc(s.unit)}` : ""}` : ""}</div>
             </div>
+            ${s.active.some((x) => x.type === "deviation") ? `<button class="btn small" data-action="anomaly-accept" data-entity="${esc(s.entity_id)}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}
           </div>`).join("")}
       </div>
       <h2>${icon("mdi:timeline-alert-outline")}${esc(t.events)}</h2>
       <div class="list card timeline">
         ${a.events.length === 0 ? `<div class="row muted">${esc(t.no_events)}</div>` : a.events.map((e) => {
           const [ic, color] = LOG_ICON[e.type] || ["mdi:alert-circle-outline", SEV.medium.color];
-          return `<div class="row">${icon(ic, color)}
-            <div class="row-main"><div><b>${esc(t.types[e.type] || e.type)}</b> ${esc(e.name || e.actor || e.user || e.entity || e.target || "")}</div>
-            <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))} · ${esc(e.detail || e.reason || e.entities || "")}</div></div></div>`;
+          const canAccept = e.type === "deviation" && e.entity_id && !e.accepted && a.sensors.some((s) => s.entity_id === e.entity_id);
+          return `<div class="row${e.accepted ? " faded" : ""}">${icon(e.accepted ? "mdi:check-circle-outline" : ic, e.accepted ? GOOD : color)}
+            <div class="row-main"><div><b>${esc(t.types[e.type] || e.type)}</b> ${esc(e.name || e.actor || e.user || e.entity || e.target || "")}${e.accepted ? ` <span class="chip tiny" style="--c:${GOOD}">${esc(t.marked_normal)}</span>` : ""}</div>
+            <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))} · ${esc(e.detail || e.reason || e.entities || "")}</div></div>
+            ${canAccept ? `<button class="btn small ghost" data-action="anomaly-accept" data-entity="${esc(e.entity_id)}" data-value="${esc(e.value ?? "")}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}</div>`;
         }).join("")}
       </div>
       ${a.outbound.enabled ? `
@@ -1512,13 +1531,13 @@ class BastionPanel extends HTMLElement {
   _planSvg(plan) {
     const [w, h] = plan.size;
     const pts = (list) => list.map(([x, y]) => `${x},${y}`).join(" ");
-    const areas = plan.areas.map((a) => {
+    const areas = (plan.areas || []).map((a) => {
       const [x, y, aw, ah] = a.rect;
       const [lx, ly] = a.label_at || [x + aw / 2, y + ah / 2];
       return `<rect x="${x}" y="${y}" width="${aw}" height="${ah}" class="fp-area ${a.outdoor ? "out" : ""}"/>
         <text x="${lx}" y="${ly}" class="fp-label">${esc(a.label)}</text>`;
     }).join("");
-    const walls = plan.walls.map((wl) => `<polyline points="${pts(wl.points)}" class="fp-wall ${wl.exterior ? "ext" : ""}"/>`).join("");
+    const walls = (plan.walls || []).map((wl) => `<polyline points="${pts(wl.points)}" class="fp-wall ${wl.exterior ? "ext" : ""}"/>`).join("");
     const glass = (plan.glazing || []).map((g) => `<line x1="${g.from[0]}" y1="${g.from[1]}" x2="${g.to[0]}" y2="${g.to[1]}" class="fp-glass"/>`).join("");
     const div = (plan.dividers || []).map((dv) => `<polyline points="${pts(dv)}" class="fp-div"/>`).join("");
     const boxes = (plan.boxes || []).map((b) => `<polygon points="${pts(b.points)}" class="fp-box"/>`).join("");
@@ -2001,13 +2020,21 @@ class BastionPanel extends HTMLElement {
       if (this._iconFor != null && /^mdi:[a-z0-9-]+$/.test(value)) { d.rooms[this._iconFor].icon = value; this._iconFor = null; this._render(); }
     });
     // floor plan
+    // Optional lists may be missing (the backend fills them in too); the preview must render
+    // before the draft takes the plan, so a broken file never replaces a working one.
     const takePlan = (text) => {
+      let plan;
       try {
-        d.floorplan = JSON.parse(text);
-        this._render();
+        plan = JSON.parse(text);
+        if (!plan || typeof plan !== "object" || !Array.isArray(plan.size) || !Array.isArray(plan.areas) || !plan.areas.length) throw new Error("plan");
+        for (const key of ["walls", "glazing", "dividers", "boxes"]) if (!Array.isArray(plan[key])) plan[key] = [];
+        this._planSvg(plan);
       } catch {
         this._notify(this.t.alarm.fp_invalid);
+        return;
       }
+      d.floorplan = plan;
+      this._render();
     };
     on("[data-fp-file]", (el) => {
       const file = el.files && el.files[0];
@@ -2211,6 +2238,12 @@ class BastionPanel extends HTMLElement {
     on('[data-action="report"]', () => this._action(async () => { this._data = await this._ws("bastion/report/send"); }));
     on('[data-action="dismiss"]', (el) => this._action(async () => {
       this._data = await this._ws("bastion/finding/dismiss", { finding_id: el.dataset.id, dismissed: el.dataset.dismissed === "1" });
+    }));
+    on('[data-action="anomaly-accept"]', (el) => this._action(async () => {
+      // An event button accepts exactly its value; the sensor button the current deviation.
+      const payload = { entity_id: el.dataset.entity };
+      if (el.dataset.value) payload.value = Number(el.dataset.value);
+      this._data = await this._ws("bastion/anomaly/accept", payload);
     }));
     on('[data-action="accept"]', (el) => this._action(async () => {
       this._data = await this._ws("bastion/integrity/accept", el.dataset.domain ? { domain: el.dataset.domain } : {});
@@ -2500,6 +2533,7 @@ const STYLE = `
   .list { padding:6px; }
   .row { display:flex; align-items:center; gap:14px; padding:12px; border-radius: var(--radius-sm); }
   .row + .row { border-top:1px solid var(--line); }
+  .row.faded { opacity:.62; }
   .list .row:hover { background: var(--surface-2); }
   .row > ha-icon:first-child { width:34px; height:34px; border-radius:10px; align-items:center; justify-content:center;
     background: color-mix(in srgb, currentColor 13%, transparent); }
