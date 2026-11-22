@@ -275,6 +275,9 @@ const I18N = {
     sabotage: "Sabotageverdacht",
     sensors: "Angelernte Sensoren",
     learned: "gelernt",
+    is_normal: "Ist normal",
+    marked_normal: "als normal markiert",
+    accepted_range: "als normal markiert:",
     samples: "Messwerte",
     no_sensors: "Keine Sensoren ausgewählt (Konfigurieren → Anomalie-Erkennung).",
     events: "Sicherheitsereignisse",
@@ -565,6 +568,9 @@ const I18N = {
     sabotage: "Sabotage suspicion",
     sensors: "Learned sensors",
     learned: "learned",
+    is_normal: "This is normal",
+    marked_normal: "marked as normal",
+    accepted_range: "marked normal:",
     samples: "samples",
     no_sensors: "No sensors selected (Configure → Anomaly detection).",
     events: "Security events",
@@ -726,6 +732,14 @@ class BastionPanel extends HTMLElement {
 
   get t() {
     return I18N[(this._hass?.language || "en").startsWith("de") ? "de" : "en"];
+  }
+
+  _num(value) {
+    return Number(value).toLocaleString((this._hass?.language || "en").startsWith("de") ? "de-DE" : "en-US", { maximumFractionDigits: 1 });
+  }
+
+  _range(lo, hi) {
+    return lo === hi ? this._num(lo) : `${this._num(lo)}–${this._num(hi)}`;
   }
 
   rel(value) {
@@ -1248,17 +1262,20 @@ class BastionPanel extends HTMLElement {
             <div class="row-main">
               <div><b>${esc(s.name)}</b> ${s.active.map((x) => `<span class="chip tiny" style="--c:${SEV.high.color}">${esc(t.types[x.type] || x.type)}</span>`).join(" ")}</div>
               <div class="meter" data-tip="${esc(s.learned_buckets)}/48 ${esc(t.learned)}"><div style="width:${Math.round((s.learned_buckets / 48) * 100)}%"></div></div>
-              <div class="muted small">${esc(s.samples)} ${esc(t.samples)} · ${esc(s.learned_buckets)}/48 ${esc(t.learned)}</div>
+              <div class="muted small">${esc(s.samples)} ${esc(t.samples)} · ${esc(s.learned_buckets)}/48 ${esc(t.learned)}${s.accepted ? ` · ${esc(t.accepted_range)} ${esc(this._range(s.accepted[0], s.accepted[1]))}${s.unit ? ` ${esc(s.unit)}` : ""}` : ""}</div>
             </div>
+            ${s.active.some((x) => x.type === "deviation") ? `<button class="btn small" data-action="anomaly-accept" data-entity="${esc(s.entity_id)}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}
           </div>`).join("")}
       </div>
       <h2>${icon("mdi:timeline-alert-outline")}${esc(t.events)}</h2>
       <div class="list card timeline">
         ${a.events.length === 0 ? `<div class="row muted">${esc(t.no_events)}</div>` : a.events.map((e) => {
           const [ic, color] = LOG_ICON[e.type] || ["mdi:alert-circle-outline", SEV.medium.color];
-          return `<div class="row">${icon(ic, color)}
-            <div class="row-main"><div><b>${esc(t.types[e.type] || e.type)}</b> ${esc(e.name || e.actor || e.user || e.entity || e.target || "")}</div>
-            <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))} · ${esc(e.detail || e.reason || e.entities || "")}</div></div></div>`;
+          const canAccept = e.type === "deviation" && e.entity_id && !e.accepted && a.sensors.some((s) => s.entity_id === e.entity_id);
+          return `<div class="row${e.accepted ? " faded" : ""}">${icon(e.accepted ? "mdi:check-circle-outline" : ic, e.accepted ? GOOD : color)}
+            <div class="row-main"><div><b>${esc(t.types[e.type] || e.type)}</b> ${esc(e.name || e.actor || e.user || e.entity || e.target || "")}${e.accepted ? ` <span class="chip tiny" style="--c:${GOOD}">${esc(t.marked_normal)}</span>` : ""}</div>
+            <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))} · ${esc(e.detail || e.reason || e.entities || "")}</div></div>
+            ${canAccept ? `<button class="btn small ghost" data-action="anomaly-accept" data-entity="${esc(e.entity_id)}">${icon("mdi:check")}<span>${esc(t.is_normal)}</span></button>` : ""}</div>`;
         }).join("")}
       </div>
       ${a.outbound.enabled ? `
@@ -2220,6 +2237,9 @@ class BastionPanel extends HTMLElement {
     on('[data-action="dismiss"]', (el) => this._action(async () => {
       this._data = await this._ws("bastion/finding/dismiss", { finding_id: el.dataset.id, dismissed: el.dataset.dismissed === "1" });
     }));
+    on('[data-action="anomaly-accept"]', (el) => this._action(async () => {
+      this._data = await this._ws("bastion/anomaly/accept", { entity_id: el.dataset.entity });
+    }));
     on('[data-action="accept"]', (el) => this._action(async () => {
       this._data = await this._ws("bastion/integrity/accept", el.dataset.domain ? { domain: el.dataset.domain } : {});
     }));
@@ -2508,6 +2528,7 @@ const STYLE = `
   .list { padding:6px; }
   .row { display:flex; align-items:center; gap:14px; padding:12px; border-radius: var(--radius-sm); }
   .row + .row { border-top:1px solid var(--line); }
+  .row.faded { opacity:.62; }
   .list .row:hover { background: var(--surface-2); }
   .row > ha-icon:first-child { width:34px; height:34px; border-radius:10px; align-items:center; justify-content:center;
     background: color-mix(in srgb, currentColor 13%, transparent); }

@@ -800,8 +800,8 @@ EVENT_TEXTS: dict[str, dict[str, tuple[str, str]]] = {
 
 ANOMALY_DETAIL = {
     "deviation": {
-        "de": "Wert {value} liegt außerhalb des üblichen Bereichs {low} – {high}.",
-        "en": "Value {value} is outside the usual range {low} – {high}.",
+        "de": "{value} liegt {direction} dem üblichen Bereich {low} – {high}.",
+        "en": "{value} is {direction} the usual range {low} – {high}.",
     },
     "continuous": {
         "de": "Läuft seit {hours} h ohne Pause (üblich höchstens {usual} h).",
@@ -811,6 +811,11 @@ ANOMALY_DETAIL = {
         "de": "Grundlast der letzten 7 Tage {recent} liegt {percent} % über dem Mittel ({baseline}).",
         "en": "Base load of the last 7 days {recent} is {percent} % above average ({baseline}).",
     },
+}
+
+ANOMALY_WORDS = {
+    "de": {"above": "über", "below": "unter"},
+    "en": {"above": "above", "below": "below"},
 }
 
 MISC = {

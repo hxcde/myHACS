@@ -102,6 +102,21 @@ async def ws_dismiss(hass, connection, msg) -> None:
 
 
 @websocket_api.websocket_command(
+    {probatio.Required("type"): "bastion/anomaly/accept", probatio.Required("entity_id"): cv.entity_id}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_anomaly_accept(hass, connection, msg) -> None:
+    """Mark the deviation of a sensor as normal (learned, never reported again)."""
+    if (bastion := _guard(connection, msg)) is None:
+        return
+    if not await bastion.anomaly.async_accept(msg["entity_id"]):
+        connection.send_error(msg["id"], "not_found", "Sensor wird nicht überwacht oder hat keinen Wert.")
+        return
+    connection.send_result(msg["id"], _overview(bastion))
+
+
+@websocket_api.websocket_command(
     {probatio.Required("type"): "bastion/integrity/accept", probatio.Optional("domain"): str}
 )
 @websocket_api.require_admin
@@ -765,5 +780,6 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         ws_alarm_presence_test,
         ws_alarm_media,
         ws_alarm_sound,
+        ws_anomaly_accept,
     ):
         websocket_api.async_register_command(hass, command)

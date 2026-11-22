@@ -54,8 +54,10 @@ custom_components/bastion/
     repo.py              Snapshot, Commit, Fetch/Push, Historie, Diff (synchron, Executor)
     manager.py           Orchestrierung in HA: Änderungserkennung, Auto-Commit, Restore
   anomaly/
-    stats.py             Welford-Statistik, Sensor-Modell, Stunden-Histogramm (ohne HA-Abhängigkeit)
-    engine.py            Sampling, Login-/Aktions-Anomalien, Sabotage, Outbound
+    stats.py             Welford-Statistik, Sensor-Modell (Bereich mit Nachbarstunden, gedämpftes Lernen, akzeptierte Werte),
+                         Stunden-Histogramm (ohne HA-Abhängigkeit)
+    engine.py            Sampling mit Profilen je Sensorart (Raumklima tolerant), „ist normal“, Login-/Aktions-Anomalien,
+                         Sabotage (ohne eigene Entitäten und Neuladen), Outbound
   frontend/bastion-panel.js   Panel (Tabs: Alarmanlage, Übersicht, Anmeldungen, Git, Anomalien, Extern)
   frontend/sounds/*.mp3  Mitgelieferte Alarmtöne (aus extras/sounds/build.py), ausgeliefert unter /bastion_static/sounds/
   brand/                 Icon und Logo (hell/dunkel), lädt HA ab 2026 direkt aus der Integration
