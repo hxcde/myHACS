@@ -165,6 +165,8 @@ Die Alarmanlage liegt im Panel als erster Tab, die Entität heißt `alarm_contro
 
 ## Reaktion, Köder, Wochenbericht
 
+**Neue IP:** Ein Konto meldet sich von einer Adresse an, die es noch nicht benutzt hat. IPv6 zählt pro Netz (/64): Handys und Router wechseln die hintere Hälfte ihrer IPv6-Adresse absichtlich alle paar Stunden (Privacy Extensions), das ist keine neue IP. Mit GeoIP merkt sich Bastion zusätzlich die Anbieter (ASN und Land) eines Kontos. Eine neue Adresse bei einem schon benutzten Anbieter (Mobilfunk, Heimanschluss, iCloud Private Relay) steht als „Neue IP · bekannter Anbieter“ im Protokoll, ohne Push. Ein neuer Anbieter oder ein neues Land meldet sich wie bisher.
+
 **Aktionen in Benachrichtigungen:** Benachrichtigungsziele vom Typ `notify.mobile_app_*` bekommen bei Anmeldungen, neuen IPs, neuen Tokens und Benutzern die Buttons „War ich“ und „Sperren“. „Sperren“ hat folgende Wirkung:
 
 - Der betroffene Token wird widerrufen.

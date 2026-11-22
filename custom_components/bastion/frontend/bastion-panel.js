@@ -276,6 +276,7 @@ const I18N = {
     sensors: "Angelernte Sensoren",
     learned: "gelernt",
     is_normal: "Ist normal",
+    known_provider: "bekannter Anbieter",
     marked_normal: "als normal markiert",
     accepted_range: "als normal markiert:",
     samples: "Messwerte",
@@ -569,6 +570,7 @@ const I18N = {
     sensors: "Learned sensors",
     learned: "learned",
     is_normal: "This is normal",
+    known_provider: "known provider",
     marked_normal: "marked as normal",
     accepted_range: "marked normal:",
     samples: "samples",
@@ -1098,7 +1100,7 @@ class BastionPanel extends HTMLElement {
       <h2>${icon("mdi:timeline-text-outline")}${esc(t.log)}</h2>
       <div class="list card timeline">
         ${log.slice(0, 200).map((e) => {
-          const [ic, color] = LOG_ICON[e.type] || ["mdi:circle-small", "#8a8f98"];
+          const [ic, color] = e.known_provider ? ["mdi:map-marker-check-outline", "#8a8f98"] : LOG_ICON[e.type] || ["mdi:circle-small", "#8a8f98"];
           const who = e.user || e.name || "";
           const detail = e.client || e.result || e.user_agent || e.agent || "";
           const canBlock = (e.ip && e.ip !== "?") || e.token_id;
@@ -1106,8 +1108,8 @@ class BastionPanel extends HTMLElement {
             <div class="row">
               ${icon(ic, color)}
               <div class="row-main">
-                <div><b>${esc(t.types[e.type] || e.type)}</b> ${who ? `· ${esc(who)}` : ""} ${e.ip ? `<span class="chip tiny mono">${esc(e.ip)}${e.geo ? ` · ${esc(e.geo)}` : ""}</span>` : ""}</div>
-                <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))}${detail ? ` · ${esc(detail)}` : ""}</div>
+                <div><b>${esc(t.types[e.type] || e.type)}</b> ${who ? `· ${esc(who)}` : ""} ${e.ip ? `<span class="chip tiny mono">${esc(e.ip)}${e.geo ? ` · ${esc(e.geo)}` : ""}</span>` : ""}${e.known_provider ? ` <span class="chip tiny">${esc(t.known_provider)}</span>` : ""}</div>
+                <div class="muted small" data-tip="${fmtTime(e.time)}">${esc(this.rel(e.time))}${e.isp ? ` · ${esc(e.isp)}` : ""}${detail ? ` · ${esc(detail)}` : ""}</div>
               </div>
               ${canBlock && !["blocked", "confirmed", "token_removed"].includes(e.type)
                 ? `<button class="btn small ghost danger" data-action="block" data-ip="${esc(e.ip && e.ip !== "?" ? e.ip : "")}" data-token="${esc(e.token_id || "")}">${icon("mdi:block-helper")}${esc(t.block)}</button>`
